@@ -47,8 +47,14 @@ static int hello_init(void){
       printk(KERN_INFO "Successfully created MY PCI bus");
     }
 	
-	// Add Devices NVMe
-
+	// Add Devices NVMe (ref: pci_scan_device)
+	//pci_alloc_dev
+	//devfn, vendor, device
+	//pci_set_of_node
+	//pci_setup_device
+	//pci_device_add
+	//pci_bus_add_device
+	
     return 0;
 }
 
