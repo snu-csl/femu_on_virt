@@ -4,3 +4,6 @@ modules.order
 *.o
 *.mod.o
 *.mod.c
+.*.cmd
+.tmp_versions/
+tags
