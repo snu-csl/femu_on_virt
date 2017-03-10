@@ -63,6 +63,8 @@ struct nvmev_dev {
 	struct pci_dev *pdev;
 	struct pci_ops pci_ops;
 	struct pci_sysdata pci_sd;
+	
+	int msix_enabled;
 
 	struct nvme_bar *old_bar;
 	struct nvme_ctrl_regs __iomem *bar;

@@ -12,7 +12,7 @@ struct __apic_chip_data {
 	u8			move_in_progress : 1;
 };
 int get_vector_from_irq(int irq) {
-	struct irq_data * irqd = irq_get_irq_data(16);
+	struct irq_data * irqd = irq_get_irq_data(irq);
 	struct irq_cfg *irqd_cfg;
 	struct __apic_chip_data *chip_data;
 
@@ -108,6 +108,8 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 	u32 mask = 0xFFFFFFFF;
 	u32 val;
 	int target = where;
+	void __iomem *temp;
+
 	memcpy(&val, vdev->virtDev+where, size);
 
 	if(where < OFFS_PCI_PM_CAP) {
@@ -139,7 +141,15 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 	// PCI_MSIX_CAP
 		target-=OFFS_PCI_MSIX_CAP;
 		if(target == 0) mask = 0x0;
-		else if(target == 2) mask = 0xC000;
+		else if(target == 2) {
+			mask = 0xC000;
+			if ((val & mask) == mask) {
+				vdev->msix_enabled = 1;
+				temp = ioremap_nocache(pci_resource_start(vdev->pdev,0) + 0x2000, 9 * PCI_MSIX_ENTRY_SIZE);
+				vdev->queue_arr[0]->irq_vector = readl(temp+PCI_MSIX_ENTRY_DATA) & 0xFF;
+				iounmap(temp);
+			}
+		}
 		else if(target == 4) mask = 0x0;
 		else if(target == 8) mask = 0x0;
 	}

@@ -106,11 +106,10 @@ void nvmev_proc_admin(int qid, int entry_id) {
 
 void nvmev_proc_sq_admin(int qid, int new_db, int old_db) {
 	struct nvmev_queue *queue = vdev->queue_arr[qid];
-static int numReq = 0;
 	int num_proc = new_db - old_db;
 	int seq;
 	int cur_entry = old_db;
-	
+
 	for(seq = 0; seq < num_proc; seq++) {
 		nvmev_proc_admin(qid, cur_entry);
 
@@ -118,15 +117,13 @@ static int numReq = 0;
 			cur_entry = 0;
 		}
 	}
-	
-	pr_info("Generate Vector %d\n", queue->irq_vector);
-	if(numReq == 0)
+
+	if(vdev->msix_enabled == 0) {
 		generateInterrupt(queue->irq_vector);
-	else {
-		pr_info("136 -> %d\n", get_vector_from_irq(136));
-		generateInterrupt(get_vector_from_irq(136));
 	}
-	numReq++;
+	else {
+		generateInterrupt(queue->irq_vector);
+	}
 }
 
 void nvmev_proc_cq_admin(int qid, int new_db, int old_db) {
