@@ -27,7 +27,7 @@ int get_vector_from_irq(int irq) {
 void nvmev_proc_bars () {
 	struct nvme_bar *old_bar = vdev->old_bar;
 	struct nvme_ctrl_regs __iomem *bar = vdev->bar;
-	struct nvmev_queue *queue;
+	struct nvmev_admin_queue *queue;
 
 	if(old_bar->cap != bar->u_cap) {
 		memcpy(&old_bar->cap, &bar->cap, sizeof(old_bar->cap));
@@ -59,10 +59,7 @@ void nvmev_proc_bars () {
 	if(old_bar->aqa != bar->u_aqa) {
 		//Admin Queue Initial..
 		memcpy(&old_bar->aqa, &bar->aqa, sizeof(old_bar->aqa));
-		vdev->nr_queue = 1;
-
-		vdev->queue_arr = kzalloc(sizeof(struct nvmev_queue *), GFP_KERNEL);
-		queue =	kzalloc(sizeof(struct nvmev_queue), GFP_KERNEL);
+		queue =	kzalloc(sizeof(struct nvmev_admin_queue), GFP_KERNEL);
 		queue->qid = 0;
 		queue->irq = IRQ_NUM;
 		queue->irq_vector = get_vector_from_irq(queue->irq);
@@ -71,21 +68,19 @@ void nvmev_proc_bars () {
 		queue->phase = 1;
 		queue->sq_depth = bar->aqa.asqs;
 		queue->cq_depth = bar->aqa.acqs;
-		vdev->queue_arr[0] = queue;
+		vdev->admin_q = queue;
 	}
 	if(old_bar->asq != bar->u_asq) {
 		memcpy(&old_bar->asq, &bar->asq, sizeof(old_bar->asq));
 
-		queue = vdev->queue_arr[0];
-		queue->nvme_sq = page_address(pfn_to_page(vdev->bar->u_asq >> PAGE_SHIFT));
+		vdev->admin_q->nvme_sq = page_address(pfn_to_page(vdev->bar->u_asq >> PAGE_SHIFT));
 		if(queue->nvme_sq == NULL)
 			NVMEV_ERROR("Error on Setup Admin Queue [Submission]\n");
 	}
 	if(old_bar->acq != bar->u_acq) {
 		memcpy(&old_bar->acq, &bar->acq, sizeof(old_bar->acq));
 
-		queue = vdev->queue_arr[0];
-		queue->nvme_cq = page_address(pfn_to_page(vdev->bar->u_acq >> PAGE_SHIFT));
+		vdev->admin_q->nvme_cq = page_address(pfn_to_page(vdev->bar->u_acq >> PAGE_SHIFT));
 		if(queue->nvme_cq == NULL)
 			NVMEV_ERROR("Error on Setup Admin Queue [Submission]\n");
 	}
@@ -143,10 +138,12 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 		if(target == 0) mask = 0x0;
 		else if(target == 2) {
 			mask = 0xC000;
+
+			//MSIX enabled? -> admin queue irq setup
 			if ((val & mask) == mask) {
 				vdev->msix_enabled = 1;
 				temp = ioremap_nocache(pci_resource_start(vdev->pdev,0) + 0x2000, 9 * PCI_MSIX_ENTRY_SIZE);
-				vdev->queue_arr[0]->irq_vector = readl(temp+PCI_MSIX_ENTRY_DATA) & 0xFF;
+				vdev->admin_q->irq_vector = readl(temp+PCI_MSIX_ENTRY_DATA) & 0xFF;
 				iounmap(temp);
 			}
 		}

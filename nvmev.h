@@ -32,12 +32,21 @@
 #define PCI_CFG_SPACE_SIZE	256
 
 #define IRQ_NUM 16
+#define NR_MAX_IO_QUEUE 32
 
 struct nvmev_ns {
 	int nsid;
 };
 
-struct nvmev_queue {
+struct nvmev_submission_queue {
+
+};
+
+struct nvmev_completion_queue {
+	
+};
+
+struct nvmev_admin_queue {
 	int qid;
 	
 	int irq;
@@ -73,10 +82,13 @@ struct nvmev_dev {
 	u32 __iomem *dbs;
 
 	int nr_ns;
-	int nr_queue;
+	int nr_sq, nr_cq;
+	int nr_max_ioq;
 
+	struct nvmev_admin_queue *admin_q;
 	struct nvmev_ns** ns_arr;
-	struct nvmev_queue** queue_arr;
+	struct nvmev_submission_queue* sqes[NR_MAX_IO_QUEUE];
+	struct nvmev_completion_queue* cqes[NR_MAX_IO_QUEUE];
 };
 
 
@@ -87,8 +99,8 @@ int get_vector_from_irq(int irq);
 void generateInterrupt(int vector);
 
 // OPS ADMIN QUEUE
-void nvmev_proc_sq_admin(int qid, int new_db, int old_db);
-void nvmev_proc_cq_admin(int qid, int new_db, int old_db);
+void nvmev_proc_sq_admin(int new_db, int old_db);
+void nvmev_proc_cq_admin(int new_db, int old_db);
 
 // OPS I/O QUEUE
 void nvmev_proc_sq_io(int qid, int new_db, int old_db);

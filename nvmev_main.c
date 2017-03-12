@@ -17,55 +17,34 @@ EXPORT_SYMBOL(vdev);
 static void nvmev_proc_dbs(void) {
 	int qid;
 	int dbs_idx;
-	for(qid=0; qid<vdev->nr_queue; qid++) {
+	
+	// Admin Queue
+	if(vdev->dbs[0] != vdev->old_dbs[0]) {
+		nvmev_proc_sq_admin(vdev->dbs[0], vdev->old_dbs[0]);
+		vdev->old_dbs[0] = vdev->dbs[0];
+	}
+	if(vdev->dbs[1] != vdev->old_dbs[1]) {
+		nvmev_proc_cq_admin(vdev->dbs[1], vdev->old_dbs[1]);
+		vdev->old_dbs[1] = vdev->dbs[1];
+	}
+
+	// Submission Queue
+	for(qid=0; qid<vdev->nr_sq; qid++) {
 		dbs_idx = qid * 2;
-		//SQ
-		if(vdev->dbs[dbs_idx] != vdev->old_dbs[dbs_idx]) {
-			if(unlikely(qid == 0))
-				nvmev_proc_sq_admin(qid, vdev->dbs[dbs_idx], vdev->old_dbs[dbs_idx]);
-			else
-				nvmev_proc_sq_admin(qid, vdev->dbs[dbs_idx], vdev->old_dbs[dbs_idx]);
-			
-			vdev->old_dbs[dbs_idx] = vdev->dbs[dbs_idx];
-		}
-		//CQ
-		dbs_idx++;
-		if(vdev->dbs[dbs_idx] != vdev->old_dbs[dbs_idx]) {
-			if(unlikely(qid == 0))
-				nvmev_proc_cq_admin(qid, vdev->dbs[dbs_idx], vdev->old_dbs[dbs_idx]);
-			else
-				nvmev_proc_cq_admin(qid, vdev->dbs[dbs_idx], vdev->old_dbs[dbs_idx]);
-			
-			vdev->old_dbs[dbs_idx] = vdev->dbs[dbs_idx];
-		}
-/*
-		struct nvmev_queue *queue = vdev->queue_arr[i];
-		struct nvme_command __iomem *nvme_sq = queue->nvme_sq;
-		struct nvme_completion __iomem *nvme_cq = queue->nvme_cq;
+		//sq proc
+		vdev->old_dbs[dbs_idx] = vdev->dbs[dbs_idx];
+	}
 
-		if(vdev->dbs[qid] != vdev->old_dbs[qid]) {
-			if(unlikely(i==0))
-				nvmev_proc_sq_admin(i);
-
-				
-			vdev->old_dbs[0] = vdev->dbs[0];
-			pr_err("%s: %x %d %d\n", __func__, nvme_sq[0].features.opcode, queue->irq, queue->irq_vector);
-
-			nvme_cq[0].result = 8;
-			nvme_cq[0].sq_head = 0;
-			nvme_cq[0].sq_id = 0;
-			nvme_cq[0].command_id = nvme_sq[0].features.command_id;
-			nvme_cq[0].status = NVME_SC_SUCCESS << 1 | 1;
-
-			asm("int $81");
-		}
-		*/
+	// Completion Queue
+	for(qid=0; qid<vdev->nr_sq; qid++) {
+		dbs_idx = qid * 2 + 1;
+		//sq proc
+		vdev->old_dbs[dbs_idx] = vdev->dbs[dbs_idx];
 	}
 }
 
 static int nvmev_kthread(void *data)
 {
-
 	while(!kthread_should_stop()) {
 
 		// BAR Register Check
@@ -235,7 +214,6 @@ ret_err_pci_bus:
 static void NVMeV_exit(void)
 {	
 	struct task_struct *tmp = NULL;
-	struct nvmev_queue *queue;
 	int i;
 
 	if(!IS_ERR_OR_NULL(nvmev_thread)) {
@@ -249,13 +227,18 @@ static void NVMeV_exit(void)
 	if(vdev->virt_bus != NULL) {
 		pci_remove_bus(vdev->virt_bus);
 
-		for(i=0; i<vdev->nr_queue; i++) {
-			kfree(queue);
+		for(i=0; i<vdev->nr_sq; i++) {
+			//iounmap
+			kfree(vdev->sqes[i]);
+		}
+
+		for(i=0; i<vdev->nr_cq; i++) {
+			kfree(vdev->cqes[i]);
 		}
 
 		iounmap(vdev->bar);
 		kfree(vdev->old_bar);
-		kfree(vdev->queue_arr);
+		kfree(vdev->admin_q);
 		kfree(vdev->virtDev);
 		kfree(vdev);
 	}
