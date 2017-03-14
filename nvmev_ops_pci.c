@@ -25,9 +25,10 @@ int get_vector_from_irq(int irq) {
 }
 
 void nvmev_proc_bars () {
-	struct nvme_bar *old_bar = vdev->old_bar;
+	struct __nvme_bar *old_bar = vdev->old_bar;
 	struct nvme_ctrl_regs __iomem *bar = vdev->bar;
 	struct nvmev_admin_queue *queue;
+	unsigned int num_pages, i;
 
 	if(old_bar->cap != bar->u_cap) {
 		memcpy(&old_bar->cap, &bar->cap, sizeof(old_bar->cap));
@@ -60,29 +61,45 @@ void nvmev_proc_bars () {
 		//Admin Queue Initial..
 		memcpy(&old_bar->aqa, &bar->aqa, sizeof(old_bar->aqa));
 		queue =	kzalloc(sizeof(struct nvmev_admin_queue), GFP_KERNEL);
-		queue->qid = 0;
+
 		queue->irq = IRQ_NUM;
 		queue->irq_vector = get_vector_from_irq(queue->irq);
 		queue->cq_head = 0;
 		queue->cq_tail = -1;
 		queue->phase = 1;
-		queue->sq_depth = bar->aqa.asqs;
-		queue->cq_depth = bar->aqa.acqs;
+		queue->sq_depth = bar->aqa.asqs + 1;
+		queue->cq_depth = bar->aqa.acqs + 1;
 		vdev->admin_q = queue;
 	}
 	if(old_bar->asq != bar->u_asq) {
+		queue = vdev->admin_q;
 		memcpy(&old_bar->asq, &bar->asq, sizeof(old_bar->asq));
+		
+		num_pages = (queue->sq_depth * sizeof(struct nvme_command)) / PAGE_SIZE;
+		if((queue->sq_depth * sizeof(struct nvme_command)) % PAGE_SIZE) num_pages++;
 
-		vdev->admin_q->nvme_sq = page_address(pfn_to_page(vdev->bar->u_asq >> PAGE_SHIFT));
+		vdev->admin_q->nvme_sq = kzalloc(sizeof(struct nvme_command *) * num_pages, GFP_KERNEL);
 		if(queue->nvme_sq == NULL)
 			NVMEV_ERROR("Error on Setup Admin Queue [Submission]\n");
+
+		for(i=0; i<num_pages; i++) {
+			vdev->admin_q->nvme_sq[i] = page_address(pfn_to_page(vdev->bar->u_asq >> PAGE_SHIFT) + i);
+		}
 	}
 	if(old_bar->acq != bar->u_acq) {
+		queue = vdev->admin_q;
 		memcpy(&old_bar->acq, &bar->acq, sizeof(old_bar->acq));
 
-		vdev->admin_q->nvme_cq = page_address(pfn_to_page(vdev->bar->u_acq >> PAGE_SHIFT));
+		num_pages = (queue->cq_depth * sizeof(struct nvme_completion)) / PAGE_SIZE;
+		if((queue->cq_depth * sizeof(struct nvme_completion)) % PAGE_SIZE) num_pages++;
+
+		vdev->admin_q->nvme_cq = kzalloc(sizeof(struct nvme_completion*) * num_pages, GFP_KERNEL);
 		if(queue->nvme_cq == NULL)
-			NVMEV_ERROR("Error on Setup Admin Queue [Submission]\n");
+			NVMEV_ERROR("Error on Setup Admin Queue [Completion]\n");
+
+		for(i=0; i<num_pages; i++) {
+			vdev->admin_q->nvme_cq[i] = page_address(pfn_to_page(vdev->bar->u_acq >> PAGE_SHIFT) + i);
+		}
 	}
 	if(old_bar->cmbloc != bar->u_cmbloc) {
 		memcpy(&old_bar->cmbloc, &bar->cmbloc, sizeof(old_bar->cmbloc));
@@ -103,7 +120,6 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 	u32 mask = 0xFFFFFFFF;
 	u32 val;
 	int target = where;
-	void __iomem *temp;
 
 	memcpy(&val, vdev->virtDev+where, size);
 
@@ -141,10 +157,9 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 
 			//MSIX enabled? -> admin queue irq setup
 			if ((val & mask) == mask) {
-				vdev->msix_enabled = 1;
-				temp = ioremap_nocache(pci_resource_start(vdev->pdev,0) + 0x2000, 9 * PCI_MSIX_ENTRY_SIZE);
-				vdev->admin_q->irq_vector = readl(temp+PCI_MSIX_ENTRY_DATA) & 0xFF;
-				iounmap(temp);
+				vdev->msix_enabled = true;
+				vdev->msix_table = ioremap(pci_resource_start(vdev->pdev,0) + 0x2000, 32 * PCI_MSIX_ENTRY_SIZE);
+				vdev->admin_q->irq_vector = readl(vdev->msix_table+PCI_MSIX_ENTRY_DATA) & 0xFF;
 			}
 		}
 		else if(target == 4) mask = 0x0;
@@ -192,6 +207,7 @@ struct pci_bus* nvmev_create_pci_bus() {
 	vdev->bar->vs.mnr = 0;
 	vdev->bar->vs.mjr = 1;
 	vdev->bar->cap.mpsmin = 0;
+	vdev->bar->cap.mqes= 1024 - 1; //base value = 0, 0 means depth 1
 
     if(nvmev_pci_bus){
 		NVMEV_INFO("Successfully created Virtual PCI bus\n");

@@ -17,29 +17,38 @@ EXPORT_SYMBOL(vdev);
 static void nvmev_proc_dbs(void) {
 	int qid;
 	int dbs_idx;
-	
+	int new_db;	
+
 	// Admin Queue
-	if(vdev->dbs[0] != vdev->old_dbs[0]) {
-		nvmev_proc_sq_admin(vdev->dbs[0], vdev->old_dbs[0]);
-		vdev->old_dbs[0] = vdev->dbs[0];
+	new_db = vdev->dbs[0];
+	if(new_db != vdev->old_dbs[0]) {
+		nvmev_proc_sq_admin(new_db, vdev->old_dbs[0]);
+		vdev->old_dbs[0] = new_db;
 	}
-	if(vdev->dbs[1] != vdev->old_dbs[1]) {
-		nvmev_proc_cq_admin(vdev->dbs[1], vdev->old_dbs[1]);
-		vdev->old_dbs[1] = vdev->dbs[1];
+	new_db = vdev->dbs[1];
+	if(new_db != vdev->old_dbs[1]) {
+		nvmev_proc_cq_admin(new_db, vdev->old_dbs[1]);
+		vdev->old_dbs[1] = new_db;
 	}
 
 	// Submission Queue
-	for(qid=0; qid<vdev->nr_sq; qid++) {
+	for(qid=1; qid<=vdev->nr_sq; qid++) {
 		dbs_idx = qid * 2;
-		//sq proc
-		vdev->old_dbs[dbs_idx] = vdev->dbs[dbs_idx];
+		new_db = vdev->dbs[dbs_idx];
+		if(new_db != vdev->old_dbs[dbs_idx]) {
+			nvmev_proc_sq_io(qid-1, new_db, vdev->old_dbs[dbs_idx]);
+			vdev->old_dbs[dbs_idx] = new_db;
+		}
 	}
 
 	// Completion Queue
-	for(qid=0; qid<vdev->nr_sq; qid++) {
+	for(qid=1; qid<=vdev->nr_cq; qid++) {
 		dbs_idx = qid * 2 + 1;
-		//sq proc
-		vdev->old_dbs[dbs_idx] = vdev->dbs[dbs_idx];
+		new_db = vdev->dbs[dbs_idx];
+		if(new_db != vdev->old_dbs[dbs_idx]) {
+			nvmev_proc_cq_io(qid-1, new_db, vdev->old_dbs[dbs_idx]);
+			vdev->old_dbs[dbs_idx] = new_db;
+		}
 	}
 }
 
@@ -235,6 +244,9 @@ static void NVMeV_exit(void)
 		for(i=0; i<vdev->nr_cq; i++) {
 			kfree(vdev->cqes[i]);
 		}
+		
+		if(vdev->msix_enabled)
+			iounmap(vdev->msix_table);
 
 		iounmap(vdev->bar);
 		kfree(vdev->old_bar);

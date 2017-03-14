@@ -2,6 +2,12 @@
 #define _LIB_NVMEV_H
 
 #include <linux/pci.h>
+#include <asm/apic.h>
+#include <linux/irqnr.h>
+#include <linux/msi.h>
+#include <linux/irq.h>
+#include <uapi/linux/irqnr.h>
+
 #include "nvmev_hdr.h"
 
 #define NVMEV_DRV_NAME "NVMe_Virt_Dev"
@@ -39,25 +45,47 @@ struct nvmev_ns {
 };
 
 struct nvmev_submission_queue {
-
+	int qid;
+	int cqid;
+	int sq_priority;
+	bool phys_contig;
+	
+	int queue_size;
+	
+	struct nvme_command __iomem **sq;
 };
 
 struct nvmev_completion_queue {
+	int qid;
+	int irq;
+	int irq_vector;
+	bool interrupt_enabled;
+	bool phys_contig;
 	
+	bool affinity_settings;
+	const struct cpumask *cpu_mask;
+
+	int queue_size;
+	
+	int phase;
+	int cq_head, cq_tail;
+	struct nvme_completion __iomem **cq;
 };
 
 struct nvmev_admin_queue {
-	int qid;
-	
 	int irq;
 	int irq_vector;
 	
+	bool affinity_settings;
+	const struct cpumask *cpu_mask;
+	struct msi_desc *desc;
+
 	int phase;
 	int sq_depth, cq_depth;
 	int cq_head, cq_tail;
 
-	struct nvme_command __iomem *nvme_sq;
-	struct nvme_completion __iomem *nvme_cq;
+	struct nvme_command __iomem **nvme_sq;
+	struct nvme_completion __iomem **nvme_cq;
 };
 
 struct nvmev_dev {
@@ -73,9 +101,10 @@ struct nvmev_dev {
 	struct pci_ops pci_ops;
 	struct pci_sysdata pci_sd;
 	
-	int msix_enabled;
+	bool msix_enabled;
+	void __iomem *msix_table;
 
-	struct nvme_bar *old_bar;
+	struct __nvme_bar *old_bar;
 	struct nvme_ctrl_regs __iomem *bar;
 
 	u32 *old_dbs;
@@ -83,7 +112,6 @@ struct nvmev_dev {
 
 	int nr_ns;
 	int nr_sq, nr_cq;
-	int nr_max_ioq;
 
 	struct nvmev_admin_queue *admin_q;
 	struct nvmev_ns** ns_arr;
