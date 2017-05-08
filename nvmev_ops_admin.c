@@ -80,7 +80,7 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 	sq->sq_priority = sq_entry(eid).create_sq.sq_flags & 0xFFFE;
 	sq->phys_contig = \
 		(sq_entry(eid).create_sq.sq_flags & NVME_QUEUE_PHYS_CONTIG)? true: false;
-	sq->queue_size = sq_entry(eid).create_sq.qsize;
+	sq->queue_size = sq_entry(eid).create_sq.qsize + 1;
 	
 	//multiple pages
 	num_pages = (sq->queue_size * sizeof(struct nvme_command)) / PAGE_SIZE;
