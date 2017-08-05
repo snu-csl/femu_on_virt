@@ -15,37 +15,44 @@
 #define cq_entry(entry_id) \
 	cq->cq[entry_cq_page_num(entry_id)][entry_cq_page_offs(entry_id)]
 
-
 extern struct nvmev_dev *vdev;
+extern void* src_mem;
+extern void* dest_mem;
 
 void nvmev_proc_flush(int qid, int sq_entry, int cq_head) {
 	struct nvmev_submission_queue *sq = vdev->sqes[qid];
 	struct nvmev_completion_queue *cq = vdev->cqes[sq->cqid];
 
-	cq_entry(cq_head).status = cq->phase | NVME_SC_SUCCESS << 1;
-	cq_entry(cq_head).command_id = sq_entry(sq_entry).features.command_id;
+	cq_entry(cq_head).command_id = sq_entry(sq_entry).rw.command_id;
 	cq_entry(cq_head).sq_id = qid+1;
 	cq_entry(cq_head).sq_head = sq_entry;
+	cq_entry(cq_head).status = cq->phase | NVME_SC_SUCCESS << 1;
+	
+	//pr_info("%s: %d) F %lu %u\n", __func__, qid, sq_entry(sq_entry).rw.slba , sq_entry(sq_entry).rw.command_id);
 }
 
 void nvmev_proc_write(int qid, int sq_entry, int cq_head) {
 	struct nvmev_submission_queue *sq = vdev->sqes[qid];
 	struct nvmev_completion_queue *cq = vdev->cqes[sq->cqid];
 
-	cq_entry(cq_head).status = cq->phase | NVME_SC_SUCCESS << 1;
-	cq_entry(cq_head).command_id = sq_entry(sq_entry).features.command_id;
+	//memcpy(dest_mem, src_mem, PAGE_SIZE);
+	cq_entry(cq_head).command_id = sq_entry(sq_entry).rw.command_id;
 	cq_entry(cq_head).sq_id = qid+1;
 	cq_entry(cq_head).sq_head = sq_entry;
+	cq_entry(cq_head).status = cq->phase | NVME_SC_SUCCESS << 1;
+	//pr_info("%s: %d %d W %lu %u\n", __func__, qid+1, sq_entry, sq_entry(sq_entry).rw.slba , sq_entry(sq_entry).rw.command_id);
 }
 
 void nvmev_proc_read(int qid, int sq_entry, int cq_head) {
 	struct nvmev_submission_queue *sq = vdev->sqes[qid];
 	struct nvmev_completion_queue *cq = vdev->cqes[sq->cqid];
 
-	cq_entry(cq_head).status = cq->phase | NVME_SC_SUCCESS << 1;
-	cq_entry(cq_head).command_id = sq_entry(sq_entry).features.command_id;
+	//memcpy(dest_mem, src_mem, PAGE_SIZE);
+	cq_entry(cq_head).command_id = sq_entry(sq_entry).rw.command_id;
 	cq_entry(cq_head).sq_id = qid+1;
 	cq_entry(cq_head).sq_head = sq_entry;
+	cq_entry(cq_head).status = cq->phase | NVME_SC_SUCCESS << 1;
+	//pr_info("%s: %d) R %lu %u\n", __func__, qid, sq_entry(sq_entry).rw.slba , sq_entry(sq_entry).rw.command_id);
 }
 
 void nvmev_proc_nvm(int qid, int sq_entry, int cq_head) {
@@ -83,6 +90,8 @@ void nvmev_proc_sq_io(int qid, int new_db, int old_db) {
 	int cq_head = cq->cq_head;
 	struct irq_desc *desc;
 
+	if(unlikely(num_proc < 0)) num_proc+=sq->queue_size;
+
 	for(seq = 0; seq < num_proc; seq++) {
 		nvmev_proc_nvm(qid, sq_entry, cq_head);
 
@@ -97,7 +106,7 @@ void nvmev_proc_sq_io(int qid, int new_db, int old_db) {
 	}
 
 	cq->cq_head = cq_head;
-	
+
 	if(unlikely(!cq->affinity_settings)) {
 		cq->irq_vector += vdev->admin_q->desc->irq;
 		desc = irq_to_desc(cq->irq_vector);
@@ -106,8 +115,7 @@ void nvmev_proc_sq_io(int qid, int new_db, int old_db) {
 			cq->cpu_mask = desc->affinity_hint;
 		}
 	}
-	
-	
+
 	if(unlikely(!cq->affinity_settings)) {
 		generateInterrupt(cq->irq);
 	}
@@ -118,7 +126,9 @@ void nvmev_proc_sq_io(int qid, int new_db, int old_db) {
 }
 
 void nvmev_proc_cq_io(int qid, int new_db, int old_db) {
-	struct nvmev_completion_queue *queue = vdev->cqes[qid];
+	struct nvmev_completion_queue *cq= vdev->cqes[qid];
 
-	queue->cq_tail = new_db-1;
+	cq->cq_tail = new_db - 1;
+	if(new_db == -1) cq->cq_tail = cq->queue_size-1;
+	//pr_info("%s %d %d->%d\n", __func__, qid, old_db, new_db);
 }

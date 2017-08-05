@@ -22,28 +22,27 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_completion_queue *cq;
 	unsigned int num_pages, i;
-
-	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
-	cq_entry(cq_head).command_id = sq_entry(eid).create_cq.command_id;
-	cq_entry(cq_head).sq_id = 0;
-	cq_entry(cq_head).sq_head = eid;
-	
+		
 	cq = kzalloc(sizeof(struct nvmev_completion_queue), GFP_KERNEL);
 	
 	/* Todo : Physically dis-contiguous prp list */
 
 	cq->qid = sq_entry(eid).create_cq.cqid;
-	cq->irq_vector = sq_entry(eid).create_cq.irq_vector;
-	cq->irq = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
 	
-	pr_err("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
-
 	cq->interrupt_enabled = \
 		(sq_entry(eid).create_cq.cq_flags & NVME_CQ_IRQ_ENABLED)? true: false;
 	cq->phys_contig = \
 		(sq_entry(eid).create_cq.cq_flags & NVME_QUEUE_PHYS_CONTIG)? true: false;
 	cq->queue_size = sq_entry(eid).create_cq.qsize + 1;
 	cq->phase = 1;
+
+	if(cq->interrupt_enabled) {
+		cq->irq_vector = sq_entry(eid).create_cq.irq_vector;
+		cq->irq = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
+
+		pr_err("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
+	}
+
 	//if queue size = 0 > vdev->bar->cap.mqes!!
 	//num_queue_pages?
 	
@@ -58,18 +57,18 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 		cq->cq[i] = page_address(pfn_to_page(sq_entry(eid).create_cq.prp1 >> PAGE_SHIFT) + i);
 	}
 	vdev->cqes[cq->qid-1] = cq;
+
+	cq_entry(cq_head).command_id = sq_entry(eid).create_cq.command_id;
+	cq_entry(cq_head).sq_id = 0;
+	cq_entry(cq_head).sq_head = eid;
+	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
 void nvmev_admin_create_sq(int eid, int cq_head) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_submission_queue *sq;
 	unsigned int num_pages, i;
-
-	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
-	cq_entry(cq_head).command_id = sq_entry(eid).create_sq.command_id;
-	cq_entry(cq_head).sq_id = 0;
-	cq_entry(cq_head).sq_head = eid;
-
+	
 	sq = kzalloc(sizeof(struct nvmev_submission_queue), GFP_KERNEL);
 
 	/* Todo : Physically dis-contiguous prp list */
@@ -90,16 +89,16 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 		sq->sq[i] = page_address(pfn_to_page(sq_entry(eid).create_sq.prp1 >> PAGE_SHIFT) + i);
 	}
 	vdev->sqes[sq->qid-1] = sq;
+
+	cq_entry(cq_head).command_id = sq_entry(eid).create_sq.command_id;
+	cq_entry(cq_head).sq_id = 0;
+	cq_entry(cq_head).sq_head = eid;
+	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
 void nvmev_admin_identify_ctrl(int eid, int cq_head) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_id_ctrl* ctrl;
-
-	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
-	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
-	cq_entry(cq_head).sq_id = 0;
-	cq_entry(cq_head).sq_head = eid;
 
 	ctrl = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
 	
@@ -111,16 +110,16 @@ void nvmev_admin_identify_ctrl(int eid, int cq_head) {
 	snprintf(ctrl->mn, 40, "csl_nvme_emulator_model_%16d", 1);
 	snprintf(ctrl->fr, 8, "csl_%04d", 1);
 	ctrl->mdts = 0;
+
+	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
+	cq_entry(cq_head).sq_id = 0;
+	cq_entry(cq_head).sq_head = eid;
+	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
 void nvmev_admin_identify_namespace(int eid, int cq_head) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_id_ns* ns;
-
-	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
-	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
-	cq_entry(cq_head).sq_id = 0;
-	cq_entry(cq_head).sq_head = eid;
 
 	ns = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
 	
@@ -157,6 +156,11 @@ void nvmev_admin_identify_namespace(int eid, int cq_head) {
 	ns->lbaf[6].ms = 128;
 	ns->lbaf[6].ds = 12;
 	ns->lbaf[6].rp = NVME_LBAF_RP_BEST;
+
+	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
+	cq_entry(cq_head).sq_id = 0;
+	cq_entry(cq_head).sq_head = eid;
+	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
 void nvmev_admin_set_features(int eid, int cq_head) {
@@ -164,11 +168,6 @@ void nvmev_admin_set_features(int eid, int cq_head) {
 	
 	int num_queue;
 
-	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
-	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
-	cq_entry(cq_head).sq_id = 0;
-	cq_entry(cq_head).sq_head = eid;
-	
 	pr_info("%s: %x\n", __func__, sq_entry(eid).features.fid);
 	switch(sq_entry(eid).features.fid) {
 		case NVME_FEAT_ARBITRATION:
@@ -202,6 +201,10 @@ void nvmev_admin_set_features(int eid, int cq_head) {
 			break;
 	}
 
+	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
+	cq_entry(cq_head).sq_id = 0;
+	cq_entry(cq_head).sq_head = eid;
+	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
 void nvmev_proc_admin(int entry_id) {
@@ -230,7 +233,14 @@ void nvmev_proc_admin(int entry_id) {
 			nvmev_admin_set_features(entry_id, cq_head);
 			break;
 		case nvme_admin_get_features:
+			break;
 		case nvme_admin_async_event:
+			cq_entry(cq_head).command_id = sq_entry(entry_id).features.command_id;
+			cq_entry(cq_head).sq_id = 0;
+			cq_entry(cq_head).sq_head = entry_id;
+			cq_entry(cq_head).result = 0;
+			cq_entry(cq_head).status = queue->phase | NVME_SC_ASYNC_LIMIT << 1;
+			break;
 		case nvme_admin_activate_fw:
 		case nvme_admin_download_fw:
 		case nvme_admin_format_nvm:
@@ -257,6 +267,8 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 	int cur_entry = old_db;
 	struct irq_desc *desc;
 	
+	if(unlikely(num_proc < 0)) num_proc+=queue->sq_depth;
+
 	for(seq = 0; seq < num_proc; seq++) {
 		nvmev_proc_admin(cur_entry);
 
@@ -274,8 +286,6 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 				queue->irq = vdev->admin_q->desc->irq;
 				vdev->admin_q->affinity_settings = true;
 				vdev->admin_q->cpu_mask = desc->affinity_hint;
-
-				pr_err("===============================================\n");
 			}
 		}
 

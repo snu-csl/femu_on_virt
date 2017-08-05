@@ -14,10 +14,16 @@ static struct task_struct *nvmev_thread;
 struct nvmev_dev *vdev;
 EXPORT_SYMBOL(vdev);
 
+void* src_mem;
+void* dest_mem;
+EXPORT_SYMBOL(src_mem);
+EXPORT_SYMBOL(dest_mem);
+
 static void nvmev_proc_dbs(void) {
 	int qid;
 	int dbs_idx;
 	int new_db;	
+	int old_db;
 
 	// Admin Queue
 	new_db = vdev->dbs[0];
@@ -35,8 +41,9 @@ static void nvmev_proc_dbs(void) {
 	for(qid=1; qid<=vdev->nr_sq; qid++) {
 		dbs_idx = qid * 2;
 		new_db = vdev->dbs[dbs_idx];
-		if(new_db != vdev->old_dbs[dbs_idx]) {
-			nvmev_proc_sq_io(qid-1, new_db, vdev->old_dbs[dbs_idx]);
+		old_db = vdev->old_dbs[dbs_idx];
+		if(new_db != old_db) {
+			nvmev_proc_sq_io(qid-1, new_db, old_db);
 			vdev->old_dbs[dbs_idx] = new_db;
 		}
 	}
@@ -45,8 +52,9 @@ static void nvmev_proc_dbs(void) {
 	for(qid=1; qid<=vdev->nr_cq; qid++) {
 		dbs_idx = qid * 2 + 1;
 		new_db = vdev->dbs[dbs_idx];
-		if(new_db != vdev->old_dbs[dbs_idx]) {
-			nvmev_proc_cq_io(qid-1, new_db, vdev->old_dbs[dbs_idx]);
+		old_db = vdev->old_dbs[dbs_idx];
+		if(new_db != old_db) {
+			nvmev_proc_cq_io(qid-1, new_db, old_db);
 			vdev->old_dbs[dbs_idx] = new_db;
 		}
 	}
@@ -72,6 +80,11 @@ static int NVMeV_init(void){
 	unsigned long pva;
 	
 	pr_info("NVMe Virtual Device Initialize Start\n");
+
+	src_mem = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	memset(src_mem, 0x0, PAGE_SIZE);
+	dest_mem = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	memset(dest_mem, 0x0, PAGE_SIZE);
 
 	vdev = kzalloc(sizeof(*vdev), GFP_KERNEL);
 
@@ -224,6 +237,9 @@ static void NVMeV_exit(void)
 {	
 	struct task_struct *tmp = NULL;
 	int i;
+	
+	kfree(src_mem);
+	kfree(dest_mem);
 
 	if(!IS_ERR_OR_NULL(nvmev_thread)) {
 		tmp = nvmev_thread;
