@@ -10,7 +10,6 @@
 #define entry_sq_page_offs(entry_id) (entry_id % num_sq_per_page)
 #define entry_cq_page_offs(entry_id) (entry_id % num_cq_per_page)
 
-
 #define sq_entry(entry_id) \
 	queue->nvme_sq[entry_sq_page_num(entry_id)][entry_sq_page_offs(entry_id)]
 #define cq_entry(entry_id) \
@@ -40,7 +39,7 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 		cq->irq_vector = sq_entry(eid).create_cq.irq_vector;
 		cq->irq = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
 
-		pr_err("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
+		NVMEV_ERROR("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
 	}
 
 	//if queue size = 0 > vdev->bar->cap.mqes!!
@@ -59,6 +58,25 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 	vdev->cqes[cq->qid-1] = cq;
 
 	cq_entry(cq_head).command_id = sq_entry(eid).create_cq.command_id;
+	cq_entry(cq_head).sq_id = 0;
+	cq_entry(cq_head).sq_head = eid;
+	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
+}
+
+void nvmev_admin_delete_cq(int eid, int cq_head) {
+	struct nvmev_admin_queue *queue = vdev->admin_q;
+	struct nvmev_completion_queue *cq;
+	unsigned int qid;
+
+	qid = sq_entry(eid).delete_queue.qid;
+	
+	cq = vdev->cqes[qid];
+	vdev->cqes[qid] = NULL;
+
+	kfree(cq->cq);
+	kfree(cq);
+
+	cq_entry(cq_head).command_id = sq_entry(eid).delete_queue.command_id;
 	cq_entry(cq_head).sq_id = 0;
 	cq_entry(cq_head).sq_head = eid;
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
@@ -96,6 +114,25 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
+void nvmev_admin_delete_sq(int eid, int cq_head) {
+	struct nvmev_admin_queue *queue = vdev->admin_q;
+	struct nvmev_submission_queue *sq;
+	unsigned int qid;
+
+	qid = sq_entry(eid).delete_queue.qid;
+	
+	sq = vdev->sqes[qid];
+	vdev->sqes[qid] = NULL;
+
+	kfree(sq->sq);
+	kfree(sq);
+
+	cq_entry(cq_head).command_id = sq_entry(eid).delete_queue.command_id;
+	cq_entry(cq_head).sq_id = 0;
+	cq_entry(cq_head).sq_head = eid;
+	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
+}
+
 void nvmev_admin_identify_ctrl(int eid, int cq_head) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_id_ctrl* ctrl;
@@ -117,13 +154,18 @@ void nvmev_admin_identify_ctrl(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
+void nvmev_admin_get_log_page(int eid, int cq_head) {
+
+}
+
 void nvmev_admin_identify_namespace(int eid, int cq_head) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_id_ns* ns;
 
 	ns = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
 	
-	ns->nsze = (1 * 1024 * 1024 * 1024) / 512;
+	//ns->nsze = (1 * 1024 * 1024 * 1024) / 512;
+	ns->nsze = vdev->config.storage_size / 512;
 	ns->ncap = ns->nsze;
 	ns->nlbaf = 6;
 	ns->flbas = NVME_NS_FLBAS_LBA_MASK;
@@ -207,6 +249,10 @@ void nvmev_admin_set_features(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
+void nvmev_admin_get_features(int eid, int cq_head) {
+
+}
+
 void nvmev_proc_admin(int entry_id) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	int cq_head = queue->cq_head;
@@ -214,10 +260,16 @@ void nvmev_proc_admin(int entry_id) {
 
 	switch(sq_entry(entry_id).common.opcode) {
 		case nvme_admin_delete_sq:
+			nvmev_admin_delete_sq(entry_id, cq_head);
+			break;
 		case nvme_admin_create_sq:
 			nvmev_admin_create_sq(entry_id, cq_head);
+			break;
 		case nvme_admin_get_log_page:
+			nvmev_admin_get_log_page(entry_id, cq_head);
+			break;
 		case nvme_admin_delete_cq:
+			nvmev_admin_delete_cq(entry_id, cq_head);
 			break;
 		case nvme_admin_create_cq:
 			nvmev_admin_create_cq(entry_id, cq_head);
@@ -233,6 +285,8 @@ void nvmev_proc_admin(int entry_id) {
 			nvmev_admin_set_features(entry_id, cq_head);
 			break;
 		case nvme_admin_get_features:
+			nvmev_admin_get_features(entry_id, cq_head);
+			break;
 			break;
 		case nvme_admin_async_event:
 			cq_entry(cq_head).command_id = sq_entry(entry_id).features.command_id;

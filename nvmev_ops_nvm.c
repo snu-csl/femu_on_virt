@@ -16,8 +16,6 @@
 	cq->cq[entry_cq_page_num(entry_id)][entry_cq_page_offs(entry_id)]
 
 extern struct nvmev_dev *vdev;
-extern void* src_mem;
-extern void* dest_mem;
 
 void nvmev_proc_flush(int qid, int sq_entry, int cq_head) {
 	struct nvmev_submission_queue *sq = vdev->sqes[qid];
@@ -91,6 +89,7 @@ void nvmev_proc_sq_io(int qid, int new_db, int old_db) {
 	struct irq_desc *desc;
 
 	if(unlikely(num_proc < 0)) num_proc+=sq->queue_size;
+	if(unlikely(!sq)) return;
 
 	for(seq = 0; seq < num_proc; seq++) {
 		nvmev_proc_nvm(qid, sq_entry, cq_head);

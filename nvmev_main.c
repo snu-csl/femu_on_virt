@@ -8,16 +8,62 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/nvme.h>
+#include <asm/e820.h>
 #include "nvmev.h"
 
-static struct task_struct *nvmev_thread;
-struct nvmev_dev *vdev;
+/****************************************************************
+ * Memory Layout
+ ****************************************************************
+ * memmap_start
+ * v 
+ * -----------------------------------------------------------
+ * |<----1MiB---->|<----------- Storage Area --------------->|
+ * -----------------------------------------------------------
+ *
+ * 1MiB Area [BAR] : 
+ *		PCI Headers...
+ *		MSI-x entries (16 bytes * 64KiB = 1MiB T.T)
+ * Storage Area : Storage area : memremap
+ *
+ ****************************************************************/
+
+/****************************************************************
+ * Argument
+ ****************************************************************
+ * 1. Memmap Start (size in GiB)
+ * 2. Memmap Size (size in MiB)
+ * 3. Read Latency (export to sysfs, micro seconds)
+ * 4. Write Latency (export to sysfs, micro seconds)
+ * 5. Read BW
+ * 6. Write BW
+ * 7. CPU Mask
+ ****************************************************************/
+
+struct nvmev_dev *vdev = NULL;
 EXPORT_SYMBOL(vdev);
 
-void* src_mem;
-void* dest_mem;
-EXPORT_SYMBOL(src_mem);
-EXPORT_SYMBOL(dest_mem);
+unsigned int memmap_start=0;
+unsigned int memmap_size=0;
+unsigned int read_latency=0;
+unsigned int write_latency=0;
+unsigned int read_bw=0;
+unsigned int write_bw=0;
+unsigned int cpu_mask=0;
+
+module_param(memmap_start, uint, 0);
+MODULE_PARM_DESC(memmap_start, "Memmap Start (size in GiB)");
+module_param(memmap_size, uint, 0);
+MODULE_PARM_DESC(memmap_size, "Memmap Size (size in MiB)");
+module_param(read_latency, uint, 0);
+MODULE_PARM_DESC(read_latency, "Read Latency (us, micro seconds)");
+module_param(write_latency, uint, 0);
+MODULE_PARM_DESC(write_latency, "Write Latency (us, micro seconds)");
+module_param(read_bw, uint, 0);
+MODULE_PARM_DESC(read_bw, "Max Read IOPS");
+module_param(write_bw, uint, 0);
+MODULE_PARM_DESC(write_bw, "Max Write IOPS");
+module_param(cpu_mask, uint, 0);
+MODULE_PARM_DESC(write_bw, "CPU Masks for Process, Complete(int.) Thread");
 
 static void nvmev_proc_dbs(void) {
 	int qid;
@@ -60,10 +106,9 @@ static void nvmev_proc_dbs(void) {
 	}
 }
 
-static int nvmev_kthread(void *data)
+static int nvmev_kthread_proc(void *data)
 {
 	while(!kthread_should_stop()) {
-
 		// BAR Register Check
 		nvmev_proc_bars();
 		//Doorbell
@@ -75,179 +120,99 @@ static int nvmev_kthread(void *data)
 	return 0;
 }
 
+int nvmev_args_verify(void) {
+	unsigned long resv_start_bytes;
+	unsigned long resv_end_bytes;
+
+	if(!memmap_start) {
+		NVMEV_ERROR("[memmap_start] should be specified\n");
+		return -1;
+	}
+
+	if(!memmap_size) {
+		NVMEV_ERROR("[memmap_size] should be specified\n");
+		return -1;
+	}
+	else if(memmap_size == 1) {
+		NVMEV_ERROR("[memmap_size] should be bigger than 1MiB\n");
+		return -1;
+	}
+
+	resv_start_bytes = (unsigned long)memmap_start << 30;
+	resv_end_bytes = resv_start_bytes + (memmap_size << 20) - 1;
+
+	if(e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RAM) ||
+		e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RESERVED_KERN)) {
+		NVMEV_ERROR("[mem %#010llx-%#010llx] is usable, not reseved region\n",
+		       (unsigned long long) resv_start_bytes,
+		       (unsigned long long) resv_end_bytes);
+		return -1;
+	}
+
+	if(!e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RESERVED)) {
+		NVMEV_ERROR("[mem %#010llx-%#010llx] is not reseved region\n",
+		       (unsigned long long) resv_start_bytes,
+		       (unsigned long long) resv_end_bytes);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int NVMeV_init(void){
-	struct pci_exp_hdr* pcie_exp_cap;
-	unsigned long pva;
 	
 	pr_info("NVMe Virtual Device Initialize Start\n");
 
-	src_mem = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	memset(src_mem, 0x0, PAGE_SIZE);
-	dest_mem = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	memset(dest_mem, 0x0, PAGE_SIZE);
+	if(nvmev_args_verify() < 0)
+		goto ret_err;
 
-	vdev = kzalloc(sizeof(*vdev), GFP_KERNEL);
+	vdev = VDEV_INIT();
 
-	vdev->virtDev = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	VDEV_SET_ARGS(&vdev->config, 
+			memmap_start, memmap_size, 
+			read_latency, write_latency, read_bw, write_bw, 
+			cpu_mask);
 
-	vdev->pcihdr = (void *)vdev->virtDev + OFFS_PCI_HDR;
-	vdev->pmcap = (void *)vdev->virtDev + OFFS_PCI_PM_CAP;
-	vdev->msixcap = (void *)vdev->virtDev + OFFS_PCI_MSIX_CAP;
-	vdev->pciecap = (void *)vdev->virtDev + OFFS_PCIE_CAP;
-	pcie_exp_cap = (void *)vdev->virtDev + PCI_CFG_SPACE_SIZE;
-	vdev->aercap = (void *)vdev->virtDev + PCI_CFG_SPACE_SIZE;
-
-	// PCI Header Setting
-	vdev->pcihdr->id.did = 0x0101;
-	vdev->pcihdr->id.vid = 0x0c51;
-	/*
-	vdev->pcihdr->cmd.id = 1;
-	vdev->pcihdr->cmd.bme = 1;
-	vdev->pcihdr->cmd.mse = 1;
-	*/
-	vdev->pcihdr->sts.cl = 1;
-
-	vdev->pcihdr->htype.mfd = 0;
-	vdev->pcihdr->htype.hl = PCI_HEADER_TYPE_NORMAL;
-
-	vdev->pcihdr->rid = 0x01;
-
-	vdev->pcihdr->cc.bcc = PCI_BASE_CLASS_STORAGE;
-	vdev->pcihdr->cc.scc = 0x08;
-	vdev->pcihdr->cc.pi = 0x02;
-
-	pva = 0x0000000780000000; //-0x00000007ffffffff//PFN_PHYS(page_to_pfn(bar_pages));
-
-	vdev->pcihdr->mlbar.tp = PCI_BASE_ADDRESS_MEM_TYPE_64 >> 1;
-	vdev->pcihdr->mlbar.ba = (pva & 0xFFFFFFFF) >> 14;
-	
-	vdev->pcihdr->mulbar = pva >> 32;
-
-	vdev->pcihdr->ss.ssid = 0x370d;
-	vdev->pcihdr->ss.ssvid = 0x0c51;
-	
-	vdev->pcihdr->erom = 0x0; //PFN_PHYS(page_to_pfn(bar_pages));//page_to_pfn(bar_pages);//0xDF300000;
-
-	vdev->pcihdr->cap = OFFS_PCI_PM_CAP;
-
-	vdev->pcihdr->intr.ipin = 1;
-	vdev->pcihdr->intr.iline = IRQ_NUM;
-	
-	// PM HEADER Setting
-	vdev->pmcap->pid.cid = PCI_CAP_ID_PM;
-	vdev->pmcap->pid.next = OFFS_PCI_MSIX_CAP;
-
-	vdev->pmcap->pc.vs = 3;
-	vdev->pmcap->pmcs.nsfrst = 1;
-	vdev->pmcap->pmcs.ps = PCI_PM_CAP_PME_D0 >> 16;
-
-	// PCI MSI-X HEADER Setting
-	vdev->msixcap->mxid.cid = PCI_CAP_ID_MSIX;
-	vdev->msixcap->mxid.next = OFFS_PCIE_CAP;
-	
-	vdev->msixcap->mxc.mxe = 1;
-	vdev->msixcap->mxc.ts = 31; // encoded as n-1
-
-	vdev->msixcap->mtab.tbir = 0;
-	vdev->msixcap->mtab.to = 0x400;
-	
-	vdev->msixcap->mpba.pbao = 0x600;
-	vdev->msixcap->mpba.pbir = 0;
-
-	// PCI-X Header Setting
-	vdev->pciecap->pxid.cid = PCI_CAP_ID_EXP;
-	vdev->pciecap->pxid.next = 0x0;
-
-	vdev->pciecap->pxcap.ver = PCI_EXP_FLAGS;
-	vdev->pciecap->pxcap.imn = 0;
-	vdev->pciecap->pxcap.dpt = PCI_EXP_TYPE_ENDPOINT;
-
-	vdev->pciecap->pxdcap.mps = 1;
-	vdev->pciecap->pxdcap.pfs = 0;
-	vdev->pciecap->pxdcap.etfs = 1;
-	vdev->pciecap->pxdcap.l0sl = 6;
-	vdev->pciecap->pxdcap.l1l = 2;
-	vdev->pciecap->pxdcap.rer = 1;
-	vdev->pciecap->pxdcap.csplv = 0;
-	vdev->pciecap->pxdcap.cspls = 0;
-	vdev->pciecap->pxdcap.flrc = 1;
-	
-	vdev->aercap->aerid.cid = PCI_EXT_CAP_ID_ERR;
-	vdev->aercap->aerid.cver = 1;
-	vdev->aercap->aerid.next = PCI_CFG_SPACE_SIZE + 0x50;
-
-	pcie_exp_cap = (void*)vdev->virtDev + vdev->aercap->aerid.next;
-	pcie_exp_cap->id.cid = PCI_EXT_CAP_ID_VC;
-	pcie_exp_cap->id.cver = 1;
-	pcie_exp_cap->id.next = PCI_CFG_SPACE_SIZE + 0x80;
-
-	pcie_exp_cap = (void*)vdev->virtDev + pcie_exp_cap->id.next;
-	pcie_exp_cap->id.cid = PCI_EXT_CAP_ID_PWR;
-	pcie_exp_cap->id.cver = 1;
-	pcie_exp_cap->id.next = PCI_CFG_SPACE_SIZE + 0x90;
-
-	pcie_exp_cap = (void*)vdev->virtDev + pcie_exp_cap->id.next;
-	pcie_exp_cap->id.cid = PCI_EXT_CAP_ID_ARI;
-	pcie_exp_cap->id.cver = 1;
-	pcie_exp_cap->id.next = PCI_CFG_SPACE_SIZE + 0x170;
-
-	pcie_exp_cap = (void*)vdev->virtDev + pcie_exp_cap->id.next;
-	pcie_exp_cap->id.cid = PCI_EXT_CAP_ID_DSN;
-	pcie_exp_cap->id.cver = 1;
-	pcie_exp_cap->id.next = PCI_CFG_SPACE_SIZE + 0x1a0;
-
-	pcie_exp_cap = (void*)vdev->virtDev + pcie_exp_cap->id.next;
-	pcie_exp_cap->id.cid = PCI_EXT_CAP_ID_SECPCI;
-	pcie_exp_cap->id.cver = 1;
-	pcie_exp_cap->id.next = 0;
+	PCI_HEADER_SETTINGS(vdev, vdev->pcihdr);
+	PCI_PMCAP_SETTINGS(vdev->pmcap);
+	PCI_MSIXCAP_SETTINGS(vdev->msixcap);
+	PCI_PCIECAP_SETTINGS(vdev->pciecap);
+	PCI_AERCAP_SETTINGS(vdev->aercap);
+	PCI_PCIE_EXTCAP_SETTINGS(vdev->pcie_exp_cap);
 
 	//Create PCI BUS
 	vdev->virt_bus = nvmev_create_pci_bus();
 	if(!vdev->virt_bus)
 		goto ret_err_pci_bus;
 	else {
-		vdev->old_dbs = kzalloc(4096, GFP_KERNEL);
-		if(vdev->old_dbs == NULL) {
-			pr_err("Error");
-		}
-		vdev->old_bar = kzalloc(4096, GFP_KERNEL);
-		if(vdev->old_bar == NULL) {
-			pr_err("Error");
-		}
-
-		memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
-		pr_err("%s: %p %p %p\n", __func__, vdev,
-				vdev->bar, vdev->old_bar);
-
+		nvmev_clone_pci_mem(vdev);
 	}
 
-	nvmev_thread = kthread_run(nvmev_kthread, NULL, "nvmev");
+	vdev->nvmev_td_proc = kthread_create(nvmev_kthread_proc, NULL, "nvmev_proc");
+	if(vdev->config.cpu_nr_proc)
+		kthread_bind(vdev->nvmev_td_proc, vdev->config.cpu_nr_proc-1);
+	wake_up_process(vdev->nvmev_td_proc);
 
 	NVMEV_INFO("Successfully created Virtual NVMe Deivce\n");
 
     return 0;
 	
 ret_err_pci_bus:
-	kfree(vdev->virtDev);
-	kfree(vdev);
+	VDEV_FINALIZE(vdev);
     return -1;
+
+ret_err:
+	return -1;
 }
 
 static void NVMeV_exit(void)
 {	
-	struct task_struct *tmp = NULL;
 	int i;
 	
-	kfree(src_mem);
-	kfree(dest_mem);
-
-	if(!IS_ERR_OR_NULL(nvmev_thread)) {
-		tmp = nvmev_thread;
-		nvmev_thread = NULL;
+	if(!IS_ERR_OR_NULL(vdev->nvmev_td_proc)) {
+		kthread_stop(vdev->nvmev_td_proc);
+		vdev->nvmev_td_proc = NULL;
 	}
-
-	if (tmp)
-		kthread_stop(tmp);
 
 	if(vdev->virt_bus != NULL) {
 		pci_remove_bus(vdev->virt_bus);
@@ -261,14 +226,7 @@ static void NVMeV_exit(void)
 			kfree(vdev->cqes[i]);
 		}
 		
-		if(vdev->msix_enabled)
-			iounmap(vdev->msix_table);
-
-		iounmap(vdev->bar);
-		kfree(vdev->old_bar);
-		kfree(vdev->admin_q);
-		kfree(vdev->virtDev);
-		kfree(vdev);
+		VDEV_FINALIZE(vdev);
 	}
 	pr_info("NVMe Virtual Device Close\n");
 }
