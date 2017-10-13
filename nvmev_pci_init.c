@@ -46,24 +46,29 @@ void VDEV_SET_ARGS(struct nvmev_config* config,
 	config->memmap_size = (unsigned long)memmap_size << 20;
 	config->storage_start = config->memmap_start 
 								+ (unsigned long)((1) << 20);
-	config->storage_size = (unsigned long)(memmap_size -1)<< 20;
+	config->storage_size = (unsigned long)(memmap_size - 1) << 20;
+
 	config->read_latency = read_latency;
 	config->write_latency = write_latency;
 	config->read_bw = read_bw;
 	config->write_bw = write_bw;
 
+	config->cpu_nr_proc_io = -1;
+	config->cpu_nr_proc_reg = -1;
+
+
 	//turn = 0 -> comp, turn = 1 -> proc
 	if(cpu_mask != 0) {
 		while(cpu_mask) {
-			pos++;
 			if(cpu_mask & 1) {
 				if(turn == 0)
-					config->cpu_nr_complete = pos;
+					config->cpu_nr_proc_io = pos;
 				else
-					config->cpu_nr_proc = pos;
+					config->cpu_nr_proc_reg = pos;
 				turn++;
 			}
 			cpu_mask>>=1;
+			pos++;
 
 			if(turn > 1)
 				break;

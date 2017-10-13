@@ -58,7 +58,9 @@ void nvmev_proc_bars () {
 		//////////////////////////////////
 		if(bar->cc.en == 1)
 			bar->csts.rdy = 1;
-		
+		else if(bar->cc.en == 0)
+			bar->csts.rdy = 0;
+
 		//////////////////////////////////
 		// Shutdown
 		//////////////////////////////////
@@ -66,6 +68,7 @@ void nvmev_proc_bars () {
 			bar->csts.shst = 1; // proc
 			bar->csts.shst = 2; // end
 		}
+
 		memcpy(&old_bar->cc, &bar->cc, sizeof(old_bar->cc));
 	}
 	if(old_bar->rsvd1 != bar->rsvd1) {

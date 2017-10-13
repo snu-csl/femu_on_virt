@@ -40,6 +40,7 @@
 
 #define IRQ_NUM 16
 #define NR_MAX_IO_QUEUE 128
+#define NR_MAX_PARALLEL_IO 128
 
 struct nvmev_ns {
 	int nsid;
@@ -63,6 +64,8 @@ struct nvmev_completion_queue {
 	bool interrupt_enabled;
 	bool phys_contig;
 	
+	bool interrupt_ready;
+
 	bool affinity_settings;
 	const struct cpumask *cpu_mask;
 
@@ -102,8 +105,22 @@ struct nvmev_config {
 	unsigned int read_bw; //MiB
 	unsigned int write_bw; //MiB
 
-	unsigned int cpu_nr_proc;
-	unsigned int cpu_nr_complete;
+	unsigned int cpu_nr_proc_reg;
+	unsigned int cpu_nr_proc_io;
+};
+
+struct nvmev_proc_table {
+	int sqid;
+	int cqid;
+
+	int sq_entry;
+
+	long long int usecs_start;
+	long long int usecs_target;
+
+	bool isProc;
+
+	unsigned int next, prev;
 };
 
 struct nvmev_dev {
@@ -121,8 +138,16 @@ struct nvmev_dev {
 	struct pci_sysdata pci_sd;
 
 	struct nvmev_config config;
-	struct task_struct *nvmev_td_proc;
-	struct task_struct *nvmev_td_complete;
+	struct task_struct *nvmev_reg_proc;
+	struct task_struct *nvmev_io_proc;
+
+	struct nvmev_proc_table *proc_table;
+	unsigned int proc_free_seq;
+	unsigned int proc_io_seq_start;
+	unsigned int proc_io_seq_end;
+	unsigned int proc_cleanup_seq_start;
+	unsigned int proc_cleanup_seq_end;
+	long long int proc_io_usecs;
 
 	bool msix_enabled;
 	void __iomem *msix_table;
@@ -138,8 +163,8 @@ struct nvmev_dev {
 
 	struct nvmev_admin_queue *admin_q;
 	struct nvmev_ns** ns_arr;
-	struct nvmev_submission_queue* sqes[NR_MAX_IO_QUEUE];
-	struct nvmev_completion_queue* cqes[NR_MAX_IO_QUEUE];
+	struct nvmev_submission_queue* sqes[NR_MAX_IO_QUEUE + 1];
+	struct nvmev_completion_queue* cqes[NR_MAX_IO_QUEUE + 1];
 };
 
 // VDEV Init, Final Function
@@ -160,7 +185,6 @@ void PCI_AERCAP_SETTINGS(struct aer_cap* aercap);
 void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr* exp_cap);
 
 // OPS_PCI
-
 void nvmev_clone_pci_mem(struct nvmev_dev* vdev);
 struct pci_bus* nvmev_create_pci_bus(void);
 void nvmev_proc_bars (void);
@@ -172,6 +196,8 @@ void nvmev_proc_sq_admin(int new_db, int old_db);
 void nvmev_proc_cq_admin(int new_db, int old_db);
 
 // OPS I/O QUEUE
+void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev);
+void NVMEV_IO_PROC_FINAL(struct nvmev_dev* vdev);
 void nvmev_proc_sq_io(int qid, int new_db, int old_db);
 void nvmev_proc_cq_io(int qid, int new_db, int old_db);
 

@@ -35,6 +35,8 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 	cq->queue_size = sq_entry(eid).create_cq.qsize + 1;
 	cq->phase = 1;
 
+	cq->interrupt_ready = false;
+
 	if(cq->interrupt_enabled) {
 		cq->irq_vector = sq_entry(eid).create_cq.irq_vector;
 		cq->irq = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
@@ -55,7 +57,7 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 	for(i=0; i<num_pages; i++) {
 		cq->cq[i] = page_address(pfn_to_page(sq_entry(eid).create_cq.prp1 >> PAGE_SHIFT) + i);
 	}
-	vdev->cqes[cq->qid-1] = cq;
+	vdev->cqes[cq->qid] = cq;
 
 	cq_entry(cq_head).command_id = sq_entry(eid).create_cq.command_id;
 	cq_entry(cq_head).sq_id = 0;
@@ -92,7 +94,7 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 	/* Todo : Physically dis-contiguous prp list */
 
 	sq->qid = sq_entry(eid).create_sq.sqid;
-	sq->cqid = sq_entry(eid).create_sq.cqid - 1;
+	sq->cqid = sq_entry(eid).create_sq.cqid;
 
 	sq->sq_priority = sq_entry(eid).create_sq.sq_flags & 0xFFFE;
 	sq->phys_contig = \
@@ -106,7 +108,7 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 	for(i=0; i<num_pages; i++) {
 		sq->sq[i] = page_address(pfn_to_page(sq_entry(eid).create_sq.prp1 >> PAGE_SHIFT) + i);
 	}
-	vdev->sqes[sq->qid-1] = sq;
+	vdev->sqes[sq->qid] = sq;
 
 	cq_entry(cq_head).command_id = sq_entry(eid).create_sq.command_id;
 	cq_entry(cq_head).sq_id = 0;
@@ -143,10 +145,13 @@ void nvmev_admin_identify_ctrl(int eid, int cq_head) {
 	ctrl->oncs = 0; //optional command
 	ctrl->acl = 3; //minimum 4 required, 0's based value
 	ctrl->vwc = 0;
-	snprintf(ctrl->sn, 20, "csl_nvme_emulator_%02d", 1);
-	snprintf(ctrl->mn, 40, "csl_nvme_emulator_model_%16d", 1);
-	snprintf(ctrl->fr, 8, "csl_%04d", 1);
-	ctrl->mdts = 0;
+	snprintf(ctrl->sn, 20, "CSL_Virt_NVMe_SN_%02d", 1);
+	snprintf(ctrl->mn, 40, "CSL_Virt_NVMe_MN_%02d", 1);
+	snprintf(ctrl->fr, 8, "CSL_%04d", 1);
+	ctrl->mdts = 5;
+	ctrl->sqes = 0x66;
+	ctrl->cqes = 0x44;
+
 
 	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
 	cq_entry(cq_head).sq_id = 0;
@@ -163,13 +168,8 @@ void nvmev_admin_identify_namespace(int eid, int cq_head) {
 	struct nvme_id_ns* ns;
 
 	ns = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
-	
+	memset(ns, 0x0, PAGE_SIZE);
 	//ns->nsze = (1 * 1024 * 1024 * 1024) / 512;
-	ns->nsze = vdev->config.storage_size / 512;
-	ns->ncap = ns->nsze;
-	ns->nlbaf = 6;
-	ns->flbas = NVME_NS_FLBAS_LBA_MASK;
-	ns->dps = 0;
 
 	ns->lbaf[0].ms = 0;
 	ns->lbaf[0].ds = 9;
@@ -198,6 +198,13 @@ void nvmev_admin_identify_namespace(int eid, int cq_head) {
 	ns->lbaf[6].ms = 128;
 	ns->lbaf[6].ds = 12;
 	ns->lbaf[6].rp = NVME_LBAF_RP_BEST;
+
+	ns->nsze = (vdev->config.storage_size >> ns->lbaf[ns->flbas&0xF].ds);
+	ns->ncap = ns->nsze;
+	ns->nuse = ns->nsze;
+	ns->nlbaf = 6;
+	ns->flbas = 0;
+	ns->dps = 0;
 
 	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
 	cq_entry(cq_head).sq_id = 0;

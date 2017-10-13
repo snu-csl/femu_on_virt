@@ -89,7 +89,7 @@ static void nvmev_proc_dbs(void) {
 		new_db = vdev->dbs[dbs_idx];
 		old_db = vdev->old_dbs[dbs_idx];
 		if(new_db != old_db) {
-			nvmev_proc_sq_io(qid-1, new_db, old_db);
+			nvmev_proc_sq_io(qid, new_db, old_db);
 			vdev->old_dbs[dbs_idx] = new_db;
 		}
 	}
@@ -100,13 +100,13 @@ static void nvmev_proc_dbs(void) {
 		new_db = vdev->dbs[dbs_idx];
 		old_db = vdev->old_dbs[dbs_idx];
 		if(new_db != old_db) {
-			nvmev_proc_cq_io(qid-1, new_db, old_db);
+			nvmev_proc_cq_io(qid, new_db, old_db);
 			vdev->old_dbs[dbs_idx] = new_db;
 		}
 	}
 }
 
-static int nvmev_kthread_proc(void *data)
+static int nvmev_kthread_proc_reg(void *data)
 {
 	while(!kthread_should_stop()) {
 		// BAR Register Check
@@ -114,7 +114,9 @@ static int nvmev_kthread_proc(void *data)
 		//Doorbell
 		nvmev_proc_dbs();
 
-		schedule_timeout(round_jiffies_relative(HZ));
+		//schedule_timeout();
+		//schedule_timeout(round_jiffies_relative(HZ));
+		schedule_timeout(usecs_to_jiffies(1));
 	}
 
 	return 0;
@@ -159,6 +161,21 @@ int nvmev_args_verify(void) {
 	return 0;
 }
 
+void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev) {
+	vdev->nvmev_reg_proc = kthread_create(nvmev_kthread_proc_reg, NULL, "nvmev_proc_reg");
+	NVMEV_ERROR("Proc IO : %d\n", vdev->config.cpu_nr_proc_reg);
+	if(vdev->config.cpu_nr_proc_reg != -1)
+		kthread_bind(vdev->nvmev_reg_proc, vdev->config.cpu_nr_proc_reg);
+	wake_up_process(vdev->nvmev_reg_proc);
+}
+
+void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev) {
+	if(!IS_ERR_OR_NULL(vdev->nvmev_reg_proc)) {
+		kthread_stop(vdev->nvmev_reg_proc);
+		vdev->nvmev_reg_proc = NULL;
+	}
+}
+
 static int NVMeV_init(void){
 	
 	pr_info("NVMe Virtual Device Initialize Start\n");
@@ -188,10 +205,8 @@ static int NVMeV_init(void){
 		nvmev_clone_pci_mem(vdev);
 	}
 
-	vdev->nvmev_td_proc = kthread_create(nvmev_kthread_proc, NULL, "nvmev_proc");
-	if(vdev->config.cpu_nr_proc)
-		kthread_bind(vdev->nvmev_td_proc, vdev->config.cpu_nr_proc-1);
-	wake_up_process(vdev->nvmev_td_proc);
+	NVMEV_IO_PROC_INIT(vdev);
+	NVMEV_REG_PROC_INIT(vdev);
 
 	NVMEV_INFO("Successfully created Virtual NVMe Deivce\n");
 
@@ -208,11 +223,9 @@ ret_err:
 static void NVMeV_exit(void)
 {	
 	int i;
-	
-	if(!IS_ERR_OR_NULL(vdev->nvmev_td_proc)) {
-		kthread_stop(vdev->nvmev_td_proc);
-		vdev->nvmev_td_proc = NULL;
-	}
+
+	NVMEV_REG_PROC_FINAL(vdev);
+	NVMEV_IO_PROC_FINAL(vdev);
 
 	if(vdev->virt_bus != NULL) {
 		pci_remove_bus(vdev->virt_bus);
