@@ -86,13 +86,13 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	vdev->proc_table[new_entry].sq_entry = sq_entry;
 	vdev->proc_table[new_entry].usecs_start = usecs_start;
 	vdev->proc_table[new_entry].usecs_target = usecs_target;
+	vdev->proc_table[new_entry].isProc = false;
 	vdev->proc_table[new_entry].next = -1;
 	vdev->proc_table[new_entry].prev = -1;
 
 	// (END) -> (START) order, usecs target ascending order
-	if(vdev->proc_io_seq_start == -1) {
-		vdev->proc_io_seq_end = new_entry;
-		vdev->proc_io_seq_start = new_entry;
+	if(vdev->proc_io_seq == -1) {
+		vdev->proc_io_seq = new_entry;
 		NVMEV_ERROR("New\n");
 	}
 	else {
@@ -110,8 +110,8 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 
 		if(curr_entry == -1) {
 			NVMEV_ERROR("Mid First\n");
-			vdev->proc_table[new_entry].next = vdev->proc_io_seq_start;
-			vdev->proc_io_seq_start = new_entry;
+			vdev->proc_table[new_entry].next = vdev->proc_io_seq;
+			vdev->proc_io_seq = new_entry;
 		}
 		else if(vdev->proc_table[curr_entry].next == -1) {
 			NVMEV_ERROR("Mid Last\n");
@@ -131,20 +131,41 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 }
 
 void nvmev_proc_io_cleanup(void) {
-	if(vdev->proc_cleanup_seq_start == -1)
-		return;
+	struct nvmev_proc_table *proc_entry, *free_entry;
+	unsigned int start_entry = -1, last_entry = -1;
+	unsigned int curr_entry;
 
-	if(vdev->proc_cleanup_seq_start == vdev->proc_io_seq_start)
-		return;
- 
-	NVMEV_ERROR("Cleanup %u -> %u\n", vdev->proc_cleanup_seq_start, vdev->proc_cleanup_seq_end);
-	vdev->proc_table[vdev->proc_cleanup_seq_end].next = vdev->proc_free_seq;
-	vdev->proc_table[vdev->proc_cleanup_seq_start].prev = -1;
+	start_entry = vdev->proc_io_seq;
+	curr_entry = start_entry;
 
-	vdev->proc_free_seq = vdev->proc_cleanup_seq_start;
-	NVMEV_ERROR("Free Seq = %u\n", vdev->proc_free_seq);
-	vdev->proc_cleanup_seq_start = vdev->proc_table[vdev->proc_cleanup_seq_end].next;
-	NVMEV_ERROR("Cleanup Start = %u\n", vdev->proc_table[vdev->proc_cleanup_seq_end].next);
+	while(curr_entry != -1) {
+		proc_entry = &vdev->proc_table[curr_entry];
+		if(proc_entry->isProc == true &&
+				proc_entry->usecs_target <= vdev->proc_io_usecs) {
+			last_entry = curr_entry;
+			curr_entry = proc_entry->next;
+		}
+		else
+			break;
+	}
+
+	if(start_entry != -1 && last_entry != -1) {
+		proc_entry = &vdev->proc_table[last_entry];
+		vdev->proc_io_seq = proc_entry->next;
+		if(proc_entry->next != -1) {
+			proc_entry = &vdev->proc_table[vdev->proc_io_seq];
+			proc_entry->prev = -1;
+		}
+
+		proc_entry = &vdev->proc_table[last_entry];
+		free_entry = &vdev->proc_table[vdev->proc_free_seq];
+		proc_entry->next = vdev->proc_free_seq;
+		free_entry->prev = last_entry;
+		vdev->proc_free_seq = start_entry;
+	}
+
+
+	return;
 }
 
 void nvmev_proc_nvm(int sqid, int sq_entry) {
@@ -249,49 +270,37 @@ void fill_cq_result(int sqid, int cqid, int sq_entry) {
 static int nvmev_kthread_io_proc(void *data)
 {
 	long long int curr_usecs; 
-	unsigned int curr_entry, start_entry=-1, last_entry=-1;
+	unsigned int curr_entry;
 	struct nvmev_completion_queue *cq;// = vdev->cqes[cqid];
+	struct nvmev_proc_table* proc_entry;
 	int qidx;
 
 	while(!kthread_should_stop()) {
 		curr_usecs = ktime_to_us(ktime_get());
 		vdev->proc_io_usecs = curr_usecs;
-		curr_entry = vdev->proc_io_seq_start;
-		last_entry = -1;
+		curr_entry = vdev->proc_io_seq;
 		while(curr_entry != -1) {
+			proc_entry = &vdev->proc_table[curr_entry];
+			if(proc_entry->isProc == false && 
+					proc_entry->usecs_target <= curr_usecs) {
 
-			if(vdev->proc_table[curr_entry].usecs_target <= 
-					curr_usecs) {
-				fill_cq_result(vdev->proc_table[curr_entry].sqid,
-						vdev->proc_table[curr_entry].cqid,
-						vdev->proc_table[curr_entry].sq_entry);
+				fill_cq_result(proc_entry->sqid,
+						proc_entry->cqid,
+						proc_entry->sq_entry);
 				NVMEV_ERROR("proc Entry %u, %d %d, %d\n", curr_entry, 
-						vdev->proc_table[curr_entry].sqid, 
-						vdev->proc_table[curr_entry].cqid,
-						vdev->proc_table[curr_entry].sq_entry);
-	
-				cq = vdev->cqes[vdev->proc_table[curr_entry].cqid];
+						proc_entry->sqid,
+						proc_entry->cqid,
+						proc_entry->sq_entry);
+				
+				proc_entry->isProc = true;
+				cq = vdev->cqes[proc_entry->cqid];
 				cq->interrupt_ready = true;
 			
-				if(start_entry == -1) start_entry = curr_entry;
-				last_entry = curr_entry;
 				curr_entry = vdev->proc_table[curr_entry].next;
 			}
 			else 
 				break;
 		}
-
-		if(last_entry != -1) {
-			vdev->proc_cleanup_seq_end = last_entry;
-			NVMEV_ERROR("Cleanup End = %u\n", last_entry);
-		}
-		if(vdev->proc_cleanup_seq_start == -1 && start_entry != -1) {
-			vdev->proc_cleanup_seq_start = start_entry;
-			NVMEV_ERROR("Cleanup Start = %u\n", start_entry);
-		}
-
-		vdev->proc_io_seq_start = curr_entry;
-		NVMEV_ERROR("Next IO Start = %u\n", curr_entry);
 
 		for(qidx=1; qidx <= vdev->nr_cq; qidx++) {
 			cq = vdev->cqes[qidx];
@@ -323,11 +332,7 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev) {
 	vdev->proc_table[(NR_MAX_IO_QUEUE*NR_MAX_PARALLEL_IO)-1].next = -1;
 
 	vdev->proc_free_seq = 0;
-	vdev->proc_io_seq_start = -1;
-	vdev->proc_io_seq_end = -1;
-	vdev->proc_cleanup_seq_start = -1;
-	vdev->proc_cleanup_seq_end = -1;
-
+	vdev->proc_io_seq = -1;
 
 	vdev->proc_io_usecs = ktime_to_us(ktime_get());
 

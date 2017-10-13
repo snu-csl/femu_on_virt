@@ -143,10 +143,8 @@ struct nvmev_dev {
 
 	struct nvmev_proc_table *proc_table;
 	unsigned int proc_free_seq;
-	unsigned int proc_io_seq_start;
+	unsigned int proc_io_seq;
 	unsigned int proc_io_seq_end;
-	unsigned int proc_cleanup_seq_start;
-	unsigned int proc_cleanup_seq_end;
 	long long int proc_io_usecs;
 
 	bool msix_enabled;
