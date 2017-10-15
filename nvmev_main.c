@@ -8,7 +8,6 @@
 #include <linux/types.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/nvme.h>
 #include <asm/e820.h>
 #include "nvmev.h"
 

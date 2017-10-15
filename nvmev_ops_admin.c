@@ -1,4 +1,3 @@
-#include <linux/nvme.h>
 #include "nvmev.h"
 
 #define num_sq_per_page	(PAGE_SIZE / sizeof(struct nvme_command))

@@ -9,6 +9,7 @@
 #include <uapi/linux/irqnr.h>
 
 #include "nvmev_hdr.h"
+#include "nvme_hdr.h"
 
 #define NVMEV_DRV_NAME "NVMe_Virt_Dev"
 

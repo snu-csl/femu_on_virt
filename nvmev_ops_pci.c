@@ -1,6 +1,5 @@
 #include <linux/pci.h>
 #include <linux/irq.h>
-#include <linux/nvme.h>
 #include "nvmev.h"
 
 extern struct nvmev_dev *vdev;
