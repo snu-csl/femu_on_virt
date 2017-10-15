@@ -27,7 +27,7 @@ int get_vector_from_irq(int irq) {
 
 void nvmev_proc_bars () {
 	struct __nvme_bar *old_bar = vdev->old_bar;
-	struct nvme_ctrl_regs __iomem *bar = vdev->bar;
+	struct nvme_ctrl_regs *bar = vdev->bar;
 	struct nvmev_admin_queue *queue;
 	unsigned int num_pages, i;
 	
@@ -176,6 +176,7 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 			if ((val & mask) == mask) {
 				vdev->msix_enabled = true;
 				vdev->msix_table = ioremap(pci_resource_start(vdev->pdev,0) + 0x2000, NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
+				//vdev->msix_table = memremap(pci_resource_start(vdev->pdev,0) + 0x2000, NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE, MEMREMAP_WT);
 				vdev->admin_q->irq_vector = readl(vdev->msix_table+PCI_MSIX_ENTRY_DATA) & 0xFF;
 			}
 		}
@@ -212,8 +213,9 @@ struct pci_bus* nvmev_create_pci_bus() {
 		res = &dev->resource[0];
 		res->parent = &iomem_resource;
 		vdev->bar = ioremap(pci_resource_start(dev, 0), 8192);
+		//vdev->bar = memremap(pci_resource_start(dev, 0), 8192, MEMREMAP_WT);
 		memset(vdev->bar, 0x0, 8192);
-		vdev->dbs = ((void __iomem *)vdev->bar) + 4096;
+		vdev->dbs = ((void *)vdev->bar) + 4096;
 		NVMEV_ERROR("%s: %p %p %p\n", __func__, vdev,
 				vdev->bar, vdev->old_bar);
 		vdev->pdev = dev;

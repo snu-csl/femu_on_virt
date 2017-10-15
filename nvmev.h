@@ -104,6 +104,8 @@ struct nvmev_config {
 
 	unsigned int read_bw; //MiB
 	unsigned int write_bw; //MiB
+	long long int read_bw_us;
+	long long int write_bw_us;
 
 	unsigned int cpu_nr_proc_reg;
 	unsigned int cpu_nr_proc_io;
@@ -140,6 +142,8 @@ struct nvmev_dev {
 	struct nvmev_config config;
 	struct task_struct *nvmev_reg_proc;
 	struct task_struct *nvmev_io_proc;
+
+	void *storage_mapped;
 
 	struct nvmev_proc_table *proc_table;
 	unsigned int proc_free_seq;

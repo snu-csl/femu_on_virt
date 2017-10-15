@@ -18,10 +18,12 @@ struct nvmev_dev *VDEV_INIT(void) {
 
 void VDEV_FINALIZE(struct nvmev_dev *vdev) {
 	if(vdev->msix_enabled)
-		iounmap(vdev->msix_table);
+		memunmap(vdev->msix_table);
+		//iounmap(vdev->msix_table);
 	
 	if(vdev->bar)
-		iounmap(vdev->bar);
+		memunmap(vdev->bar);
+		//iounmap(vdev->bar);
 	if(vdev->old_bar)
 		kfree(vdev->old_bar);
 
@@ -51,7 +53,9 @@ void VDEV_SET_ARGS(struct nvmev_config* config,
 	config->read_latency = read_latency;
 	config->write_latency = write_latency;
 	config->read_bw = read_bw;
+	config->read_bw_us = (long long int)((read_bw << 20) / 1000000);
 	config->write_bw = write_bw;
+	config->write_bw_us = (long long int)((write_bw << 20) / 1000000);
 
 	config->cpu_nr_proc_io = -1;
 	config->cpu_nr_proc_reg = -1;

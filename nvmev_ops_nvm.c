@@ -5,6 +5,8 @@
 #include <linux/highmem.h>
 #include "nvmev.h"
 
+#define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
+
 #define num_sq_per_page	(PAGE_SIZE / sizeof(struct nvme_command))
 #define num_cq_per_page (PAGE_SIZE / sizeof(struct nvme_completion))
 
@@ -26,14 +28,113 @@ long long int elapsed_usecs(int opcode, unsigned int length) {
 
 	switch(opcode) {
 		case nvme_cmd_write: 
+			elapsed_usecs+=vdev->config.write_latency;
+			//elapsed_usecs+=(length / vdev->config.write_bw_us);
 			break;
 		case nvme_cmd_read:
+			elapsed_usecs+=vdev->config.read_latency;
+			//elapsed_usecs+=(length / vdev->config.read_bw_us);
 			break;
 		default:
 			break;
 	}
 
-	return jiffies_to_usecs(elapsed_usecs);
+	return elapsed_usecs;
+}
+
+unsigned int nvmev_storage_io(int sqid, int sq_entry) {
+	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	//unsigned long long start_bytes;
+	unsigned long long io_offs;
+	unsigned int mem_offs;
+	unsigned int length_bytes;
+	unsigned int remain_io;
+	unsigned int io_size;
+	unsigned int prp_offs = 0;
+	unsigned int prp2_offs = 0;
+	u64 paddr, paddr2;
+	u64 *paddr_list = NULL;
+	void *vaddr;
+	//int temp;
+
+	io_offs = sq_entry(sq_entry).rw.slba << 9;
+	length_bytes = (sq_entry(sq_entry).rw.length + 1) << 9;
+	remain_io = length_bytes;
+
+	while(remain_io) {
+		prp_offs++;
+		if(prp_offs == 1) {
+			paddr = sq_entry(sq_entry).rw.prp1;
+		}
+		else if(prp_offs == 2) {
+			if(remain_io <= 4096)
+				paddr = sq_entry(sq_entry).rw.prp2;
+			else {
+				paddr2 = sq_entry(sq_entry).rw.prp2;
+				paddr_list = kmap_atomic_pfn(PRP_PFN(paddr2));
+				paddr = paddr_list[prp2_offs];
+				prp2_offs++;
+			}
+		}
+		else {
+			paddr = paddr_list[prp2_offs];
+			prp2_offs++;
+		}
+
+		vaddr = kmap_atomic_pfn(PRP_PFN(paddr));
+		/*
+		if(paddr & 0xFFF) {
+			mem_offs = paddr & 0xFFF;
+			NVMEV_INFO("Offset Mismatch =Remain_io = %u==============\n", remain_io);
+			if(sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
+				NVMEV_INFO("Write %llu->%p, %llu %u\n", paddr, vaddr, io_offs, remain_io);
+			}
+			else {
+				NVMEV_INFO("Read %llu->%p, %llu %u\n", paddr, vaddr, io_offs, remain_io);
+			}
+			
+			NVMEV_ERROR("PRP 1 0: 0x%llx %llx\n", paddr, paddr&0xFFF);
+			if(paddr_list != NULL) {
+				while(paddr_list[temp] != 0) {
+					NVMEV_ERROR("PRP 2 %d: 0x%llx %llx\n", temp, paddr_list[temp], paddr_list[temp]&0xFFF);
+					temp++;
+				}
+			}
+			
+			
+		}
+		*/
+		if(remain_io > 4096) io_size = 4096;
+		else io_size = remain_io;
+		
+		if(paddr & 0xFFF) {
+			mem_offs = paddr & 0xFFF;
+			if(io_size + mem_offs > 4096)
+				io_size -= mem_offs;
+		}
+
+		if(sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
+			// write
+			memcpy(vdev->storage_mapped + io_offs, vaddr + mem_offs, io_size);
+			//NVMEV_ERROR("Write %llu->%p, %llu %u\n", paddr, vaddr + mem_offs, io_offs, io_size);
+		}
+		else {
+			// read
+			memcpy(vaddr + mem_offs, vdev->storage_mapped + io_offs, io_size);
+			//NVMEV_ERROR("Read %llu->%p, %llu %u\n", paddr, vaddr + mem_offs, io_offs, io_size);
+		}
+
+		kunmap_atomic(vaddr);
+
+		remain_io-=io_size;
+		io_offs+=io_size;
+		mem_offs = 0;
+	}
+
+	if(paddr_list != NULL)
+		kunmap_atomic(paddr_list);
+
+	return length_bytes;
 }
 
 void nvmev_proc_flush(int sqid, int sq_entry) {
@@ -41,36 +142,39 @@ void nvmev_proc_flush(int sqid, int sq_entry) {
 }
 
 unsigned int nvmev_proc_write(int sqid, int sq_entry) {
-	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-
-
+	//struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	
 	//LBA, LENGTH
 	//sq_entry(sq_entry).rw.slba;
 	//sq_entry(sq_entry).rw.length;
 	//sq_entry(sq_entry).rw.prp1;
 	//sq_entry(sq_entry).rw.prp2;
-	NVMEV_ERROR("qid %d entry %d lba %llu length %d\n",
-			sqid, sq_entry,
-			sq_entry(sq_entry).rw.slba,
+	/*
+	NVMEV_INFO("qid %d entry %d lba %llu length %d\n", \
+			sqid, sq_entry, \
+			sq_entry(sq_entry).rw.slba, \
 			sq_entry(sq_entry).rw.length);
-
-	return sq_entry(sq_entry).rw.length; 
+	*/
+	return nvmev_storage_io(sqid, sq_entry); 
 }
 
 unsigned int nvmev_proc_read(int sqid, int sq_entry) {
-	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	//struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	//LBA, LENGTH
 	//sq_entry(sq_entry).rw.slba;
 	//sq_entry(sq_entry).rw.length;
 	//sq_entry(sq_entry).rw.prp1;
 	//sq_entry(sq_entry).rw.prp2;
-	NVMEV_ERROR("qid %d entry %d lba %llu length %d\n",
-			sqid, sq_entry,
-			sq_entry(sq_entry).rw.slba,
-			sq_entry(sq_entry).rw.length);
-
-	return sq_entry(sq_entry).rw.length; 
+	/*
+	NVMEV_INFO("qid %d entry %d lba %llu length %d, %llu %llu\n", \
+			sqid, sq_entry, \
+			sq_entry(sq_entry).rw.slba, \
+			sq_entry(sq_entry).rw.length,
+			sq_entry(sq_entry).rw.prp1,
+			sq_entry(sq_entry).rw.prp2);
+	*/
+	return nvmev_storage_io(sqid, sq_entry); 
 }
 
 void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
@@ -78,9 +182,14 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	long long int usecs_target = usecs_start + usecs_elapse;
 	unsigned int new_entry = vdev->proc_free_seq;
 	unsigned int curr_entry = -1;
+	//struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	vdev->proc_free_seq = vdev->proc_table[new_entry].next;
-	NVMEV_ERROR("New Entry %u, %d %d, %d\n", new_entry, sqid, cqid, sq_entry);
+	/*
+	NVMEV_INFO("New Entry %u[%d], sq-%d cq-%d, entry-%d %lld->%lld\n", new_entry, 
+			sq_entry(sq_entry).rw.opcode,
+			sqid, cqid, sq_entry, usecs_start, usecs_target);
+	*/
 	vdev->proc_table[new_entry].sqid = sqid;
 	vdev->proc_table[new_entry].cqid= cqid;
 	vdev->proc_table[new_entry].sq_entry = sq_entry;
@@ -93,7 +202,7 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	// (END) -> (START) order, usecs target ascending order
 	if(vdev->proc_io_seq == -1) {
 		vdev->proc_io_seq = new_entry;
-		NVMEV_ERROR("New\n");
+		//NVMEV_INFO("%u: PROC_IO_SEQ = %u\n", __LINE__, vdev->proc_io_seq);
 	}
 	else {
 		curr_entry = vdev->proc_io_seq_end;
@@ -109,18 +218,16 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 		}
 
 		if(curr_entry == -1) {
-			NVMEV_ERROR("Mid First\n");
 			vdev->proc_table[new_entry].next = vdev->proc_io_seq;
 			vdev->proc_io_seq = new_entry;
+			//NVMEV_INFO("%u: PROC_IO_SEQ = %u\n", __LINE__, vdev->proc_io_seq);
 		}
 		else if(vdev->proc_table[curr_entry].next == -1) {
-			NVMEV_ERROR("Mid Last\n");
 			vdev->proc_table[curr_entry].next = new_entry;
 			vdev->proc_table[new_entry].prev = curr_entry;
 			vdev->proc_io_seq_end = new_entry;
 		}
 		else {
-			NVMEV_ERROR("Mid\n");
 			vdev->proc_table[new_entry].prev = curr_entry;
 			vdev->proc_table[new_entry].next = vdev->proc_table[curr_entry].next;
 
@@ -152,6 +259,7 @@ void nvmev_proc_io_cleanup(void) {
 	if(start_entry != -1 && last_entry != -1) {
 		proc_entry = &vdev->proc_table[last_entry];
 		vdev->proc_io_seq = proc_entry->next;
+		//NVMEV_INFO("%u: PROC_IO_SEQ = %u\n", __LINE__, vdev->proc_io_seq);
 		if(proc_entry->next != -1) {
 			proc_entry = &vdev->proc_table[vdev->proc_io_seq];
 			proc_entry->prev = -1;
@@ -162,8 +270,8 @@ void nvmev_proc_io_cleanup(void) {
 		proc_entry->next = vdev->proc_free_seq;
 		free_entry->prev = last_entry;
 		vdev->proc_free_seq = start_entry;
+		//NVMEV_INFO("Cleanup %u -> %u\n", start_entry, last_entry);
 	}
-
 
 	return;
 }
@@ -287,11 +395,12 @@ static int nvmev_kthread_io_proc(void *data)
 				fill_cq_result(proc_entry->sqid,
 						proc_entry->cqid,
 						proc_entry->sq_entry);
-				NVMEV_ERROR("proc Entry %u, %d %d, %d\n", curr_entry, 
-						proc_entry->sqid,
-						proc_entry->cqid,
+				/*
+				NVMEV_INFO("proc Entry %u, %d %d, %d\n", curr_entry,  \
+						proc_entry->sqid, \
+						proc_entry->cqid, \
 						proc_entry->sq_entry);
-				
+				*/
 				proc_entry->isProc = true;
 				cq = vdev->cqes[proc_entry->cqid];
 				cq->interrupt_ready = true;
@@ -305,6 +414,7 @@ static int nvmev_kthread_io_proc(void *data)
 		for(qidx=1; qidx <= vdev->nr_cq; qidx++) {
 			cq = vdev->cqes[qidx];
 			if(cq == NULL) continue;
+			if(!cq->interrupt_enabled) continue;
 
 			if(cq->interrupt_ready == true) {
 				cq->interrupt_ready = false;
@@ -338,7 +448,7 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev) {
 
 	vdev->nvmev_io_proc = kthread_create(nvmev_kthread_io_proc, 
 			NULL, "nvmev_proc_io");
-	NVMEV_ERROR("Proc IO : %d\n", vdev->config.cpu_nr_proc_io);
+
 	if(vdev->config.cpu_nr_proc_io != -1)
 		kthread_bind(vdev->nvmev_io_proc, vdev->config.cpu_nr_proc_io);
 	wake_up_process(vdev->nvmev_io_proc);

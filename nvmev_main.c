@@ -1,6 +1,7 @@
 #include <linux/pci.h>
 #include <linux/pci_regs.h>
 #include <linux/pci_ids.h>
+#include <linux/io.h>
 #include <linux/ioport.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
@@ -85,6 +86,7 @@ static void nvmev_proc_dbs(void) {
 
 	// Submission Queue
 	for(qid=1; qid<=vdev->nr_sq; qid++) {
+		if(vdev->cqes[qid] == NULL) continue;
 		dbs_idx = qid * 2;
 		new_db = vdev->dbs[dbs_idx];
 		old_db = vdev->old_dbs[dbs_idx];
@@ -96,6 +98,7 @@ static void nvmev_proc_dbs(void) {
 
 	// Completion Queue
 	for(qid=1; qid<=vdev->nr_cq; qid++) {
+		if(vdev->cqes[qid] == NULL) continue;
 		dbs_idx = qid * 2 + 1;
 		new_db = vdev->dbs[dbs_idx];
 		old_db = vdev->old_dbs[dbs_idx];
@@ -176,6 +179,19 @@ void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev) {
 	}
 }
 
+void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev) {
+	vdev->storage_mapped = memremap(vdev->config.storage_start,
+			vdev->config.storage_size, MEMREMAP_WB);
+
+	if(vdev->storage_mapped == NULL)
+		NVMEV_ERROR("Storage Memory Remap Error!!!!!\n");
+}
+
+void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev) {
+	if(vdev->storage_mapped)
+		memunmap(vdev->storage_mapped);
+}
+
 static int NVMeV_init(void){
 	
 	pr_info("NVMe Virtual Device Initialize Start\n");
@@ -205,6 +221,8 @@ static int NVMeV_init(void){
 		nvmev_clone_pci_mem(vdev);
 	}
 
+	NVMEV_STORAGE_INIT(vdev);
+
 	NVMEV_IO_PROC_INIT(vdev);
 	NVMEV_REG_PROC_INIT(vdev);
 
@@ -224,6 +242,7 @@ static void NVMeV_exit(void)
 {	
 	int i;
 
+	NVMEV_STORAGE_FINAL(vdev);
 	NVMEV_REG_PROC_FINAL(vdev);
 	NVMEV_IO_PROC_FINAL(vdev);
 

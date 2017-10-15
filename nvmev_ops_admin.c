@@ -21,6 +21,7 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_completion_queue *cq;
 	unsigned int num_pages, i;
+	int dbs_idx;
 		
 	cq = kzalloc(sizeof(struct nvmev_completion_queue), GFP_KERNEL);
 	
@@ -59,6 +60,10 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 	}
 	vdev->cqes[cq->qid] = cq;
 
+	dbs_idx = cq->qid * 2 + 1;
+	vdev->dbs[dbs_idx] = 0;
+	vdev->old_dbs[dbs_idx] = 0;
+
 	cq_entry(cq_head).command_id = sq_entry(eid).create_cq.command_id;
 	cq_entry(cq_head).sq_id = 0;
 	cq_entry(cq_head).sq_head = eid;
@@ -88,7 +93,8 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_submission_queue *sq;
 	unsigned int num_pages, i;
-	
+	int dbs_idx;
+
 	sq = kzalloc(sizeof(struct nvmev_submission_queue), GFP_KERNEL);
 
 	/* Todo : Physically dis-contiguous prp list */
@@ -109,6 +115,10 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 		sq->sq[i] = page_address(pfn_to_page(sq_entry(eid).create_sq.prp1 >> PAGE_SHIFT) + i);
 	}
 	vdev->sqes[sq->qid] = sq;
+
+	dbs_idx = sq->qid * 2;
+	vdev->dbs[dbs_idx] = 0;
+	vdev->old_dbs[dbs_idx] = 0;
 
 	cq_entry(cq_head).command_id = sq_entry(eid).create_sq.command_id;
 	cq_entry(cq_head).sq_id = 0;
