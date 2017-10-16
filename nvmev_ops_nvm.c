@@ -340,7 +340,7 @@ void nvmev_intr_issue(int cqid) {
 	struct irq_desc *desc;
 
 	if(unlikely(!cq->affinity_settings)) {
-		cq->irq_vector += vdev->admin_q->desc->irq;
+		cq->irq_vector += vdev->admin_q->old_vector;
 		desc = irq_to_desc(cq->irq_vector);
 		if(desc && desc->affinity_hint) {
 			cq->affinity_settings = true;

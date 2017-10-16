@@ -18,12 +18,11 @@ struct nvmev_dev *VDEV_INIT(void) {
 
 void VDEV_FINALIZE(struct nvmev_dev *vdev) {
 	if(vdev->msix_enabled)
-		memunmap(vdev->msix_table);
-		//iounmap(vdev->msix_table);
+		iounmap(vdev->msix_table);
 	
 	if(vdev->bar)
-		memunmap(vdev->bar);
-		//iounmap(vdev->bar);
+		iounmap(vdev->bar);
+
 	if(vdev->old_bar)
 		kfree(vdev->old_bar);
 
@@ -137,12 +136,12 @@ void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap* msixcap) {
 	msixcap->mxid.next = OFFS_PCIE_CAP;
 	
 	msixcap->mxc.mxe = 1;
-	msixcap->mxc.ts = 31; // encoded as n-1
+	msixcap->mxc.ts = 127; // encoded as n-1
 
 	msixcap->mtab.tbir = 0;
 	msixcap->mtab.to = 0x400;
 	
-	msixcap->mpba.pbao = 0x600;
+	msixcap->mpba.pbao = 0x1000;
 	msixcap->mpba.pbir = 0;
 }
 

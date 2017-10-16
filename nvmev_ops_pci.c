@@ -11,6 +11,17 @@ struct __apic_chip_data {
 	u8			move_in_progress : 1;
 };
 
+int get_old_vector_from_irq(int irq) {
+	struct irq_data * irqd = irq_get_irq_data(irq);
+	struct irq_cfg *irqd_cfg;
+	struct __apic_chip_data *chip_data;
+
+	chip_data = irqd->chip_data;
+	irqd_cfg = &chip_data->cfg;
+
+	return irqd_cfg->old_vector;
+}
+
 int get_vector_from_irq(int irq) {
 	struct irq_data * irqd = irq_get_irq_data(irq);
 	struct irq_cfg *irqd_cfg;
@@ -18,6 +29,7 @@ int get_vector_from_irq(int irq) {
 
 	while (irqd->parent_data)
 		irqd = irqd->parent_data;
+
 	chip_data = irqd->chip_data;
 	irqd_cfg = &chip_data->cfg;
 
@@ -86,6 +98,7 @@ void nvmev_proc_bars () {
 
 		queue->irq = IRQ_NUM;
 		queue->irq_vector = get_vector_from_irq(queue->irq);
+		queue->old_vector = get_old_vector_from_irq(queue->irq);
 		queue->cq_head = 0;
 		queue->cq_tail = -1;
 		queue->phase = 1;
@@ -129,6 +142,7 @@ int nvmev_pci_read(struct pci_bus *bus, unsigned int devfn, int where, int size,
 	if(devfn != 0) return 1;
 
 	memcpy(val, vdev->virtDev+where, size);
+
 	return 0;
 };
 

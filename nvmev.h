@@ -80,6 +80,7 @@ struct nvmev_completion_queue {
 struct nvmev_admin_queue {
 	int irq;
 	int irq_vector;
+	int old_vector;
 	
 	bool affinity_settings;
 	const struct cpumask *cpu_mask;

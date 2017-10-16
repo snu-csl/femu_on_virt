@@ -143,7 +143,7 @@ int nvmev_args_verify(void) {
 	}
 
 	resv_start_bytes = (unsigned long)memmap_start << 30;
-	resv_end_bytes = resv_start_bytes + (memmap_size << 20) - 1;
+	resv_end_bytes = resv_start_bytes + ((unsigned long)memmap_size << 20) - 1;
 
 	if(e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RAM) ||
 		e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RESERVED_KERN)) {

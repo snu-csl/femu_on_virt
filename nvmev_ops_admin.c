@@ -362,7 +362,8 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 		if(vdev->admin_q->affinity_settings)
 			apic->send_IPI_mask(vdev->admin_q->cpu_mask, queue->irq_vector);
 		else
-			apic->send_IPI_self(queue->irq_vector);
+			//apic->send_IPI_self(queue->irq_vector);
+			apic->send_IPI_all(queue->irq_vector);
 	}
 	else {
 		generateInterrupt(queue->irq_vector);
