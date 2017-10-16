@@ -349,11 +349,8 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 
 	if(vdev->msix_enabled) {
 		if(unlikely(!vdev->admin_q->affinity_settings)) {
-			vdev->admin_q->desc = first_msi_entry(&vdev->pdev->dev);
-			
-			desc = irq_to_desc(vdev->admin_q->desc->irq);
+			desc = irq_to_desc(vdev->admin_q->old_vector);
 			if(desc->affinity_hint) {
-				queue->irq = vdev->admin_q->desc->irq;
 				vdev->admin_q->affinity_settings = true;
 				vdev->admin_q->cpu_mask = desc->affinity_hint;
 			}
@@ -362,7 +359,6 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 		if(vdev->admin_q->affinity_settings)
 			apic->send_IPI_mask(vdev->admin_q->cpu_mask, queue->irq_vector);
 		else
-			//apic->send_IPI_self(queue->irq_vector);
 			apic->send_IPI_all(queue->irq_vector);
 	}
 	else {

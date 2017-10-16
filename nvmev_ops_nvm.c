@@ -339,20 +339,25 @@ void nvmev_intr_issue(int cqid) {
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
 	struct irq_desc *desc;
 
-	if(unlikely(!cq->affinity_settings)) {
-		cq->irq_vector += vdev->admin_q->old_vector;
-		desc = irq_to_desc(cq->irq_vector);
-		if(desc && desc->affinity_hint) {
-			cq->affinity_settings = true;
-			cq->cpu_mask = desc->affinity_hint;
+	if(vdev->msix_enabled) {
+		if(unlikely(!cq->affinity_settings)) {
+			cq->irq_vector += vdev->admin_q->old_vector;
+			desc = irq_to_desc(cq->irq_vector);
+			if(desc && desc->affinity_hint) {
+				cq->affinity_settings = true;
+				cq->cpu_mask = desc->affinity_hint;
+			}
+		}
+
+		if(unlikely(!cq->affinity_settings)) {
+			apic->send_IPI_all(cq->irq);
+		}
+		else {
+			apic->send_IPI_mask(cq->cpu_mask, cq->irq);
 		}
 	}
-
-	if(unlikely(!cq->affinity_settings)) {
-		generateInterrupt(cq->irq);
-	}
 	else {
-		apic->send_IPI_mask(cq->cpu_mask, cq->irq);
+		generateInterrupt(cq->irq);
 	}
 }
 
