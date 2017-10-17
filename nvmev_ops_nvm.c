@@ -191,7 +191,7 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 			sq_entry(sq_entry).rw.opcode,
 			sqid, cqid, sq_entry, usecs_start, usecs_target);
 	
-	Vdev->proc_table[new_entry].sqid = sqid;
+	vdev->proc_table[new_entry].sqid = sqid;
 	vdev->proc_table[new_entry].cqid= cqid;
 	vdev->proc_table[new_entry].sq_entry = sq_entry;
 	vdev->proc_table[new_entry].usecs_start = usecs_start;
