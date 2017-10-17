@@ -8,6 +8,7 @@
 #include <linux/types.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/proc_fs.h>
 #include <asm/e820.h>
 #include "nvmev.h"
 
@@ -178,17 +179,77 @@ void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev) {
 	}
 }
 
+static ssize_t proc_file_read(struct file *filp,char *buf,size_t len, loff_t *offp) {
+	ssize_t count = 0;
+
+	return count;
+}
+static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, loff_t *offp) {
+	ssize_t count = len;
+	const char* fname = filp->f_path.dentry->d_name.name;
+	char *endptr;
+	char input[128];
+	unsigned int *val = PDE_DATA(filp->f_inode);
+	unsigned int newval;
+	copy_from_user(input, buf, len);
+
+	newval = simple_strtol(input, &endptr, 10);
+
+	*val = newval;
+
+	if(!strcmp(fname, "read_bw")) {
+		vdev->config.read_bw = newval;
+		vdev->config.read_bw_us = (long long int)((newval << 20) / 1000000);
+	}
+	else if(!strcmp(fname, "write_bw")) {
+		vdev->config.write_bw = newval;
+		vdev->config.write_bw_us = (long long int)((newval << 20) / 1000000);
+	}
+	else if(!strcmp(fname, "read_latency")) {
+		vdev->config.read_latency = newval;
+	}
+	else if(!strcmp(fname, "write_latency")) {
+		vdev->config.write_latency = newval;
+	}
+
+	NVMEV_ERROR("=============== Configure Change =============\n");
+	NVMEV_ERROR("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
+	NVMEV_ERROR("* Write Latency   : %u (us)\n", vdev->config.write_latency);
+	NVMEV_ERROR("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
+	NVMEV_ERROR("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
+
+	return count;
+}
+static const struct file_operations proc_file_fops = {
+	.owner = THIS_MODULE,
+	.read = proc_file_read,
+	.write = proc_file_write,
+};
+
 void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev) {
 	vdev->storage_mapped = memremap(vdev->config.storage_start,
 			vdev->config.storage_size, MEMREMAP_WB);
 
 	if(vdev->storage_mapped == NULL)
 		NVMEV_ERROR("Storage Memory Remap Error!!!!!\n");
+
+	vdev->proc_root = proc_mkdir("nvmev", NULL);
+	vdev->read_latency = proc_create_data("read_latency", 0, vdev->proc_root, &proc_file_fops, &vdev->config.read_latency);
+	vdev->write_latency = proc_create_data("write_latency", 0, vdev->proc_root, &proc_file_fops, &vdev->config.write_latency);
+	vdev->read_bw = proc_create_data("read_bw", 0, vdev->proc_root, &proc_file_fops, &vdev->config.read_bw);
+	vdev->write_bw = proc_create_data("write_bw", 0, vdev->proc_root, &proc_file_fops, &vdev->config.write_bw);
+
 }
 
 void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev) {
 	if(vdev->storage_mapped)
 		memunmap(vdev->storage_mapped);
+
+	remove_proc_entry("read_latency", vdev->proc_root);
+	remove_proc_entry("write_latency", vdev->proc_root);
+	remove_proc_entry("read_bw", vdev->proc_root);
+	remove_proc_entry("write_bw", vdev->proc_root);
+	remove_proc_entry("nvmev", NULL);
 }
 
 static int NVMeV_init(void){

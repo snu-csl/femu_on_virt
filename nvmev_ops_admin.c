@@ -236,15 +236,25 @@ void nvmev_admin_set_features(int eid, int cq_head) {
 		case NVME_FEAT_VOLATILE_WC:
 			break;
 		case NVME_FEAT_NUM_QUEUES:
-			//SQ
-			num_queue = sq_entry(eid).features.dword11 & 0xFFFF;
-			vdev->nr_sq = num_queue + 1;
-			
-			//CQ
-			num_queue = (sq_entry(eid).features.dword11 >> 16) & 0xFFFF;
-			vdev->nr_cq = num_queue + 1;
+            //SQ
+            num_queue = sq_entry(eid).features.dword11 & 0xFFFF;
+            if(num_queue > NR_MAX_IO_QUEUE) {
+                num_queue = NR_MAX_IO_QUEUE - 1;
+                vdev->nr_sq = NR_MAX_IO_QUEUE;
+            }
+            else
+                vdev->nr_sq = num_queue + 1;
 
-			cq_entry(cq_head).result = sq_entry(eid).features.dword11;
+            //CQ
+            num_queue = (sq_entry(eid).features.dword11 >> 16) & 0xFFFF;
+            if(num_queue > NR_MAX_IO_QUEUE) {
+                num_queue = NR_MAX_IO_QUEUE - 1;
+                vdev->nr_cq = NR_MAX_IO_QUEUE;
+            }
+            else
+                vdev->nr_cq = num_queue + 1;
+
+            cq_entry(cq_head).result = ((vdev->nr_cq-1)<<16 | (vdev->nr_sq-1));
 			break;
 		case NVME_FEAT_IRQ_COALESCE:
 		case NVME_FEAT_IRQ_CONFIG:
@@ -349,17 +359,22 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 
 	if(vdev->msix_enabled) {
 		if(unlikely(!vdev->admin_q->affinity_settings)) {
-			desc = irq_to_desc(vdev->admin_q->old_vector);
-			if(desc->affinity_hint) {
+			if(vdev->admin_q->vector == 0)
+				vdev->admin_q->vector = first_msi_entry(&vdev->pdev->dev)->irq;
+
+			desc = irq_to_desc(vdev->admin_q->vector);
+			if(desc && desc->affinity_hint) {
 				vdev->admin_q->affinity_settings = true;
 				vdev->admin_q->cpu_mask = desc->affinity_hint;
 			}
 		}
 
-		if(vdev->admin_q->affinity_settings)
+		if(vdev->admin_q->affinity_settings) {
 			apic->send_IPI_mask(vdev->admin_q->cpu_mask, queue->irq_vector);
-		else
+		}
+		else {
 			apic->send_IPI_all(queue->irq_vector);
+		}
 	}
 	else {
 		generateInterrupt(queue->irq_vector);

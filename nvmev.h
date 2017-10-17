@@ -7,6 +7,7 @@
 #include <linux/msi.h>
 #include <linux/irq.h>
 #include <uapi/linux/irqnr.h>
+#include <linux/proc_fs.h>
 
 #include "nvmev_hdr.h"
 #include "nvme_hdr.h"
@@ -17,8 +18,14 @@
 	printk(KERN_INFO "[%s: %s] info: " string, NVMEV_DRV_NAME, __func__, ##args)
 #define NVMEV_ERROR(string, args...) \
 	printk(KERN_ERR "[%s: %s] error: " string, NVMEV_DRV_NAME, __func__, ##args)
-#define NVMEV_DEBUG(string, args...) \
-	printk(KERN_DEBUG "[%s %s] dbg: " string, NVMEV_DRV_NAME, __func__, ##args)
+
+#define ENABLE_DBG_PRINT	0
+#if ENABLE_DBG_PRINT
+	#define NVMEV_DEBUG(string, args...) \
+		printk(KERN_DEBUG "[%s %s] dbg: " string, NVMEV_DRV_NAME, __func__, ##args)
+#else
+	#define NVMEV_DEBUG(string, args...)
+#endif
 
 #define NVMEV_PCI_DOMAIN_NUM 0x0001
 #define NVMEV_PCI_BUS_NUM 0x10
@@ -80,7 +87,7 @@ struct nvmev_completion_queue {
 struct nvmev_admin_queue {
 	int irq;
 	int irq_vector;
-	int old_vector;
+	int vector;
 	
 	bool affinity_settings;
 	const struct cpumask *cpu_mask;
@@ -149,6 +156,7 @@ struct nvmev_dev {
 
 	struct nvmev_proc_table *proc_table;
 	unsigned int proc_free_seq;
+	unsigned int proc_free_last;
 	unsigned int proc_io_seq;
 	unsigned int proc_io_seq_end;
 	long long int proc_io_usecs;
@@ -169,6 +177,12 @@ struct nvmev_dev {
 	struct nvmev_ns** ns_arr;
 	struct nvmev_submission_queue* sqes[NR_MAX_IO_QUEUE + 1];
 	struct nvmev_completion_queue* cqes[NR_MAX_IO_QUEUE + 1];
+
+	struct proc_dir_entry *proc_root;
+	struct proc_dir_entry *read_latency;
+	struct proc_dir_entry *write_latency;
+	struct proc_dir_entry *read_bw;
+	struct proc_dir_entry *write_bw;
 };
 
 // VDEV Init, Final Function
@@ -205,4 +219,5 @@ void NVMEV_IO_PROC_FINAL(struct nvmev_dev* vdev);
 void nvmev_proc_sq_io(int qid, int new_db, int old_db);
 void nvmev_proc_cq_io(int qid, int new_db, int old_db);
 
+void nvmev_proc_io_cleanup(void);
 #endif /* _LIB_NVMEV_H */
