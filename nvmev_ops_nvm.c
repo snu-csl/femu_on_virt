@@ -22,9 +22,42 @@
 
 extern struct nvmev_dev *vdev;
 
-long long int elapsed_usecs(int opcode, unsigned int length) {
+long long int elapsed_usecs(int opcode, unsigned int length, long long int usecs_start) {
 	long long int elapsed_usecs = 0;
+	int unit_seq = 0;
+	int req_unit = length / 4096 + !!(length % 4096);
+	int lowest_unit = 0;
+	long long int lowest_time = vdev->unit_stat[0];
+	int i;
 
+	for(unit_seq = 1; unit_seq < vdev->nr_unit; unit_seq++) {
+		if(vdev->unit_stat[unit_seq] < lowest_time) {
+			lowest_time = vdev->unit_stat[unit_seq];
+			lowest_unit = unit_seq;
+		}
+	}
+
+	for(i=0; i<req_unit; i++) {
+		unit_seq = (lowest_unit + i) % vdev->nr_unit;
+
+		if(vdev->unit_stat[unit_seq] < usecs_start)
+			vdev->unit_stat[unit_seq]=usecs_start;
+
+		switch(opcode) {
+			case nvme_cmd_write: 
+				vdev->unit_stat[unit_seq] += vdev->config.write_latency;
+				break;
+			case nvme_cmd_read:
+				vdev->unit_stat[unit_seq] += vdev->config.read_latency;
+				break;
+			default:
+				break;
+		}
+		
+		if(elapsed_usecs < vdev->unit_stat[unit_seq])
+			elapsed_usecs = vdev->unit_stat[unit_seq];
+	}
+	/*
 	switch(opcode) {
 		case nvme_cmd_write: 
 			elapsed_usecs+=vdev->config.write_latency;
@@ -39,7 +72,7 @@ long long int elapsed_usecs(int opcode, unsigned int length) {
 		default:
 			break;
 	}
-
+	*/
 	return elapsed_usecs;
 }
 
@@ -55,13 +88,14 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 	unsigned int prp2_offs = 0;
 	u64 paddr, paddr2;
 	u64 *paddr_list = NULL;
+	void* temp_ptr;
 	void *vaddr;
 	//int temp;
 
 	io_offs = sq_entry(sq_entry).rw.slba << 9;
 	length_bytes = (sq_entry(sq_entry).rw.length + 1) << 9;
 	remain_io = length_bytes;
-
+	//NVMEV_INFO("IO REQ: %llu %u\n", io_offs, length_bytes);
 	while(remain_io) {
 		prp_offs++;
 		if(prp_offs == 1) {
@@ -72,8 +106,14 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 				paddr = sq_entry(sq_entry).rw.prp2;
 			else {
 				paddr2 = sq_entry(sq_entry).rw.prp2;
-				paddr_list = kmap_atomic_pfn(PRP_PFN(paddr2));
+				temp_ptr = kmap_atomic_pfn(PRP_PFN(paddr2));
+				temp_ptr+= (paddr2 & 0xFFF);
+				paddr_list = temp_ptr;
+				//NVMEV_INFO("PRP2 Addr: %llu\n", paddr2);
 				paddr = paddr_list[prp2_offs];
+
+				//NVMEV_INFO("PRP Offs %d: %llu\n", prp2_offs, paddr);
+
 				prp2_offs++;
 			}
 		}
@@ -117,12 +157,12 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 		if(sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			// write
 			memcpy(vdev->storage_mapped + io_offs, vaddr + mem_offs, io_size);
-			//NVMEV_ERROR("Write %llu->%p, %llu %u\n", paddr, vaddr + mem_offs, io_offs, io_size);
+			//NVMEV_INFO("Write %llu->%p, %u %llu %u\n", paddr, vaddr + mem_offs, mem_offs, io_offs, io_size);
 		}
 		else {
 			// read
 			memcpy(vaddr + mem_offs, vdev->storage_mapped + io_offs, io_size);
-			//NVMEV_ERROR("Read %llu->%p, %llu %u\n", paddr, vaddr + mem_offs, io_offs, io_size);
+			//NVMEV_INFO("Read %llu->%p, %u %llu %u\n", paddr, vaddr + mem_offs, mem_offs, io_offs, io_size);
 		}
 
 		kunmap_atomic(vaddr);
@@ -180,7 +220,8 @@ unsigned int nvmev_proc_read(int sqid, int sq_entry) {
 
 void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 		long long int usecs_start, long long int usecs_elapse) {
-	long long int usecs_target = usecs_start + usecs_elapse;
+	//long long int usecs_target = usecs_start + usecs_elapse;
+	long long int usecs_target = usecs_elapse;
 	unsigned int new_entry = vdev->proc_free_seq;
 	unsigned int curr_entry = -1;
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
@@ -303,14 +344,15 @@ void nvmev_proc_nvm(int sqid, int sq_entry) {
 	switch(sq_entry(sq_entry).common.opcode) {
 		case nvme_cmd_flush:
 			nvmev_proc_flush(sqid, sq_entry);
+			usecs_elapsed = usecs_start;
 			break;
 		case nvme_cmd_write: 
 			io_len = nvmev_proc_write(sqid, sq_entry);
-			usecs_elapsed = elapsed_usecs(nvme_cmd_write, io_len);
+			usecs_elapsed = elapsed_usecs(nvme_cmd_write, io_len, usecs_start);
 			break;
 		case nvme_cmd_read:
 			io_len = nvmev_proc_read(sqid, sq_entry);
-			usecs_elapsed = elapsed_usecs(nvme_cmd_read, io_len);
+			usecs_elapsed = elapsed_usecs(nvme_cmd_read, io_len, usecs_start);
 			break;
 		case nvme_cmd_write_uncor:
 		case nvme_cmd_compare:

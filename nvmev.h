@@ -48,7 +48,7 @@
 
 #define IRQ_NUM 16
 #define NR_MAX_IO_QUEUE 128
-#define NR_MAX_PARALLEL_IO 128
+#define NR_MAX_PARALLEL_IO 512
 
 struct nvmev_ns {
 	int nsid;
@@ -183,6 +183,11 @@ struct nvmev_dev {
 	struct proc_dir_entry *write_latency;
 	struct proc_dir_entry *read_bw;
 	struct proc_dir_entry *write_bw;
+	struct proc_dir_entry *slot;
+
+	unsigned long long *unit_stat;
+	int nr_unit;
+
 };
 
 // VDEV Init, Final Function

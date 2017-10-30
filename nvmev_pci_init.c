@@ -59,7 +59,6 @@ void VDEV_SET_ARGS(struct nvmev_config* config,
 	config->cpu_nr_proc_io = -1;
 	config->cpu_nr_proc_reg = -1;
 
-
 	//turn = 0 -> comp, turn = 1 -> proc
 	if(cpu_mask != 0) {
 		while(cpu_mask) {
