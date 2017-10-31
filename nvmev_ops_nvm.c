@@ -183,8 +183,9 @@ void nvmev_proc_flush(int sqid, int sq_entry) {
 }
 
 unsigned int nvmev_proc_write(int sqid, int sq_entry) {
+#if	ENABLE_DBG_PRINT
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	
+#endif
 	//LBA, LENGTH
 	//sq_entry(sq_entry).rw.slba;
 	//sq_entry(sq_entry).rw.length;
@@ -200,7 +201,9 @@ unsigned int nvmev_proc_write(int sqid, int sq_entry) {
 }
 
 unsigned int nvmev_proc_read(int sqid, int sq_entry) {
+#if	ENABLE_DBG_PRINT
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+#endif
 
 	//LBA, LENGTH
 	//sq_entry(sq_entry).rw.slba;
@@ -224,7 +227,9 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	long long int usecs_target = usecs_elapse;
 	unsigned int new_entry = vdev->proc_free_seq;
 	unsigned int curr_entry = -1;
+#if	ENABLE_DBG_PRINT
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+#endif
 
 	vdev->proc_free_seq = vdev->proc_table[new_entry].next;
 	
