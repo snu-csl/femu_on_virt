@@ -82,6 +82,8 @@ struct nvmev_completion_queue {
 	int phase;
 	int cq_head, cq_tail;
 	struct nvme_completion __iomem **cq;
+
+	struct irq_desc *irq_desc;
 };
 
 struct nvmev_admin_queue {
@@ -99,6 +101,8 @@ struct nvmev_admin_queue {
 
 	struct nvme_command __iomem **nvme_sq;
 	struct nvme_completion __iomem **nvme_cq;
+	
+	struct irq_desc *irq_desc;
 };
 
 struct nvmev_config {

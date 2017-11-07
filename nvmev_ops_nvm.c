@@ -73,7 +73,6 @@ long long int elapsed_usecs(int opcode, unsigned int length, long long int usecs
 			break;
 	}
 	*/
-
 	return elapsed_usecs;
 }
 
@@ -92,7 +91,7 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 	void* temp_ptr;
 	void *vaddr;
 	//int temp;
-	u64 cur_ns;
+
 	io_offs = sq_entry(sq_entry).rw.slba << 9;
 	length_bytes = (sq_entry(sq_entry).rw.length + 1) << 9;
 	remain_io = length_bytes;
@@ -154,7 +153,6 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 			if(io_size + mem_offs > 4096)
 				io_size -= mem_offs;
 		}
-		//cur_ns = ktime_to_ns(ktime_get());
 
 		if(sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			// write
@@ -166,7 +164,7 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 			memcpy(vaddr + mem_offs, vdev->storage_mapped + io_offs, io_size);
 			//NVMEV_INFO("Read %llu->%p, %u %llu %u\n", paddr, vaddr + mem_offs, mem_offs, io_offs, io_size);
 		}
-		//pr_info("%s: %llu\n", __func__, ktime_to_ns(ktime_get()) - cur_ns);
+
 		kunmap_atomic(vaddr);
 
 		remain_io-=io_size;
@@ -408,29 +406,75 @@ void nvmev_proc_cq_io(int cqid, int new_db, int old_db) {
 
 void nvmev_intr_issue(int cqid) {
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
-	struct irq_desc *desc;
 	struct msi_desc *msi_desc;
+	cpumask_t tmp_cpu;
 
 	if(vdev->msix_enabled) {
-		if(unlikely(!cq->affinity_settings)) {
+		if(unlikely(!cq->irq_desc)) {
 			for_each_msi_entry(msi_desc, (&vdev->pdev->dev)) {
 				if(msi_desc->msi_attrib.entry_nr == cq->irq_vector)
 					break;
 			}
-			
-			desc = irq_to_desc(msi_desc->irq);
-			//affinity_hint? or irq_common_data.affinity?
-			if(desc && desc->affinity_hint) {
-				cq->affinity_settings = true;
-				cq->cpu_mask = desc->affinity_hint;
-			}
+			cq->irq_desc = irq_to_desc(msi_desc->irq);
 		}
-		if(unlikely(!cq->affinity_settings)) {
-			apic->send_IPI_all(cq->irq);
+
+#ifdef CONFIG_NUMA
+		NVMEV_INFO("smphint(latest): %*pbl, vector:%u\n", 
+				cpumask_pr_args(cq->irq_desc->irq_common_data.affinity),
+				cq->irq);
+		NVMEV_INFO("Old: %u, New: %u\n", cq->irq,
+			readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF);
+
+		if(unlikely(!cpumask_subset(cq->irq_desc->irq_common_data.affinity,
+						cpumask_of_node(vdev->pdev->dev.numa_node)))) {
+			//apic->send_IPI_mask(cpumask_of_node(vdev->pdev->dev.numa_node),
+			NVMEV_DEBUG("Invalid affinity, -> 0\n");
+			cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
+			apic->send_IPI_mask(&tmp_cpu, cq->irq);
 		}
 		else {
-			apic->send_IPI_mask(cq->cpu_mask, cq->irq);
+			/*
+			if(IS_ERR_OR_NULL(per_cpu(vector_irq, cpumask_first(cq->irq_desc->irq_common_data.affinity))[cq->irq])) {
+				NVMEV_INFO("NULL\n");
+				apic->send_IPI_mask(cpumask_of_node(vdev->pdev->dev.numa_node),
+					cq->irq);
+			}
+			else {
+			*/
+			/*
+			if(cq->irq != (readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF)) {
+				NVMEV_ERROR("2nd IPI %u\n", readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF);
+				apic->send_IPI_mask(cq->irq_desc->irq_common_data.affinity,
+					readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF);
+			}
+			else {
+				NVMEV_ERROR("1st IPI %u\n", cq->irq);
+				apic->send_IPI_mask(cq->irq_desc->irq_common_data.affinity,
+					cq->irq);
+			}
+			*/
+			if(unlikely(cq->irq != (readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF))) {
+				NVMEV_DEBUG("IRQ : %d -> %d\n", cq->irq, (readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF));
+				cq->irq = (readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF);
+			}
+			if(unlikely(cpumask_equal(cq->irq_desc->irq_common_data.affinity, cpumask_of_node(vdev->pdev->dev.numa_node)))) {
+				NVMEV_DEBUG("Every... -> 0\n");
+				cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
+				apic->send_IPI_mask(&tmp_cpu, cq->irq);
+			}
+			else {
+				NVMEV_DEBUG("Send to Target CPU\n");
+				apic->send_IPI_mask(cq->irq_desc->irq_common_data.affinity, cq->irq);
+			}
+
+			
+			//}
 		}
+#else
+		NVMEV_DEBUG("Intr -> all, Vector->%u\n", cq->irq);
+
+		apic->send_IPI_mask(cq->irq_desc->irq_common_data.affinity, cq->irq);
+#endif
 	}
 	else {
 		generateInterrupt(cq->irq);
@@ -471,7 +515,7 @@ static int nvmev_kthread_io_proc(void *data)
 			proc_entry = &vdev->proc_table[curr_entry];
 			if(proc_entry->isProc == false && 
 					proc_entry->usecs_target <= curr_usecs) {
-				//pr_info("%s(%llu): %llu -> %llu\n",  __func__, curr_usecs, \
+				NVMEV_DEBUG("(%llu): %llu -> %llu\n",  curr_usecs, \
 						proc_entry->usecs_start, \
 						proc_entry->usecs_target);
 				fill_cq_result(proc_entry->sqid,

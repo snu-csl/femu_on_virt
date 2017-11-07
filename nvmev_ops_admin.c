@@ -343,9 +343,9 @@ void nvmev_proc_admin(int entry_id) {
 void nvmev_proc_sq_admin(int new_db, int old_db) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	int num_proc = new_db - old_db;
-	int seq;
 	int cur_entry = old_db;
-	struct irq_desc *desc;
+	int seq;
+	cpumask_t tmp_cpu;
 	
 	if(unlikely(num_proc < 0)) num_proc+=queue->sq_depth;
 
@@ -357,26 +357,50 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 		}
 	}
 
+				vdev->admin_q->irq_vector = readl(vdev->msix_table+PCI_MSIX_ENTRY_DATA) & 0xFF;
 	if(vdev->msix_enabled) {
-		if(unlikely(!vdev->admin_q->affinity_settings)) {
-			if(vdev->admin_q->vector == 0)
-				vdev->admin_q->vector = first_msi_entry(&vdev->pdev->dev)->irq;
+		if(unlikely(!queue->irq_desc)) {
+			if(queue->vector == 0)
+				queue->vector = first_msi_entry(&vdev->pdev->dev)->irq;
 
-			desc = irq_to_desc(vdev->admin_q->vector);
-			if(desc && desc->affinity_hint) {
-				vdev->admin_q->affinity_settings = true;
-				vdev->admin_q->cpu_mask = desc->affinity_hint;
+			queue->irq_desc = irq_to_desc(vdev->admin_q->vector);
+		}
+#ifdef CONFIG_NUMA
+		NVMEV_DEBUG("smphint(latest): %*pbl\n", __func__, 
+				cpumask_pr_args(queue->irq_desc->irq_common_data.affinity));
+	
+		if(unlikely(!cpumask_subset(queue->irq_desc->irq_common_data.affinity,
+						cpumask_of_node(vdev->pdev->dev.numa_node)))) {
+			cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
+			apic->send_IPI_mask(&tmp_cpu, queue->irq_vector);
+		}
+		else {
+			if(unlikely(queue->irq_vector != 
+				(readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF))) {
+				queue->irq_vector = (readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF);
+			}
+			if(unlikely(cpumask_equal(queue->irq_desc->irq_common_data.affinity,
+							cpumask_of_node(vdev->pdev->dev.numa_node)))) {
+				cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
+				apic->send_IPI_mask(&tmp_cpu, queue->irq_vector);
+			}
+			else {
+				apic->send_IPI_mask(queue->irq_desc->irq_common_data.affinity,
+						queue->irq_vector);
+
 			}
 		}
 
-		if(vdev->admin_q->affinity_settings) {
-			apic->send_IPI_mask(vdev->admin_q->cpu_mask, queue->irq_vector);
-		}
-		else {
-			apic->send_IPI_all(queue->irq_vector);
-		}
+#else
+		NVMEV_DEBUG("Intr -> all, Vector->%u\n", __func__, cq->irq);
+
+		apic->send_IPI_mask(queue->irq_desc->irq_common_data.affinity, 
+				queue->irq_vector);
+#endif
 	}
 	else {
+		NVMEV_DEBUG("PIN INTR %u %d\n", __func__, 
+				queue->irq_vector, smp_processor_id());
 		generateInterrupt(queue->irq_vector);
 	}
 }
