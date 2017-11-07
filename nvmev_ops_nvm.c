@@ -73,6 +73,7 @@ long long int elapsed_usecs(int opcode, unsigned int length, long long int usecs
 			break;
 	}
 	*/
+
 	return elapsed_usecs;
 }
 
@@ -91,7 +92,7 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 	void* temp_ptr;
 	void *vaddr;
 	//int temp;
-
+	u64 cur_ns;
 	io_offs = sq_entry(sq_entry).rw.slba << 9;
 	length_bytes = (sq_entry(sq_entry).rw.length + 1) << 9;
 	remain_io = length_bytes;
@@ -153,6 +154,7 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 			if(io_size + mem_offs > 4096)
 				io_size -= mem_offs;
 		}
+		//cur_ns = ktime_to_ns(ktime_get());
 
 		if(sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			// write
@@ -164,7 +166,7 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 			memcpy(vaddr + mem_offs, vdev->storage_mapped + io_offs, io_size);
 			//NVMEV_INFO("Read %llu->%p, %u %llu %u\n", paddr, vaddr + mem_offs, mem_offs, io_offs, io_size);
 		}
-
+		//pr_info("%s: %llu\n", __func__, ktime_to_ns(ktime_get()) - cur_ns);
 		kunmap_atomic(vaddr);
 
 		remain_io-=io_size;
@@ -407,13 +409,17 @@ void nvmev_proc_cq_io(int cqid, int new_db, int old_db) {
 void nvmev_intr_issue(int cqid) {
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
 	struct irq_desc *desc;
+	struct msi_desc *msi_desc;
 
 	if(vdev->msix_enabled) {
 		if(unlikely(!cq->affinity_settings)) {
-			if(vdev->admin_q->vector == 0)
-				vdev->admin_q->vector = first_msi_entry(&vdev->pdev->dev)->irq;
-
-			desc = irq_to_desc(cq->irq_vector + vdev->admin_q->vector);
+			for_each_msi_entry(msi_desc, (&vdev->pdev->dev)) {
+				if(msi_desc->msi_attrib.entry_nr == cq->irq_vector)
+					break;
+			}
+			
+			desc = irq_to_desc(msi_desc->irq);
+			//affinity_hint? or irq_common_data.affinity?
 			if(desc && desc->affinity_hint) {
 				cq->affinity_settings = true;
 				cq->cpu_mask = desc->affinity_hint;
@@ -465,7 +471,9 @@ static int nvmev_kthread_io_proc(void *data)
 			proc_entry = &vdev->proc_table[curr_entry];
 			if(proc_entry->isProc == false && 
 					proc_entry->usecs_target <= curr_usecs) {
-
+				//pr_info("%s(%llu): %llu -> %llu\n",  __func__, curr_usecs, \
+						proc_entry->usecs_start, \
+						proc_entry->usecs_target);
 				fill_cq_result(proc_entry->sqid,
 						proc_entry->cqid,
 						proc_entry->sq_entry);
