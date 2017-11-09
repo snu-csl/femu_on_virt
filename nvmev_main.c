@@ -326,6 +326,14 @@ static int NVMeV_init(void){
 	NVMEV_IO_PROC_INIT(vdev);
 	NVMEV_REG_PROC_INIT(vdev);
 
+	cpumask_clear(&vdev->first_cpu_on_node);
+	cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), 
+			&vdev->first_cpu_on_node);
+
+	NVMEV_INFO("NODE: %d, First CPU: %*pbl\n", 
+				vdev->pdev->dev.numa_node,
+				cpumask_pr_args(&vdev->first_cpu_on_node));
+
 	NVMEV_INFO("Successfully created Virtual NVMe Deivce\n");
 
     return 0;

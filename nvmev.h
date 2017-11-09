@@ -182,6 +182,8 @@ struct nvmev_dev {
 	struct nvmev_submission_queue* sqes[NR_MAX_IO_QUEUE + 1];
 	struct nvmev_completion_queue* cqes[NR_MAX_IO_QUEUE + 1];
 
+	cpumask_t first_cpu_on_node;
+
 	struct proc_dir_entry *proc_root;
 	struct proc_dir_entry *read_latency;
 	struct proc_dir_entry *write_latency;

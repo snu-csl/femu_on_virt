@@ -345,7 +345,6 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 	int num_proc = new_db - old_db;
 	int cur_entry = old_db;
 	int seq;
-	cpumask_t tmp_cpu;
 	
 	if(unlikely(num_proc < 0)) num_proc+=queue->sq_depth;
 
@@ -372,11 +371,9 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 						cpumask_of_node(vdev->pdev->dev.numa_node)))) {
 			NVMEV_DEBUG("Not a member of node %d\n", vdev->pdev->dev.numa_node);
 
-			cpumask_clear(&tmp_cpu);
-			cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
 			NVMEV_DEBUG("Send to %*pbl, Vector %d\n", 
-					cpumask_pr_args(&tmp_cpu), queue->irq_vector);
-			apic->send_IPI_mask(&tmp_cpu, queue->irq_vector);
+					cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
+			apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
 		}
 		else {
 			if(unlikely(queue->irq_vector != 
@@ -385,11 +382,9 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 			}
 			if(unlikely(cpumask_equal(queue->irq_desc->irq_common_data.affinity,
 							cpumask_of_node(vdev->pdev->dev.numa_node)))) {
-				cpumask_clear(&tmp_cpu);
-				cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
 				NVMEV_DEBUG("EQ Send to %*pbl, Vector %d\n", 
-						cpumask_pr_args(&tmp_cpu), queue->irq_vector);
-				apic->send_IPI_mask(&tmp_cpu, queue->irq_vector);
+						cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
+				apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
 			}
 			else {
 				NVMEV_DEBUG("Best Send to %*pbl, Vector %d\n", 
@@ -413,11 +408,9 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 				vdev->pdev->dev.numa_node);
 		NVMEV_DEBUG("Node %d CPU Mask %*pbl\n", vdev->pdev->dev.numa_node,
 				cpumask_pr_args(cpumask_of_node(vdev->pdev->dev.numa_node)));
-		cpumask_clear(&tmp_cpu);
-		cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
 		NVMEV_DEBUG("Send to %*pbl, Vector %d\n", 
-				cpumask_pr_args(&tmp_cpu), queue->irq_vector);
-		apic->send_IPI_mask(&tmp_cpu, queue->irq_vector);
+				cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
+		apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
 		//generateInterrupt(queue->irq_vector);
 	}
 }
