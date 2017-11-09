@@ -429,6 +429,7 @@ void nvmev_intr_issue(int cqid) {
 						cpumask_of_node(vdev->pdev->dev.numa_node)))) {
 			//apic->send_IPI_mask(cpumask_of_node(vdev->pdev->dev.numa_node),
 			NVMEV_DEBUG("Invalid affinity, -> 0\n");
+			cpumask_clear(&tmp_cpu);
 			cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
 			apic->send_IPI_mask(&tmp_cpu, cq->irq);
 		}
@@ -459,6 +460,7 @@ void nvmev_intr_issue(int cqid) {
 			}
 			if(unlikely(cpumask_equal(cq->irq_desc->irq_common_data.affinity, cpumask_of_node(vdev->pdev->dev.numa_node)))) {
 				NVMEV_DEBUG("Every... -> 0\n");
+				cpumask_clear(&tmp_cpu);
 				cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)), &tmp_cpu);
 				apic->send_IPI_mask(&tmp_cpu, cq->irq);
 			}

@@ -166,7 +166,7 @@ int nvmev_args_verify(void) {
 
 void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev) {
 	vdev->nvmev_reg_proc = kthread_create(nvmev_kthread_proc_reg, NULL, "nvmev_proc_reg");
-	NVMEV_ERROR("Proc IO : %d\n", vdev->config.cpu_nr_proc_reg);
+	NVMEV_INFO("Proc IO : %d\n", vdev->config.cpu_nr_proc_reg);
 	if(vdev->config.cpu_nr_proc_reg != -1)
 		kthread_bind(vdev->nvmev_reg_proc, vdev->config.cpu_nr_proc_reg);
 	wake_up_process(vdev->nvmev_reg_proc);
@@ -231,14 +231,14 @@ bool force_slot = false;
 			GFP_KERNEL);
 	kfree(old_stat);
 
-	NVMEV_ERROR("=============== Configure Change =============\n");
-	NVMEV_ERROR("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
-	NVMEV_ERROR("* Write Latency   : %u (us)\n", vdev->config.write_latency);
-	NVMEV_ERROR("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
-	NVMEV_ERROR("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
-	NVMEV_ERROR("* Read  Bandwidth : %lld (us)\n", vdev->config.read_bw_us);
-	NVMEV_ERROR("* Write Bandwidth : %lld (us)\n", vdev->config.write_bw_us);
-	NVMEV_ERROR("* Number of Slot  : %d\n", vdev->nr_unit);
+	NVMEV_INFO("=============== Configure Change =============\n");
+	NVMEV_INFO("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
+	NVMEV_INFO("* Write Latency   : %u (us)\n", vdev->config.write_latency);
+	NVMEV_INFO("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
+	NVMEV_INFO("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
+	NVMEV_INFO("* Read  Bandwidth : %lld (us)\n", vdev->config.read_bw_us);
+	NVMEV_INFO("* Write Bandwidth : %lld (us)\n", vdev->config.write_bw_us);
+	NVMEV_INFO("* Number of Slot  : %d\n", vdev->nr_unit);
 
 	return count;
 }
@@ -251,7 +251,7 @@ static const struct file_operations proc_file_fops = {
 void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev) {
 	vdev->storage_mapped = memremap(vdev->config.storage_start,
 			vdev->config.storage_size, MEMREMAP_WB);
-	NVMEV_ERROR("Storage : %lu -> %lu\n", vdev->config.storage_start, vdev->config.storage_size);
+	NVMEV_INFO("Storage : %lu -> %lu\n", vdev->config.storage_start, vdev->config.storage_size);
 	if(vdev->storage_mapped == NULL)
 		NVMEV_ERROR("Storage Memory Remap Error!!!!!\n");
 
@@ -312,14 +312,14 @@ static int NVMeV_init(void){
 		nvmev_clone_pci_mem(vdev);
 	}
 
-	NVMEV_ERROR("=============== Configure Change =============\n");
-	NVMEV_ERROR("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
-	NVMEV_ERROR("* Write Latency   : %u (us)\n", vdev->config.write_latency);
-	NVMEV_ERROR("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
-	NVMEV_ERROR("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
-	NVMEV_ERROR("* Read  Bandwidth : %lld (us)\n", vdev->config.read_bw_us);
-	NVMEV_ERROR("* Write Bandwidth : %lld (us)\n", vdev->config.write_bw_us);
-	NVMEV_ERROR("* Number of Slot  : %d\n", vdev->nr_unit);
+	NVMEV_INFO("=============== Configure Change =============\n");
+	NVMEV_INFO("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
+	NVMEV_INFO("* Write Latency   : %u (us)\n", vdev->config.write_latency);
+	NVMEV_INFO("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
+	NVMEV_INFO("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
+	NVMEV_INFO("* Read  Bandwidth : %lld (us)\n", vdev->config.read_bw_us);
+	NVMEV_INFO("* Write Bandwidth : %lld (us)\n", vdev->config.write_bw_us);
+	NVMEV_INFO("* Number of Slot  : %d\n", vdev->nr_unit);
 
 	NVMEV_STORAGE_INIT(vdev);
 

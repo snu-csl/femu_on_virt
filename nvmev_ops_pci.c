@@ -218,7 +218,7 @@ struct pci_bus* nvmev_create_pci_bus() {
 		//vdev->bar = memremap(pci_resource_start(dev, 0), 8192, MEMREMAP_WT);
 		memset(vdev->bar, 0x0, 8192);
 		vdev->dbs = ((void *)vdev->bar) + 4096;
-		NVMEV_ERROR("%s: %p %p %p\n", __func__, vdev,
+		NVMEV_INFO("%s: %p %p %p\n", __func__, vdev,
 				vdev->bar, vdev->old_bar);
 		vdev->pdev = dev;
 	}
