@@ -419,10 +419,10 @@ void nvmev_intr_issue(int cqid) {
 		}
 
 #ifdef CONFIG_NUMA
-		NVMEV_INFO("smphint(latest): %*pbl, vector:%u\n", 
+		NVMEV_DEBUG("smphint(latest): %*pbl, vector:%u\n", 
 				cpumask_pr_args(cq->irq_desc->irq_common_data.affinity),
 				cq->irq);
-		NVMEV_INFO("Old: %u, New: %u\n", cq->irq,
+		NVMEV_DEBUG("Old: %u, New: %u\n", cq->irq,
 			readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF);
 
 		if(unlikely(!cpumask_subset(cq->irq_desc->irq_common_data.affinity,
