@@ -39,9 +39,9 @@ long long int elapsed_usecs(int opcode, unsigned int length, long long int usecs
 
 	for(i=0; i<req_unit; i++) {
 		unit_seq = (lowest_unit + i) % vdev->nr_unit;
-
-		if(vdev->unit_stat[unit_seq] < usecs_start)
+		if(vdev->unit_stat[unit_seq] < usecs_start) {
 			vdev->unit_stat[unit_seq]=usecs_start;
+		}
 
 		switch(opcode) {
 			case nvme_cmd_write: 
@@ -153,7 +153,6 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 			if(io_size + mem_offs > 4096)
 				io_size -= mem_offs;
 		}
-
 		if(sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			// write
 			memcpy(vdev->storage_mapped + io_offs, vaddr + mem_offs, io_size);
@@ -230,6 +229,8 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 #if	ENABLE_DBG_PRINT
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 #endif
+	//long long int usecs_enqueue = ktime_to_us(ktime_get());
+	long long int usecs_enqueue = local_clock() >> 10;
 
 	vdev->proc_free_seq = vdev->proc_table[new_entry].next;
 	
@@ -241,6 +242,7 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	vdev->proc_table[new_entry].cqid= cqid;
 	vdev->proc_table[new_entry].sq_entry = sq_entry;
 	vdev->proc_table[new_entry].usecs_start = usecs_start;
+	vdev->proc_table[new_entry].usecs_enqueue = usecs_enqueue;
 	vdev->proc_table[new_entry].usecs_target = usecs_target;
 	vdev->proc_table[new_entry].isProc = false;
 	vdev->proc_table[new_entry].next = -1;
@@ -343,7 +345,8 @@ void nvmev_proc_io_cleanup(void) {
 void nvmev_proc_nvm(int sqid, int sq_entry) {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	long long int usecs_elapsed = 0;
-	long long int usecs_start = ktime_to_us(ktime_get());
+	//long long int usecs_start = ktime_to_us(ktime_get());
+	long long int usecs_start = local_clock() >> 10;
 	unsigned int io_len;
 
 	switch(sq_entry(sq_entry).common.opcode) {
@@ -505,15 +508,18 @@ static int nvmev_kthread_io_proc(void *data)
 	int qidx;
 
 	while(!kthread_should_stop()) {
-		curr_usecs = ktime_to_us(ktime_get());
+		//curr_usecs = ktime_to_us(ktime_get());
+		curr_usecs = local_clock() >> 10;
 		vdev->proc_io_usecs = curr_usecs;
 		curr_entry = vdev->proc_io_seq;
 		while(curr_entry != -1) {
 			proc_entry = &vdev->proc_table[curr_entry];
 			if(proc_entry->isProc == false && 
 					proc_entry->usecs_target <= curr_usecs) {
-				NVMEV_DEBUG("(%llu): %llu -> %llu\n",  curr_usecs, \
+
+				NVMEV_DEBUG("(%llu): %llu -> %llu -> %llu\n",  curr_usecs, \
 						proc_entry->usecs_start, \
+						proc_entry->usecs_enqueue, \
 						proc_entry->usecs_target);
 				fill_cq_result(proc_entry->sqid,
 						proc_entry->cqid,
@@ -552,9 +558,9 @@ static int nvmev_kthread_io_proc(void *data)
 				NVMEV_DEBUG("Gen Interrupt %d\n", qidx);
 			}
 		}
-
+		schedule_timeout(nsecs_to_jiffies(1));
 		//schedule_timeout(round_usecs_relative(HZ));
-		schedule_timeout(jiffies_to_usecs(1));
+		//schedule_timeout(jiffies_to_usecs(1));
 	}
 
 	return 0;
@@ -576,7 +582,8 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev) {
 	vdev->proc_free_last = (NR_MAX_IO_QUEUE*NR_MAX_PARALLEL_IO)-1;
 	vdev->proc_io_seq = -1;
 
-	vdev->proc_io_usecs = ktime_to_us(ktime_get());
+	//vdev->proc_io_usecs = ktime_to_us(ktime_get());
+	vdev->proc_io_usecs = local_clock() >> 10;
 
 	vdev->nvmev_io_proc = kthread_create(nvmev_kthread_io_proc, 
 			NULL, "nvmev_proc_io");

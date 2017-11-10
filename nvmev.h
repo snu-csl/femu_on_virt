@@ -131,6 +131,7 @@ struct nvmev_proc_table {
 	int sq_entry;
 
 	long long int usecs_start;
+	long long int usecs_enqueue;
 	long long int usecs_target;
 
 	bool isProc;
