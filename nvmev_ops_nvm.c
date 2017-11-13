@@ -348,7 +348,7 @@ void nvmev_proc_nvm(int sqid, int sq_entry) {
 	//long long int usecs_start = ktime_to_us(ktime_get());
 	long long int usecs_start = cpu_clock(vdev->config.cpu_nr_proc_io) >> 10;
 	unsigned int io_len;
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 	unsigned long long prev_clock = 0;
 	unsigned long long prev_clock2 = 0;
 	unsigned long long prev_clock3 = 0;
@@ -385,17 +385,17 @@ void nvmev_proc_nvm(int sqid, int sq_entry) {
 			break;
 	}
 
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 	prev_clock2 = local_clock();
 #endif
 	nvmev_proc_io_enqueue(sqid, sq->cqid, sq_entry, 
 			usecs_start, usecs_elapsed);
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 	prev_clock3 = local_clock();
 #endif
 
 	nvmev_proc_io_cleanup();
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 	prev_clock4 = local_clock();
 
 	clock1+= (prev_clock2 - prev_clock);
@@ -426,7 +426,7 @@ void nvmev_proc_sq_io(int sqid, int new_db, int old_db) {
 
 	for(seq = 0; seq < num_proc; seq++) {
 		//nvmev_proc_nvm(sqid, sq_entry, usecs_start);
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 		pr_info("%s:Entry %llu\n", __func__, cpu_clock(0));
 #endif
 		nvmev_proc_nvm(sqid, sq_entry);
@@ -545,7 +545,7 @@ static int nvmev_kthread_io_proc(void *data)
 	struct nvmev_proc_table* proc_entry;
 	int qidx;
 
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 	static unsigned long long elapsed = 0;
 	static unsigned long long elapsed_nr = 0;
 
@@ -565,7 +565,7 @@ static int nvmev_kthread_io_proc(void *data)
 			if(proc_entry->isProc == false && 
 					proc_entry->usecs_target <= curr_usecs) {
 
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 				elapsed_nr ++;
 				elapsed+=(curr_usecs - proc_entry->usecs_start);
 
@@ -612,12 +612,12 @@ static int nvmev_kthread_io_proc(void *data)
 			if(cq == NULL) continue;
 			if(!cq->interrupt_enabled) continue;
 			if(cq->interrupt_ready == true) {
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 				prev_clock = local_clock();
 #endif
 				cq->interrupt_ready = false;
 				nvmev_intr_issue(qidx);
-#ifdef PERF_DEBUG
+#if PERF_DEBUG
 				intr_clock[qidx] += (local_clock() - prev_clock);
 				intr_counter[qidx]++;
 
