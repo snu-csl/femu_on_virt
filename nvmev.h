@@ -12,6 +12,8 @@
 #include "nvmev_hdr.h"
 #include "nvme_hdr.h"
 
+#define PERF_DEBUG 0
+
 #define NVMEV_DRV_NAME "NVMe_Virt_Dev"
 
 #define NVMEV_INFO(string, args...) \

@@ -119,7 +119,8 @@ static int nvmev_kthread_proc_reg(void *data)
 
 		//schedule_timeout();
 		//schedule_timeout(round_jiffies_relative(HZ));
-		schedule_timeout(usecs_to_jiffies(1));
+		cond_resched();
+		//schedule_timeout(nsecs_to_jiffies(1));
 	}
 
 	return 0;

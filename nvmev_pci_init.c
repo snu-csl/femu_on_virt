@@ -21,7 +21,8 @@ void VDEV_FINALIZE(struct nvmev_dev *vdev) {
 		iounmap(vdev->msix_table);
 	
 	if(vdev->bar)
-		iounmap(vdev->bar);
+		memunmap(vdev->bar);
+		//iounmap(vdev->bar);
 
 	if(vdev->old_bar)
 		kfree(vdev->old_bar);

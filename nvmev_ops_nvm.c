@@ -230,8 +230,8 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 #endif
 	//long long int usecs_enqueue = ktime_to_us(ktime_get());
-	long long int usecs_enqueue = local_clock() >> 10;
-
+	long long int usecs_enqueue = cpu_clock(vdev->config.cpu_nr_proc_io) >> 10;
+	//pr_info("%s:Entry %llu\n", __func__, cpu_clock(0));
 	vdev->proc_free_seq = vdev->proc_table[new_entry].next;
 	
 	NVMEV_DEBUG("New Entry %u[%d], sq-%d cq-%d, entry-%d %lld->%lld\n", new_entry, 
@@ -346,9 +346,20 @@ void nvmev_proc_nvm(int sqid, int sq_entry) {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	long long int usecs_elapsed = 0;
 	//long long int usecs_start = ktime_to_us(ktime_get());
-	long long int usecs_start = local_clock() >> 10;
+	long long int usecs_start = cpu_clock(vdev->config.cpu_nr_proc_io) >> 10;
 	unsigned int io_len;
-
+#ifdef PERF_DEBUG
+	unsigned long long prev_clock = 0;
+	unsigned long long prev_clock2 = 0;
+	unsigned long long prev_clock3 = 0;
+	unsigned long long prev_clock4 = 0;
+	static unsigned long long clock1 = 0;
+	static unsigned long long clock2 = 0;
+	static unsigned long long clock3 = 0;
+	static unsigned long long counter = 0;
+	
+	prev_clock = local_clock();
+#endif
 	switch(sq_entry(sq_entry).common.opcode) {
 		case nvme_cmd_flush:
 			nvmev_proc_flush(sqid, sq_entry);
@@ -374,10 +385,33 @@ void nvmev_proc_nvm(int sqid, int sq_entry) {
 			break;
 	}
 
+#ifdef PERF_DEBUG
+	prev_clock2 = local_clock();
+#endif
 	nvmev_proc_io_enqueue(sqid, sq->cqid, sq_entry, 
 			usecs_start, usecs_elapsed);
+#ifdef PERF_DEBUG
+	prev_clock3 = local_clock();
+#endif
 
 	nvmev_proc_io_cleanup();
+#ifdef PERF_DEBUG
+	prev_clock4 = local_clock();
+
+	clock1+= (prev_clock2 - prev_clock);
+	clock2+= (prev_clock3 - prev_clock2);
+	clock3+= (prev_clock4 - prev_clock3);
+	counter++;
+
+	if(counter > 2000) {
+		pr_info("MEM: %llu, ENQ: %llu, CLN: %llu\n", 
+				clock1/counter, clock2/counter, clock3/counter);
+		clock1=0;
+		clock2=0;
+		clock3=0;
+		counter = 0;
+	}
+#endif
 }
 
 void nvmev_proc_sq_io(int sqid, int new_db, int old_db) {
@@ -392,6 +426,9 @@ void nvmev_proc_sq_io(int sqid, int new_db, int old_db) {
 
 	for(seq = 0; seq < num_proc; seq++) {
 		//nvmev_proc_nvm(sqid, sq_entry, usecs_start);
+#ifdef PERF_DEBUG
+		pr_info("%s:Entry %llu\n", __func__, cpu_clock(0));
+#endif
 		nvmev_proc_nvm(sqid, sq_entry);
 
 		if(++sq_entry == sq->queue_size) {
@@ -489,6 +526,7 @@ void fill_cq_result(int sqid, int cqid, int sq_entry) {
 	cq_entry(cq_head).command_id = sq_entry(sq_entry).rw.command_id;
 	cq_entry(cq_head).sq_id = sqid;
 	cq_entry(cq_head).sq_head = sq_entry;
+	wmb();
 	cq_entry(cq_head).status = cq->phase | NVME_SC_SUCCESS << 1;
 
 	if(++cq_head == cq->queue_size) {
@@ -507,6 +545,16 @@ static int nvmev_kthread_io_proc(void *data)
 	struct nvmev_proc_table* proc_entry;
 	int qidx;
 
+#ifdef PERF_DEBUG
+	static unsigned long long elapsed = 0;
+	static unsigned long long elapsed_nr = 0;
+
+	static unsigned long long intr_clock[33];
+	static unsigned long long intr_counter[33];
+
+	unsigned long long prev_clock;
+#endif
+
 	while(!kthread_should_stop()) {
 		//curr_usecs = ktime_to_us(ktime_get());
 		curr_usecs = local_clock() >> 10;
@@ -517,14 +565,25 @@ static int nvmev_kthread_io_proc(void *data)
 			if(proc_entry->isProc == false && 
 					proc_entry->usecs_target <= curr_usecs) {
 
+#ifdef PERF_DEBUG
+				elapsed_nr ++;
+				elapsed+=(curr_usecs - proc_entry->usecs_start);
+
+				if(elapsed_nr>1000) {
+					pr_info("Elapsed time -> %llu\n", elapsed/elapsed_nr);
+					elapsed_nr = 0;
+					elapsed = 0;
+				}
+#endif
+
 				NVMEV_DEBUG("(%llu): %llu -> %llu -> %llu\n",  curr_usecs, \
 						proc_entry->usecs_start, \
 						proc_entry->usecs_enqueue, \
 						proc_entry->usecs_target);
+			//pr_info("%s:Out %llu\n", __func__, cpu_clock(0));
 				fill_cq_result(proc_entry->sqid,
 						proc_entry->cqid,
 						proc_entry->sq_entry);
-				
 				NVMEV_DEBUG("proc Entry %u, %d %d, %d --> %d\n", curr_entry,  \
 						proc_entry->sqid, \
 						proc_entry->cqid, \
@@ -553,14 +612,27 @@ static int nvmev_kthread_io_proc(void *data)
 			if(cq == NULL) continue;
 			if(!cq->interrupt_enabled) continue;
 			if(cq->interrupt_ready == true) {
+#ifdef PERF_DEBUG
+				prev_clock = local_clock();
+#endif
 				cq->interrupt_ready = false;
 				nvmev_intr_issue(qidx);
+#ifdef PERF_DEBUG
+				intr_clock[qidx] += (local_clock() - prev_clock);
+				intr_counter[qidx]++;
+
+				if(intr_counter[qidx] > 1000) {
+					pr_info("Gen Intr Clock -> Q:%d, %llu\n", qidx,
+							intr_clock[qidx]/intr_counter[qidx]);
+					intr_clock[qidx] = 0;
+					intr_counter[qidx] = 0;
+				}
+#endif
 				NVMEV_DEBUG("Gen Interrupt %d\n", qidx);
 			}
 		}
-		schedule_timeout(nsecs_to_jiffies(1));
-		//schedule_timeout(round_usecs_relative(HZ));
-		//schedule_timeout(jiffies_to_usecs(1));
+		cond_resched();
+		//schedule_timeout(nsecs_to_jiffies(1));
 	}
 
 	return 0;
@@ -583,7 +655,7 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev) {
 	vdev->proc_io_seq = -1;
 
 	//vdev->proc_io_usecs = ktime_to_us(ktime_get());
-	vdev->proc_io_usecs = local_clock() >> 10;
+	vdev->proc_io_usecs = cpu_clock(vdev->config.cpu_nr_proc_io) >> 10;
 
 	vdev->nvmev_io_proc = kthread_create(nvmev_kthread_io_proc, 
 			NULL, "nvmev_proc_io");
