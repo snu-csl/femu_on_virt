@@ -151,7 +151,7 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry) {
 		if(paddr & 0xFFF) {
 			mem_offs = paddr & 0xFFF;
 			if(io_size + mem_offs > 4096)
-				io_size -= mem_offs;
+				io_size = 4096 - mem_offs;
 		}
 		if(sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			// write
