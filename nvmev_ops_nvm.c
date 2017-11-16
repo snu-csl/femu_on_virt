@@ -226,9 +226,8 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	long long int usecs_target = usecs_elapse;
 	unsigned int new_entry = vdev->proc_free_seq;
 	unsigned int curr_entry = -1;
-#if	ENABLE_DBG_PRINT
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-#endif
+
 	//long long int usecs_enqueue = ktime_to_us(ktime_get());
 	long long int usecs_enqueue = cpu_clock(vdev->config.cpu_nr_proc_io) >> 10;
 	//pr_info("%s:Entry %llu\n", __func__, cpu_clock(0));
@@ -241,6 +240,7 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	vdev->proc_table[new_entry].sqid = sqid;
 	vdev->proc_table[new_entry].cqid= cqid;
 	vdev->proc_table[new_entry].sq_entry = sq_entry;
+	vdev->proc_table[new_entry].command_id = sq_entry(sq_entry).common.command_id;
 	vdev->proc_table[new_entry].usecs_start = usecs_start;
 	vdev->proc_table[new_entry].usecs_enqueue = usecs_enqueue;
 	vdev->proc_table[new_entry].usecs_target = usecs_target;
@@ -518,12 +518,11 @@ void nvmev_intr_issue(int cqid) {
 	}
 }
 
-void fill_cq_result(int sqid, int cqid, int sq_entry) {
-	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+void fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id) {
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
 	int cq_head = cq->cq_head;
 
-	cq_entry(cq_head).command_id = sq_entry(sq_entry).rw.command_id;
+	cq_entry(cq_head).command_id = command_id;
 	cq_entry(cq_head).sq_id = sqid;
 	cq_entry(cq_head).sq_head = sq_entry;
 	wmb();
@@ -583,7 +582,8 @@ static int nvmev_kthread_io_proc(void *data)
 			//pr_info("%s:Out %llu\n", __func__, cpu_clock(0));
 				fill_cq_result(proc_entry->sqid,
 						proc_entry->cqid,
-						proc_entry->sq_entry);
+						proc_entry->sq_entry, proc_entry->command_id);
+
 				NVMEV_DEBUG("proc Entry %u, %d %d, %d --> %d\n", curr_entry,  \
 						proc_entry->sqid, \
 						proc_entry->cqid, \

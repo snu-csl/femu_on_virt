@@ -131,6 +131,7 @@ struct nvmev_proc_table {
 	int cqid;
 
 	int sq_entry;
+	unsigned int command_id;
 
 	long long int usecs_start;
 	long long int usecs_enqueue;
