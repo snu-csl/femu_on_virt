@@ -50,7 +50,7 @@
 
 #define IRQ_NUM 16
 #define NR_MAX_IO_QUEUE 128
-#define NR_MAX_PARALLEL_IO 512
+#define NR_MAX_PARALLEL_IO 8192
 
 struct nvmev_ns {
 	int nsid;
@@ -114,8 +114,8 @@ struct nvmev_config {
 	unsigned long storage_start; //bytes offs
 	unsigned long storage_size;
 
-	unsigned int read_latency; //us
-	unsigned int write_latency; //us
+	unsigned int read_latency; //ns
+	unsigned int write_latency; //ns
 
 	unsigned int read_bw; //MiB
 	unsigned int write_bw; //MiB
@@ -123,7 +123,8 @@ struct nvmev_config {
 	long long int write_bw_us;
 
 	unsigned int cpu_nr_proc_reg;
-	unsigned int cpu_nr_proc_io;
+	unsigned int nr_io_cpu;
+	unsigned int *cpu_nr_proc_io;
 };
 
 struct nvmev_proc_table {
@@ -133,13 +134,26 @@ struct nvmev_proc_table {
 	int sq_entry;
 	unsigned int command_id;
 
-	long long int usecs_start;
-	long long int usecs_enqueue;
-	long long int usecs_target;
+	long long int nsecs_start;
+	long long int nsecs_enqueue;
+	long long int nsecs_target;
 
+	bool isCpy;
 	bool isProc;
 
 	unsigned int next, prev;
+};
+
+struct nvmev_proc_info {
+	struct nvmev_proc_table *proc_table;
+	unsigned int proc_free_seq;
+	unsigned int proc_free_last;
+	unsigned int proc_io_seq;
+	unsigned int proc_io_seq_end;
+	long long int proc_io_nsecs;
+	
+	struct task_struct *nvmev_io_proc;
+	char *thread_name;
 };
 
 struct nvmev_dev {
@@ -158,16 +172,11 @@ struct nvmev_dev {
 
 	struct nvmev_config config;
 	struct task_struct *nvmev_reg_proc;
-	struct task_struct *nvmev_io_proc;
 
 	void *storage_mapped;
 
-	struct nvmev_proc_table *proc_table;
-	unsigned int proc_free_seq;
-	unsigned int proc_free_last;
-	unsigned int proc_io_seq;
-	unsigned int proc_io_seq_end;
-	long long int proc_io_usecs;
+	struct nvmev_proc_info *proc_info;
+	unsigned int proc_turn;
 
 	bool msix_enabled;
 	void __iomem *msix_table;
@@ -185,6 +194,7 @@ struct nvmev_dev {
 	struct nvmev_ns** ns_arr;
 	struct nvmev_submission_queue* sqes[NR_MAX_IO_QUEUE + 1];
 	struct nvmev_completion_queue* cqes[NR_MAX_IO_QUEUE + 1];
+	spinlock_t cq_irq_lock[NR_MAX_IO_QUEUE + 1];
 
 	cpumask_t first_cpu_on_node;
 
@@ -207,7 +217,7 @@ void VDEV_SET_ARGS(struct nvmev_config *config,
 		unsigned int memmap_start, unsigned int memmap_size,
 		unsigned int read_latency, unsigned int write_latency,
 		unsigned int read_bw, unsigned int write_bw,
-		unsigned int cpu_mask);
+		char *cpu_mask);
 
 // HEADER Initialize
 void PCI_HEADER_SETTINGS(struct nvmev_dev* vdev, struct pci_header* pcihdr);

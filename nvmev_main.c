@@ -33,8 +33,8 @@
  ****************************************************************
  * 1. Memmap Start (size in GiB)
  * 2. Memmap Size (size in MiB)
- * 3. Read Latency (export to sysfs, micro seconds)
- * 4. Write Latency (export to sysfs, micro seconds)
+ * 3. Read Latency (export to sysfs, nano seconds)
+ * 4. Write Latency (export to sysfs, nano seconds)
  * 5. Read BW
  * 6. Write BW
  * 7. CPU Mask
@@ -49,22 +49,22 @@ unsigned int read_latency=0;
 unsigned int write_latency=0;
 unsigned int read_bw=0;
 unsigned int write_bw=0;
-unsigned int cpu_mask=0;
+char *cpu_mask;
 
 module_param(memmap_start, uint, 0);
 MODULE_PARM_DESC(memmap_start, "Memmap Start (size in GiB)");
 module_param(memmap_size, uint, 0);
 MODULE_PARM_DESC(memmap_size, "Memmap Size (size in MiB)");
 module_param(read_latency, uint, 0);
-MODULE_PARM_DESC(read_latency, "Read Latency (us, micro seconds)");
+MODULE_PARM_DESC(read_latency, "Read Latency (ns, nano seconds)");
 module_param(write_latency, uint, 0);
-MODULE_PARM_DESC(write_latency, "Write Latency (us, micro seconds)");
+MODULE_PARM_DESC(write_latency, "Write Latency (ns, nano seconds)");
 module_param(read_bw, uint, 0);
 MODULE_PARM_DESC(read_bw, "Max Read IOPS");
 module_param(write_bw, uint, 0);
 MODULE_PARM_DESC(write_bw, "Max Write IOPS");
-module_param(cpu_mask, uint, 0);
-MODULE_PARM_DESC(write_bw, "CPU Masks for Process, Complete(int.) Thread");
+module_param(cpu_mask, charp, 0);
+MODULE_PARM_DESC(write_bw, "CPU list for Process, Complete(int.) Thread, Seperate using Comman(,)");
 
 static void nvmev_proc_dbs(void) {
 	int qid;
@@ -180,6 +180,17 @@ void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev) {
 	}
 }
 
+void print_perf_configs(void) {
+	NVMEV_INFO("=============== Configure Change =============\n");
+	NVMEV_INFO("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
+	NVMEV_INFO("* Write Latency   : %u (us)\n", vdev->config.write_latency);
+	NVMEV_INFO("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
+	NVMEV_INFO("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
+	NVMEV_INFO("* Read  Bandwidth : %lld (us)\n", vdev->config.read_bw_us);
+	NVMEV_INFO("* Write Bandwidth : %lld (us)\n", vdev->config.write_bw_us);
+	NVMEV_INFO("* Number of Slot  : %d\n", vdev->nr_unit);
+}
+
 static ssize_t proc_file_read(struct file *filp,char *buf,size_t len, loff_t *offp) {
 	ssize_t count = 0;
 
@@ -194,7 +205,7 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 	unsigned int newval;
 	int temp;
 	long long int *old_stat;
-bool force_slot = false;
+	bool force_slot = false;
 	copy_from_user(input, buf, len);
 
 	newval = simple_strtol(input, &endptr, 10);
@@ -216,10 +227,10 @@ bool force_slot = false;
 		vdev->config.write_latency = newval;
 	}
 	else if(!strcmp(fname, "slot")) {
-		vdev->config.read_bw = newval * 4 * (1000000 / vdev->config.read_latency) / 1024;
+		vdev->config.read_bw = newval * 4 * (1000000000 / vdev->config.read_latency) / 1024;
 		vdev->config.read_bw_us = (long long int)((vdev->config.read_bw << 20) / 1000000);
 
-		vdev->config.write_bw = newval * 4 * (1000000 / vdev->config.write_latency) / 1024;
+		vdev->config.write_bw = newval * 4 * (1000000000 / vdev->config.write_latency) / 1024;
 		vdev->config.write_bw_us = (long long int)((vdev->config.write_bw << 20) / 1000000);
 		force_slot = true;
 	}
@@ -232,14 +243,7 @@ bool force_slot = false;
 			GFP_KERNEL);
 	kfree(old_stat);
 
-	NVMEV_INFO("=============== Configure Change =============\n");
-	NVMEV_INFO("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
-	NVMEV_INFO("* Write Latency   : %u (us)\n", vdev->config.write_latency);
-	NVMEV_INFO("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
-	NVMEV_INFO("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
-	NVMEV_INFO("* Read  Bandwidth : %lld (us)\n", vdev->config.read_bw_us);
-	NVMEV_INFO("* Write Bandwidth : %lld (us)\n", vdev->config.write_bw_us);
-	NVMEV_INFO("* Number of Slot  : %d\n", vdev->nr_unit);
+	print_perf_configs();
 
 	return count;
 }
@@ -313,14 +317,7 @@ static int NVMeV_init(void){
 		nvmev_clone_pci_mem(vdev);
 	}
 
-	NVMEV_INFO("=============== Configure Change =============\n");
-	NVMEV_INFO("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
-	NVMEV_INFO("* Write Latency   : %u (us)\n", vdev->config.write_latency);
-	NVMEV_INFO("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
-	NVMEV_INFO("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
-	NVMEV_INFO("* Read  Bandwidth : %lld (us)\n", vdev->config.read_bw_us);
-	NVMEV_INFO("* Write Bandwidth : %lld (us)\n", vdev->config.write_bw_us);
-	NVMEV_INFO("* Number of Slot  : %d\n", vdev->nr_unit);
+	print_perf_configs();
 
 	NVMEV_STORAGE_INIT(vdev);
 

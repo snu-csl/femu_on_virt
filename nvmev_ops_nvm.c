@@ -22,8 +22,8 @@
 
 extern struct nvmev_dev *vdev;
 
-long long int elapsed_usecs(int opcode, unsigned int length, long long int usecs_start) {
-	long long int elapsed_usecs = 0;
+long long int elapsed_nsecs(int opcode, unsigned int length, long long int nsecs_start) {
+	long long int elapsed_nsecs = 0;
 	int unit_seq = 0;
 	int req_unit = length / 4096 + !!(length % 4096);
 	int lowest_unit = 0;
@@ -39,8 +39,8 @@ long long int elapsed_usecs(int opcode, unsigned int length, long long int usecs
 
 	for(i=0; i<req_unit; i++) {
 		unit_seq = (lowest_unit + i) % vdev->nr_unit;
-		if(vdev->unit_stat[unit_seq] < usecs_start) {
-			vdev->unit_stat[unit_seq]=usecs_start;
+		if(vdev->unit_stat[unit_seq] < nsecs_start) {
+			vdev->unit_stat[unit_seq]=nsecs_start;
 		}
 
 		switch(opcode) {
@@ -54,29 +54,38 @@ long long int elapsed_usecs(int opcode, unsigned int length, long long int usecs
 				break;
 		}
 		
-		if(elapsed_usecs < vdev->unit_stat[unit_seq])
-			elapsed_usecs = vdev->unit_stat[unit_seq];
+		if(elapsed_nsecs < vdev->unit_stat[unit_seq])
+			elapsed_nsecs = vdev->unit_stat[unit_seq];
 	}
 	/*
 	switch(opcode) {
 		case nvme_cmd_write: 
-			elapsed_usecs+=vdev->config.write_latency;
+			elapsed_nsecs+=vdev->config.write_latency;
 			if(vdev->config.write_bw_us)
-				elapsed_usecs+=(length / vdev->config.write_bw_us);
+				elapsed_nsecs+=(length / vdev->config.write_bw_us);
 			break;
 		case nvme_cmd_read:
-			elapsed_usecs+=vdev->config.read_latency;
+			elapsed_nsecs+=vdev->config.read_latency;
 			if(vdev->config.read_bw_us)
-				elapsed_usecs+=(length / vdev->config.read_bw_us);
+				elapsed_nsecs+=(length / vdev->config.read_bw_us);
 			break;
 		default:
 			break;
 	}
 	*/
-	return elapsed_usecs;
+	return elapsed_nsecs;
 }
 
 unsigned int nvmev_storage_io(int sqid, int sq_entry) {
+	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	unsigned int length_bytes;
+	
+	length_bytes = (sq_entry(sq_entry).rw.length + 1) << 9;
+
+	return length_bytes;
+}
+
+unsigned int nvmev_storage_memcpy(int sqid, int sq_entry) {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	//unsigned long long start_bytes;
 	unsigned long long io_offs;
@@ -221,132 +230,146 @@ unsigned int nvmev_proc_read(int sqid, int sq_entry) {
 }
 
 void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
-		long long int usecs_start, long long int usecs_elapse) {
-	//long long int usecs_target = usecs_start + usecs_elapse;
-	long long int usecs_target = usecs_elapse;
-	unsigned int new_entry = vdev->proc_free_seq;
-	unsigned int curr_entry = -1;
+		long long int nsecs_start, long long int nsecs_elapse) {
+	
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
-	//long long int usecs_enqueue = ktime_to_us(ktime_get());
-	long long int usecs_enqueue = cpu_clock(vdev->config.cpu_nr_proc_io) >> 10;
-	//pr_info("%s:Entry %llu\n", __func__, cpu_clock(0));
-	vdev->proc_free_seq = vdev->proc_table[new_entry].next;
+	unsigned int proc_turn = vdev->proc_turn;
+	struct nvmev_proc_info *proc_info = &vdev->proc_info[++proc_turn];
+
+	long long int nsecs_target = nsecs_elapse;
+	unsigned int new_entry = proc_info->proc_free_seq;
+	unsigned int curr_entry = -1;
+
+	long long int nsecs_enqueue = cpu_clock(vdev->config.cpu_nr_proc_reg);
+
+	if(proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
+	vdev->proc_turn = proc_turn;
+
+	proc_info->proc_free_seq = proc_info->proc_table[new_entry].next;
 	
 	NVMEV_DEBUG("New Entry %u[%d], sq-%d cq-%d, entry-%d %lld->%lld\n", new_entry, 
 			sq_entry(sq_entry).rw.opcode,
-			sqid, cqid, sq_entry, usecs_start, usecs_target);
+			sqid, cqid, sq_entry, nsecs_start, nsecs_target);
 	
-	vdev->proc_table[new_entry].sqid = sqid;
-	vdev->proc_table[new_entry].cqid= cqid;
-	vdev->proc_table[new_entry].sq_entry = sq_entry;
-	vdev->proc_table[new_entry].command_id = sq_entry(sq_entry).common.command_id;
-	vdev->proc_table[new_entry].usecs_start = usecs_start;
-	vdev->proc_table[new_entry].usecs_enqueue = usecs_enqueue;
-	vdev->proc_table[new_entry].usecs_target = usecs_target;
-	vdev->proc_table[new_entry].isProc = false;
-	vdev->proc_table[new_entry].next = -1;
-	vdev->proc_table[new_entry].prev = -1;
+	/////////////////////////////////
+	proc_info->proc_table[new_entry].sqid = sqid;
+	proc_info->proc_table[new_entry].cqid= cqid;
+	proc_info->proc_table[new_entry].sq_entry = sq_entry;
+	proc_info->proc_table[new_entry].command_id = sq_entry(sq_entry).common.command_id;
+	proc_info->proc_table[new_entry].nsecs_start = nsecs_start;
+	proc_info->proc_table[new_entry].nsecs_enqueue = nsecs_enqueue;
+	proc_info->proc_table[new_entry].nsecs_target = nsecs_target;
+	proc_info->proc_table[new_entry].isProc = false;
+	proc_info->proc_table[new_entry].isCpy = false;
+	proc_info->proc_table[new_entry].next = -1;
+	proc_info->proc_table[new_entry].prev = -1;
 
-	// (END) -> (START) order, usecs target ascending order
-	if(vdev->proc_io_seq == -1) {
-		vdev->proc_io_seq = new_entry;
-		vdev->proc_io_seq_end = new_entry;
-		NVMEV_DEBUG("%u: PROC_IO_SEQ = %u\n", __LINE__, vdev->proc_io_seq);
+	// (END) -> (START) order, nsecs target ascending order
+	if(proc_info->proc_io_seq == -1) {
+		proc_info->proc_io_seq = new_entry;
+		proc_info->proc_io_seq_end = new_entry;
+		NVMEV_DEBUG("%u: PROC_IO_SEQ = %u\n", __LINE__, proc_info->proc_io_seq);
 	}
 	else {
-		curr_entry = vdev->proc_io_seq_end;
+		curr_entry = proc_info->proc_io_seq_end;
 
 		while(curr_entry != -1) {
 			NVMEV_DEBUG("Move-> Current: %u, Target, %llu, ioproc: %llu, New target: %llu\n",
-					curr_entry, vdev->proc_table[curr_entry].usecs_target,
-					vdev->proc_io_usecs,
-					usecs_target);
-			if(vdev->proc_table[curr_entry].usecs_target <= vdev->proc_io_usecs)
+					curr_entry, proc_info->proc_table[curr_entry].nsecs_target,
+					proc_info->proc_io_nsecs,
+					nsecs_target);
+			if(proc_info->proc_table[curr_entry].nsecs_target <= proc_info->proc_io_nsecs)
 				break;
 
-			if(vdev->proc_table[curr_entry].usecs_target <= usecs_target)
+			if(proc_info->proc_table[curr_entry].nsecs_target <= nsecs_target)
 				break;
 
-			curr_entry = vdev->proc_table[curr_entry].prev;
+			curr_entry = proc_info->proc_table[curr_entry].prev;
 		}
 
 		if(curr_entry == -1) {
-			vdev->proc_table[new_entry].next = vdev->proc_io_seq;
-			vdev->proc_io_seq = new_entry;
-			NVMEV_DEBUG("%u: PROC_IO_SEQ = %u\n", __LINE__, vdev->proc_io_seq);
+			proc_info->proc_table[new_entry].next = proc_info->proc_io_seq;
+			proc_info->proc_io_seq = new_entry;
+			NVMEV_DEBUG("%u: PROC_IO_SEQ = %u\n", __LINE__, proc_info->proc_io_seq);
 		}
-		else if(vdev->proc_table[curr_entry].next == -1) {
-			vdev->proc_table[new_entry].prev = curr_entry;
-			vdev->proc_io_seq_end = new_entry;
-			vdev->proc_table[curr_entry].next = new_entry;
+		else if(proc_info->proc_table[curr_entry].next == -1) {
+			proc_info->proc_table[new_entry].prev = curr_entry;
+			proc_info->proc_io_seq_end = new_entry;
+			proc_info->proc_table[curr_entry].next = new_entry;
 			NVMEV_DEBUG("Cur Entry : %u, New Entry : %u\n", curr_entry, new_entry);
 		}
 		else {
-			vdev->proc_table[new_entry].prev = curr_entry;
-			vdev->proc_table[new_entry].next = vdev->proc_table[curr_entry].next;
+			proc_info->proc_table[new_entry].prev = curr_entry;
+			proc_info->proc_table[new_entry].next = proc_info->proc_table[curr_entry].next;
 
-			vdev->proc_table[vdev->proc_table[new_entry].next].prev = new_entry;
-			vdev->proc_table[curr_entry].next = new_entry;
+			proc_info->proc_table[proc_info->proc_table[new_entry].next].prev = new_entry;
+			proc_info->proc_table[curr_entry].next = new_entry;
 			NVMEV_DEBUG("%u <- New Entry(%u) -> %u\n", 
-					vdev->proc_table[new_entry].prev,
+					proc_info->proc_table[new_entry].prev,
 					new_entry,
-					vdev->proc_table[new_entry].next);
+					proc_info->proc_table[new_entry].next);
 		}
 	}
 }
 
 void nvmev_proc_io_cleanup(void) {
+	struct nvmev_proc_info *proc_info;
 	struct nvmev_proc_table *proc_entry, *free_entry;
 	unsigned int start_entry = -1, last_entry = -1;
 	unsigned int curr_entry;
+	unsigned int turn;
 
-	start_entry = vdev->proc_io_seq;
-	curr_entry = start_entry;
+	for(turn = 0; turn<=vdev->config.nr_io_cpu; turn++) {
+		proc_info = &vdev->proc_info[turn];
 
-	while(curr_entry != -1) {
-		proc_entry = &vdev->proc_table[curr_entry];
-		if(proc_entry->isProc == true &&
-				proc_entry->usecs_target <= vdev->proc_io_usecs) {
-			last_entry = curr_entry;
-			curr_entry = proc_entry->next;
-		}
-		else
-			break;
-	}
+		start_entry = proc_info->proc_io_seq;
+		curr_entry = start_entry;
 
-	if(start_entry != -1 && last_entry != -1) {
-		proc_entry = &vdev->proc_table[last_entry];
-		vdev->proc_io_seq = proc_entry->next;
-		NVMEV_DEBUG("%u: PROC_IO_SEQ = %u\n", __LINE__, vdev->proc_io_seq);
-		if(proc_entry->next != -1) {
-			proc_entry = &vdev->proc_table[vdev->proc_io_seq];
-			proc_entry->prev = -1;
+		while(curr_entry != -1) {
+			proc_entry = &proc_info->proc_table[curr_entry];
+			if(proc_entry->isProc == true &&
+					proc_entry->nsecs_target <= proc_info->proc_io_nsecs) {
+				last_entry = curr_entry;
+				curr_entry = proc_entry->next;
+			}
+			else
+				break;
 		}
 
-		proc_entry = &vdev->proc_table[last_entry];
-		proc_entry->next = -1;
+		if(start_entry != -1 && last_entry != -1) {
+			proc_entry = &proc_info->proc_table[last_entry];
+			proc_info->proc_io_seq = proc_entry->next;
+			NVMEV_DEBUG("%u: PROC_IO_SEQ = %u\n", __LINE__, proc_info->proc_io_seq);
+			if(proc_entry->next != -1) {
+				proc_entry = &proc_info->proc_table[proc_info->proc_io_seq];
+				proc_entry->prev = -1;
+			}
 
-		proc_entry = &vdev->proc_table[start_entry];
-		proc_entry->prev = vdev->proc_free_last;
+			proc_entry = &proc_info->proc_table[last_entry];
+			proc_entry->next = -1;
 
-		free_entry = &vdev->proc_table[vdev->proc_free_last];
-		free_entry->next = start_entry;
+			proc_entry = &proc_info->proc_table[start_entry];
+			proc_entry->prev = proc_info->proc_free_last;
 
-		vdev->proc_free_last = last_entry;
+			free_entry = &proc_info->proc_table[proc_info->proc_free_last];
+			free_entry->next = start_entry;
 
-		NVMEV_DEBUG("Cleanup %u -> %u\n", start_entry, last_entry);
+			proc_info->proc_free_last = last_entry;
+
+			NVMEV_DEBUG("Cleanup %u -> %u\n", start_entry, last_entry);
+		}
 	}
 
 	return;
 }
 
-//void nvmev_proc_nvm(int sqid, int sq_entry, long long int usecs_start) {
+//void nvmev_proc_nvm(int sqid, int sq_entry, long long int nsecs_start) {
 void nvmev_proc_nvm(int sqid, int sq_entry) {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	long long int usecs_elapsed = 0;
-	//long long int usecs_start = ktime_to_us(ktime_get());
-	long long int usecs_start = cpu_clock(vdev->config.cpu_nr_proc_io) >> 10;
+	long long int nsecs_elapsed = 0;
+	//long long int nsecs_start = ktime_to_us(ktime_get());
+	long long int nsecs_start = cpu_clock(vdev->config.cpu_nr_proc_reg);
 	unsigned int io_len;
 #if PERF_DEBUG
 	unsigned long long prev_clock = 0;
@@ -363,15 +386,15 @@ void nvmev_proc_nvm(int sqid, int sq_entry) {
 	switch(sq_entry(sq_entry).common.opcode) {
 		case nvme_cmd_flush:
 			nvmev_proc_flush(sqid, sq_entry);
-			usecs_elapsed = usecs_start;
+			nsecs_elapsed = nsecs_start;
 			break;
 		case nvme_cmd_write: 
 			io_len = nvmev_proc_write(sqid, sq_entry);
-			usecs_elapsed = elapsed_usecs(nvme_cmd_write, io_len, usecs_start);
+			nsecs_elapsed = elapsed_nsecs(nvme_cmd_write, io_len, nsecs_start);
 			break;
 		case nvme_cmd_read:
 			io_len = nvmev_proc_read(sqid, sq_entry);
-			usecs_elapsed = elapsed_usecs(nvme_cmd_read, io_len, usecs_start);
+			nsecs_elapsed = elapsed_nsecs(nvme_cmd_read, io_len, nsecs_start);
 			break;
 		case nvme_cmd_write_uncor:
 		case nvme_cmd_compare:
@@ -389,7 +412,7 @@ void nvmev_proc_nvm(int sqid, int sq_entry) {
 	prev_clock2 = local_clock();
 #endif
 	nvmev_proc_io_enqueue(sqid, sq->cqid, sq_entry, 
-			usecs_start, usecs_elapsed);
+			nsecs_start, nsecs_elapsed);
 #if PERF_DEBUG
 	prev_clock3 = local_clock();
 #endif
@@ -419,13 +442,13 @@ void nvmev_proc_sq_io(int sqid, int new_db, int old_db) {
 	int num_proc = new_db - old_db;
 	int seq;
 	int sq_entry = old_db;
-	//long long int usecs_start = ktime_to_us(ktime_get());
+	//long long int nsecs_start = ktime_to_us(ktime_get());
 
 	if(unlikely(num_proc < 0)) num_proc+=sq->queue_size;
 	if(unlikely(!sq)) return;
 
 	for(seq = 0; seq < num_proc; seq++) {
-		//nvmev_proc_nvm(sqid, sq_entry, usecs_start);
+		//nvmev_proc_nvm(sqid, sq_entry, nsecs_start);
 #if PERF_DEBUG
 		pr_info("%s:Entry %llu\n", __func__, cpu_clock(0));
 #endif
@@ -538,7 +561,8 @@ void fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id) {
 
 static int nvmev_kthread_io_proc(void *data)
 {
-	long long int curr_usecs; 
+	struct nvmev_proc_info *proc_info = (struct nvmev_proc_info *)data;
+	long long int curr_nsecs; 
 	unsigned int curr_entry;
 	struct nvmev_completion_queue *cq;// = vdev->cqes[cqid];
 	struct nvmev_proc_table* proc_entry;
@@ -555,18 +579,21 @@ static int nvmev_kthread_io_proc(void *data)
 #endif
 
 	while(!kthread_should_stop()) {
-		//curr_usecs = ktime_to_us(ktime_get());
-		curr_usecs = local_clock() >> 10;
-		vdev->proc_io_usecs = curr_usecs;
-		curr_entry = vdev->proc_io_seq;
+		//curr_nsecs = ktime_to_us(ktime_get());
+		curr_nsecs = cpu_clock(vdev->config.cpu_nr_proc_reg); //local_clock();
+		proc_info->proc_io_nsecs = curr_nsecs;
+		curr_entry = proc_info->proc_io_seq;
 		while(curr_entry != -1) {
-			proc_entry = &vdev->proc_table[curr_entry];
-			if(proc_entry->isProc == false && 
-					proc_entry->usecs_target <= curr_usecs) {
-
+			proc_entry = &proc_info->proc_table[curr_entry];
+			if(proc_entry->isProc == false && proc_entry->isCpy == false) {
+				nvmev_storage_memcpy(proc_entry->sqid, proc_entry->sq_entry);
+				proc_entry->isCpy = true;
+			}
+			if(proc_entry->isProc == false && proc_entry->isCpy == true &&
+					proc_entry->nsecs_target <= curr_nsecs) {
 #if PERF_DEBUG
 				elapsed_nr ++;
-				elapsed+=(curr_usecs - proc_entry->usecs_start);
+				elapsed+=(curr_nsecs - proc_entry->nsecs_start);
 
 				if(elapsed_nr>1000) {
 					pr_info("Elapsed time -> %llu\n", elapsed/elapsed_nr);
@@ -575,10 +602,10 @@ static int nvmev_kthread_io_proc(void *data)
 				}
 #endif
 
-				NVMEV_DEBUG("(%llu): %llu -> %llu -> %llu\n",  curr_usecs, \
-						proc_entry->usecs_start, \
-						proc_entry->usecs_enqueue, \
-						proc_entry->usecs_target);
+				NVMEV_DEBUG("(%llu): %llu -> %llu -> %llu\n",  curr_nsecs, \
+						proc_entry->nsecs_start, \
+						proc_entry->nsecs_enqueue, \
+						proc_entry->nsecs_target);
 			//pr_info("%s:Out %llu\n", __func__, cpu_clock(0));
 				fill_cq_result(proc_entry->sqid,
 						proc_entry->cqid,
@@ -588,21 +615,21 @@ static int nvmev_kthread_io_proc(void *data)
 						proc_entry->sqid, \
 						proc_entry->cqid, \
 						proc_entry->sq_entry, \
-						vdev->proc_table[curr_entry].next \
+						proc_info->proc_table[curr_entry].next \
 						);
 				
 				proc_entry->isProc = true;
 				cq = vdev->cqes[proc_entry->cqid];
 				cq->interrupt_ready = true;
 			
-				curr_entry = vdev->proc_table[curr_entry].next;
+				curr_entry = proc_info->proc_table[curr_entry].next;
 			}
 			else if(proc_entry->isProc == true) {
-				NVMEV_DEBUG("Move to Next %u %d\n", curr_entry, vdev->proc_table[curr_entry].next);
-				curr_entry = vdev->proc_table[curr_entry].next;
+				NVMEV_DEBUG("Move to Next %u %d\n", curr_entry, proc_info->proc_table[curr_entry].next);
+				curr_entry = proc_info->proc_table[curr_entry].next;
 			}
 			else {
-				NVMEV_DEBUG("=====> Entry: %u, %lld %lld %d\n", curr_entry, curr_usecs, proc_entry->usecs_target, proc_entry->isProc);
+				NVMEV_DEBUG("=====> Entry: %u, %lld %lld %d\n", curr_entry, curr_nsecs, proc_entry->nsecs_target, proc_entry->isProc);
 				break;
 			}
 		}
@@ -611,24 +638,28 @@ static int nvmev_kthread_io_proc(void *data)
 			cq = vdev->cqes[qidx];
 			if(cq == NULL) continue;
 			if(!cq->interrupt_enabled) continue;
-			if(cq->interrupt_ready == true) {
+			if(spin_trylock(&vdev->cq_irq_lock[qidx])) {
+				if(cq->interrupt_ready == true) {
 #if PERF_DEBUG
-				prev_clock = local_clock();
+					prev_clock = local_clock();
 #endif
-				cq->interrupt_ready = false;
-				nvmev_intr_issue(qidx);
+					cq->interrupt_ready = false;
+					nvmev_intr_issue(qidx);
 #if PERF_DEBUG
-				intr_clock[qidx] += (local_clock() - prev_clock);
-				intr_counter[qidx]++;
+					intr_clock[qidx] += (local_clock() - prev_clock);
+					intr_counter[qidx]++;
 
-				if(intr_counter[qidx] > 1000) {
-					pr_info("Gen Intr Clock -> Q:%d, %llu\n", qidx,
-							intr_clock[qidx]/intr_counter[qidx]);
-					intr_clock[qidx] = 0;
-					intr_counter[qidx] = 0;
-				}
+					if(intr_counter[qidx] > 1000) {
+						pr_info("Gen Intr Clock -> Q:%d, %llu\n", qidx,
+								intr_clock[qidx]/intr_counter[qidx]);
+						intr_clock[qidx] = 0;
+						intr_counter[qidx] = 0;
+					}
 #endif
-				NVMEV_DEBUG("Gen Interrupt %d\n", qidx);
+					NVMEV_DEBUG("Gen Interrupt %d\n", qidx);
+				}
+
+				spin_unlock(&vdev->cq_irq_lock[qidx]);
 			}
 		}
 		cond_resched();
@@ -639,37 +670,56 @@ static int nvmev_kthread_io_proc(void *data)
 }
 
 void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev) {
-	unsigned int i;
+	unsigned int i, proc_idx;
+	struct nvmev_proc_info *proc_info;
+	vdev->proc_info = kcalloc(sizeof(struct nvmev_proc_info), vdev->config.nr_io_cpu, GFP_KERNEL);
+	vdev->proc_turn = 0;
 
-	vdev->proc_table = kzalloc(sizeof(struct nvmev_proc_table) * NR_MAX_IO_QUEUE * NR_MAX_PARALLEL_IO, GFP_KERNEL);
+	for(proc_idx=0; proc_idx < vdev->config.nr_io_cpu; proc_idx++) {
+		proc_info = &vdev->proc_info[proc_idx];
 
-	for(i=0; i<(NR_MAX_IO_QUEUE*NR_MAX_PARALLEL_IO); i++) {
-		vdev->proc_table[i].next = i+1;
-		vdev->proc_table[i].prev = i-1;
+		proc_info->proc_table = kzalloc(sizeof(struct nvmev_proc_table) * NR_MAX_PARALLEL_IO, GFP_KERNEL);
+		for(i=0; i<(NR_MAX_PARALLEL_IO); i++) {
+			proc_info->proc_table[i].next = i+1;
+			proc_info->proc_table[i].prev = i-1;
+		}
+
+		proc_info->proc_table[(NR_MAX_PARALLEL_IO)-1].next = -1;
+
+		proc_info->proc_free_seq = 0;
+		proc_info->proc_free_last = (NR_MAX_PARALLEL_IO)-1;
+		proc_info->proc_io_seq = -1;
+
+		proc_info->proc_io_nsecs = cpu_clock(vdev->config.cpu_nr_proc_reg);
+
+		proc_info->thread_name = kzalloc(sizeof(char) * 16, GFP_KERNEL);
+
+		sprintf(proc_info->thread_name, "nvmev_proc_io_%03d", proc_idx);
+
+		proc_info->nvmev_io_proc = kthread_create(nvmev_kthread_io_proc, proc_info, proc_info->thread_name);
+
+		kthread_bind(proc_info->nvmev_io_proc, vdev->config.cpu_nr_proc_io[proc_idx]);
+
+		wake_up_process(proc_info->nvmev_io_proc);
 	}
-
-	vdev->proc_table[(NR_MAX_IO_QUEUE*NR_MAX_PARALLEL_IO)-1].next = -1;
-
-	vdev->proc_free_seq = 0;
-	vdev->proc_free_last = (NR_MAX_IO_QUEUE*NR_MAX_PARALLEL_IO)-1;
-	vdev->proc_io_seq = -1;
-
-	//vdev->proc_io_usecs = ktime_to_us(ktime_get());
-	vdev->proc_io_usecs = cpu_clock(vdev->config.cpu_nr_proc_io) >> 10;
-
-	vdev->nvmev_io_proc = kthread_create(nvmev_kthread_io_proc, 
-			NULL, "nvmev_proc_io");
-
-	if(vdev->config.cpu_nr_proc_io != -1)
-		kthread_bind(vdev->nvmev_io_proc, vdev->config.cpu_nr_proc_io);
-	wake_up_process(vdev->nvmev_io_proc);
 }
 
 void NVMEV_IO_PROC_FINAL(struct nvmev_dev *vdev) {
-	if(!IS_ERR_OR_NULL(vdev->nvmev_io_proc)) {
-		kthread_stop(vdev->nvmev_io_proc);
-		vdev->nvmev_io_proc = NULL;
+	unsigned int proc_idx;
+	struct nvmev_proc_info *proc_info;
+	
+	for(proc_idx=0; proc_idx < vdev->config.nr_io_cpu; proc_idx++) {
+		proc_info = &vdev->proc_info[proc_idx];
+		
+		if(!IS_ERR_OR_NULL(proc_info->nvmev_io_proc)) {
+			kthread_stop(proc_info->nvmev_io_proc);
+			proc_info->nvmev_io_proc = NULL;
+
+			kfree(proc_info->thread_name);
+		}
+
+		kfree(proc_info->proc_table);
 	}
 
-	kfree(vdev->proc_table);
+	kfree(vdev->proc_info);
 }
