@@ -235,7 +235,7 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	unsigned int proc_turn = vdev->proc_turn;
-	struct nvmev_proc_info *proc_info = &vdev->proc_info[++proc_turn];
+	struct nvmev_proc_info *proc_info = &vdev->proc_info[proc_turn++];
 
 	long long int nsecs_target = nsecs_elapse;
 	unsigned int new_entry = proc_info->proc_free_seq;
@@ -320,7 +320,7 @@ void nvmev_proc_io_cleanup(void) {
 	unsigned int curr_entry;
 	unsigned int turn;
 
-	for(turn = 0; turn<=vdev->config.nr_io_cpu; turn++) {
+	for(turn = 0; turn<vdev->config.nr_io_cpu; turn++) {
 		proc_info = &vdev->proc_info[turn];
 
 		start_entry = proc_info->proc_io_seq;
@@ -567,7 +567,7 @@ static int nvmev_kthread_io_proc(void *data)
 	struct nvmev_completion_queue *cq;// = vdev->cqes[cqid];
 	struct nvmev_proc_table* proc_entry;
 	int qidx;
-
+	
 #if PERF_DEBUG
 	static unsigned long long elapsed = 0;
 	static unsigned long long elapsed_nr = 0;
@@ -694,12 +694,15 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev) {
 
 		proc_info->thread_name = kzalloc(sizeof(char) * 16, GFP_KERNEL);
 
-		sprintf(proc_info->thread_name, "nvmev_proc_io_%03d", proc_idx);
+		sprintf(proc_info->thread_name, "nvmev_proc_io_%d", proc_idx);
 
 		proc_info->nvmev_io_proc = kthread_create(nvmev_kthread_io_proc, proc_info, proc_info->thread_name);
 
 		kthread_bind(proc_info->nvmev_io_proc, vdev->config.cpu_nr_proc_io[proc_idx]);
+		wake_up_process(proc_info->nvmev_io_proc);
+	}
 
+	for(proc_idx=0; proc_idx < vdev->config.nr_io_cpu; proc_idx++) {
 		wake_up_process(proc_info->nvmev_io_proc);
 	}
 }
