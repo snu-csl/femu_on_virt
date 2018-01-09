@@ -182,8 +182,8 @@ void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev) {
 
 void print_perf_configs(void) {
 	NVMEV_INFO("=============== Configure Change =============\n");
-	NVMEV_INFO("* Read  Latency   : %u (us)\n", vdev->config.read_latency);
-	NVMEV_INFO("* Write Latency   : %u (us)\n", vdev->config.write_latency);
+	NVMEV_INFO("* Read  Latency   : %u (ns)\n", vdev->config.read_latency);
+	NVMEV_INFO("* Write Latency   : %u (ns)\n", vdev->config.write_latency);
 	NVMEV_INFO("* Read  Bandwidth : %u (MB/s)\n", vdev->config.read_bw);
 	NVMEV_INFO("* Write Bandwidth : %u (MB/s)\n", vdev->config.write_bw);
 	NVMEV_INFO("* Read  Bandwidth : %lld (us)\n", vdev->config.read_bw_us);

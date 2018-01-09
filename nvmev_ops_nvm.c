@@ -588,6 +588,12 @@ static int nvmev_kthread_io_proc(void *data)
 			if(proc_entry->isProc == false && proc_entry->isCpy == false) {
 				nvmev_storage_memcpy(proc_entry->sqid, proc_entry->sq_entry);
 				proc_entry->isCpy = true;
+				NVMEV_DEBUG("proc Entry %u, %d %d, %d --> %d   COPY MEM\n", curr_entry,  \
+						proc_entry->sqid, \
+						proc_entry->cqid, \
+						proc_entry->sq_entry, \
+						proc_info->proc_table[curr_entry].next \
+				);
 			}
 			if(proc_entry->isProc == false && proc_entry->isCpy == true &&
 					proc_entry->nsecs_target <= curr_nsecs) {
@@ -625,7 +631,7 @@ static int nvmev_kthread_io_proc(void *data)
 				curr_entry = proc_info->proc_table[curr_entry].next;
 			}
 			else if(proc_entry->isProc == true) {
-				NVMEV_DEBUG("Move to Next %u %d\n", curr_entry, proc_info->proc_table[curr_entry].next);
+				//NVMEV_DEBUG("Move to Next %u %d\n", curr_entry, proc_info->proc_table[curr_entry].next);
 				curr_entry = proc_info->proc_table[curr_entry].next;
 			}
 			else {
@@ -703,6 +709,8 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev) {
 	}
 
 	for(proc_idx=0; proc_idx < vdev->config.nr_io_cpu; proc_idx++) {
+		proc_info = &vdev->proc_info[proc_idx];
+		pr_err("%s start\n", proc_info->thread_name);
 		wake_up_process(proc_info->nvmev_io_proc);
 	}
 }
