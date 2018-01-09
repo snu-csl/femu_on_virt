@@ -284,7 +284,8 @@ void nvmev_admin_get_features(int eid, int cq_head) {
 void nvmev_proc_admin(int entry_id) {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	int cq_head = queue->cq_head;
-	pr_info("%s: %x %d\n", __func__, sq_entry(entry_id).identify.opcode, cq_head);
+	pr_info("%s: %x id-%d command-%d %d\n", __func__, sq_entry(entry_id).identify.opcode, 
+			entry_id, sq_entry(entry_id).common.command_id, cq_head);
 
 	switch(sq_entry(entry_id).common.opcode) {
 		case nvme_admin_delete_sq:

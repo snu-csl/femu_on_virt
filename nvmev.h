@@ -49,7 +49,7 @@
 #define PCIE_EXPCAP_START 0x50
 
 #define IRQ_NUM 16
-#define NR_MAX_IO_QUEUE 128
+#define NR_MAX_IO_QUEUE 32
 #define NR_MAX_PARALLEL_IO 8192
 
 struct nvmev_ns {
