@@ -248,7 +248,8 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 
 	proc_info->proc_free_seq = proc_info->proc_table[new_entry].next;
 	
-	NVMEV_DEBUG("New Entry %u[%d], sq-%d cq-%d, entry-%d %lld->%lld\n", new_entry, 
+	NVMEV_DEBUG("New Entry %s->%u[%d], sq-%d cq-%d, entry-%d %lld->%lld\n", proc_info->thread_name,
+			new_entry, 
 			sq_entry(sq_entry).rw.opcode,
 			sqid, cqid, sq_entry, nsecs_start, nsecs_target);
 	
