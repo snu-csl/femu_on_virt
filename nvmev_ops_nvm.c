@@ -613,9 +613,12 @@ static int nvmev_kthread_io_proc(void *data)
 						proc_entry->nsecs_enqueue, \
 						proc_entry->nsecs_target);
 			//pr_info("%s:Out %llu\n", __func__, cpu_clock(0));
+				
+				spin_lock(&vdev->cq_entry_lock[proc_entry->cqid]);
 				fill_cq_result(proc_entry->sqid,
 						proc_entry->cqid,
 						proc_entry->sq_entry, proc_entry->command_id);
+				spin_unlock(&vdev->cq_entry_lock[proc_entry->cqid]);
 
 				NVMEV_DEBUG("proc Entry %u, %d %d, %d --> %d\n", curr_entry,  \
 						proc_entry->sqid, \

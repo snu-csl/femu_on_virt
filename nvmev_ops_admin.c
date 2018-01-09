@@ -58,6 +58,7 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 		cq->cq[i] = page_address(pfn_to_page(sq_entry(eid).create_cq.prp1 >> PAGE_SHIFT) + i);
 	}
 	vdev->cqes[cq->qid] = cq;
+	spin_lock_init(&vdev->cq_entry_lock[cq->qid]);
 	spin_lock_init(&vdev->cq_irq_lock[cq->qid]);
 
 	dbs_idx = cq->qid * 2 + 1;

@@ -194,6 +194,7 @@ struct nvmev_dev {
 	struct nvmev_ns** ns_arr;
 	struct nvmev_submission_queue* sqes[NR_MAX_IO_QUEUE + 1];
 	struct nvmev_completion_queue* cqes[NR_MAX_IO_QUEUE + 1];
+	spinlock_t cq_entry_lock[NR_MAX_IO_QUEUE + 1];
 	spinlock_t cq_irq_lock[NR_MAX_IO_QUEUE + 1];
 
 	cpumask_t first_cpu_on_node;
