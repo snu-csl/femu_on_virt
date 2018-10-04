@@ -191,10 +191,20 @@ void print_perf_configs(void) {
 	NVMEV_INFO("* Number of Slot  : %d\n", vdev->nr_unit);
 }
 
-static ssize_t proc_file_read(struct file *filp,char *buf,size_t len, loff_t *offp) {
-	ssize_t count = 0;
+static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *offp)
+{
+	//ssize_t count = 0;
+	const char *fname = filp->f_path.dentry->d_name.name;
+	if (*offp) return 0;
 
-	return count;
+	if (strcmp(fname, "read_latency") == 0) {
+		snprintf(buf, len, "%u", vdev->config.read_latency);
+	} else if (strcmp(fname, "write_latency") == 0) {
+		snprintf(buf, len, "%u", vdev->config.write_latency);
+	} else if (strcmp(fname, "slot") == 0) {
+		snprintf(buf, len, "%u", vdev->config.read_bw);
+	}
+	return 1;
 }
 static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, loff_t *offp) {
 	ssize_t count = len;
@@ -261,11 +271,11 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev) {
 		NVMEV_ERROR("Storage Memory Remap Error!!!!!\n");
 
 	vdev->proc_root = proc_mkdir("nvmev", NULL);
-	vdev->read_latency = proc_create_data("read_latency", 0, vdev->proc_root, &proc_file_fops, &vdev->config.read_latency);
-	vdev->write_latency = proc_create_data("write_latency", 0, vdev->proc_root, &proc_file_fops, &vdev->config.write_latency);
-	vdev->read_bw = proc_create_data("read_bw", 0, vdev->proc_root, &proc_file_fops, &vdev->config.read_bw);
-	vdev->write_bw = proc_create_data("write_bw", 0, vdev->proc_root, &proc_file_fops, &vdev->config.write_bw);
-	vdev->slot = proc_create_data("slot", 0, vdev->proc_root, &proc_file_fops, &vdev->nr_unit);
+	vdev->read_latency = proc_create_data("read_latency", 0664, vdev->proc_root, &proc_file_fops, &vdev->config.read_latency);
+	vdev->write_latency = proc_create_data("write_latency", 0664, vdev->proc_root, &proc_file_fops, &vdev->config.write_latency);
+	vdev->read_bw = proc_create_data("read_bw", 0664, vdev->proc_root, &proc_file_fops, &vdev->config.read_bw);
+	vdev->write_bw = proc_create_data("write_bw", 0664, vdev->proc_root, &proc_file_fops, &vdev->config.write_bw);
+	vdev->slot = proc_create_data("slot", 0664, vdev->proc_root, &proc_file_fops, &vdev->nr_unit);
 
 }
 
