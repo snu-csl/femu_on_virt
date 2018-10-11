@@ -7,3 +7,4 @@ modules.order
 .*.cmd
 .tmp_versions/
 tags
+cscope.out

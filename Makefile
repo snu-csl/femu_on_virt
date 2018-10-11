@@ -10,5 +10,15 @@ default:
 install:
 	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) modules_install
 
+.PHONY: clean
 clean:
 	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) clean
+	   rm -f cscope.out
+
+.PHONY: cscope
+cscope:
+	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) cscope
+
+.PHONY: tags
+tags:
+	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) tags
