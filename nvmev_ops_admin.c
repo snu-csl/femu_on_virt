@@ -16,18 +16,19 @@
 
 extern struct nvmev_dev *vdev;
 
-void nvmev_admin_create_cq(int eid, int cq_head) {
+void nvmev_admin_create_cq(int eid, int cq_head)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_completion_queue *cq;
 	unsigned int num_pages, i;
 	int dbs_idx;
-		
+
 	cq = kzalloc(sizeof(struct nvmev_completion_queue), GFP_KERNEL);
-	
+
 	/* Todo : Physically dis-contiguous prp list */
 
 	cq->qid = sq_entry(eid).create_cq.cqid;
-	
+
 	cq->interrupt_enabled = \
 		(sq_entry(eid).create_cq.cq_flags & NVME_CQ_IRQ_ENABLED)? true: false;
 	cq->phys_contig = \
@@ -37,7 +38,7 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 
 	cq->interrupt_ready = false;
 
-	if(cq->interrupt_enabled) {
+	if (cq->interrupt_enabled) {
 		cq->irq_vector = sq_entry(eid).create_cq.irq_vector;
 		cq->irq = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
 
@@ -46,7 +47,7 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 
 	//if queue size = 0 > vdev->bar->cap.mqes!!
 	//num_queue_pages?
-	
+
 	cq->cq_head = 0;
 	cq->cq_tail = -1;
 
@@ -54,7 +55,7 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 	num_pages = (cq->queue_size * sizeof(struct nvme_completion)) / PAGE_SIZE;
 	cq->cq = kzalloc(sizeof(struct nvme_completion*) * num_pages, GFP_KERNEL);
 
-	for(i=0; i<num_pages; i++) {
+	for (i = 0; i < num_pages; i++) {
 		cq->cq[i] = page_address(pfn_to_page(sq_entry(eid).create_cq.prp1 >> PAGE_SHIFT) + i);
 	}
 	vdev->cqes[cq->qid] = cq;
@@ -71,13 +72,14 @@ void nvmev_admin_create_cq(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_delete_cq(int eid, int cq_head) {
+void nvmev_admin_delete_cq(int eid, int cq_head)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_completion_queue *cq;
 	unsigned int qid;
 
 	qid = sq_entry(eid).delete_queue.qid;
-	
+
 	cq = vdev->cqes[qid];
 	vdev->cqes[qid] = NULL;
 
@@ -90,7 +92,8 @@ void nvmev_admin_delete_cq(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_create_sq(int eid, int cq_head) {
+void nvmev_admin_create_sq(int eid, int cq_head)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_submission_queue *sq;
 	unsigned int num_pages, i;
@@ -107,12 +110,12 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 	sq->phys_contig = \
 		(sq_entry(eid).create_sq.sq_flags & NVME_QUEUE_PHYS_CONTIG)? true: false;
 	sq->queue_size = sq_entry(eid).create_sq.qsize + 1;
-	
+
 	//multiple pages
 	num_pages = (sq->queue_size * sizeof(struct nvme_command)) / PAGE_SIZE;
 	sq->sq = kzalloc(sizeof(struct nvme_command*) * num_pages, GFP_KERNEL);
 
-	for(i=0; i<num_pages; i++) {
+	for (i = 0; i < num_pages; i++) {
 		sq->sq[i] = page_address(pfn_to_page(sq_entry(eid).create_sq.prp1 >> PAGE_SHIFT) + i);
 	}
 	vdev->sqes[sq->qid] = sq;
@@ -127,13 +130,14 @@ void nvmev_admin_create_sq(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_delete_sq(int eid, int cq_head) {
+void nvmev_admin_delete_sq(int eid, int cq_head)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_submission_queue *sq;
 	unsigned int qid;
 
 	qid = sq_entry(eid).delete_queue.qid;
-	
+
 	sq = vdev->sqes[qid];
 	vdev->sqes[qid] = NULL;
 
@@ -146,12 +150,13 @@ void nvmev_admin_delete_sq(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_identify_ctrl(int eid, int cq_head) {
+void nvmev_admin_identify_ctrl(int eid, int cq_head)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_id_ctrl* ctrl;
 
 	ctrl = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
-	
+
 	ctrl->nn = 1;
 	ctrl->oncs = 0; //optional command
 	ctrl->acl = 3; //minimum 4 required, 0's based value
@@ -170,11 +175,13 @@ void nvmev_admin_identify_ctrl(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_get_log_page(int eid, int cq_head) {
+void nvmev_admin_get_log_page(int eid, int cq_head)
+{
 
 }
 
-void nvmev_admin_identify_namespace(int eid, int cq_head) {
+void nvmev_admin_identify_namespace(int eid, int cq_head)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_id_ns* ns;
 
@@ -223,9 +230,10 @@ void nvmev_admin_identify_namespace(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_set_features(int eid, int cq_head) {
+void nvmev_admin_set_features(int eid, int cq_head)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
-	
+
 	int num_queue;
 
 	pr_info("%s: %x\n", __func__, sq_entry(eid).features.fid);
@@ -240,20 +248,18 @@ void nvmev_admin_set_features(int eid, int cq_head) {
 		case NVME_FEAT_NUM_QUEUES:
             //SQ
             num_queue = sq_entry(eid).features.dword11 & 0xFFFF;
-            if(num_queue > NR_MAX_IO_QUEUE) {
+            if (num_queue > NR_MAX_IO_QUEUE) {
                 num_queue = NR_MAX_IO_QUEUE - 1;
                 vdev->nr_sq = NR_MAX_IO_QUEUE;
-            }
-            else
+            } else
                 vdev->nr_sq = num_queue + 1;
 
             //CQ
             num_queue = (sq_entry(eid).features.dword11 >> 16) & 0xFFFF;
-            if(num_queue > NR_MAX_IO_QUEUE) {
+            if (num_queue > NR_MAX_IO_QUEUE) {
                 num_queue = NR_MAX_IO_QUEUE - 1;
                 vdev->nr_cq = NR_MAX_IO_QUEUE;
-            }
-            else
+            } else
                 vdev->nr_cq = num_queue + 1;
 
             cq_entry(cq_head).result = ((vdev->nr_cq-1)<<16 | (vdev->nr_sq-1));
@@ -277,14 +283,16 @@ void nvmev_admin_set_features(int eid, int cq_head) {
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_get_features(int eid, int cq_head) {
+void nvmev_admin_get_features(int eid, int cq_head)
+{
 
 }
 
-void nvmev_proc_admin(int entry_id) {
+void nvmev_proc_admin(int entry_id)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	int cq_head = queue->cq_head;
-	pr_info("%s: %x id-%d command-%d %d\n", __func__, sq_entry(entry_id).identify.opcode, 
+	pr_info("%s: %x id-%d command-%d %d\n", __func__, sq_entry(entry_id).identify.opcode,
 			entry_id, sq_entry(entry_id).common.command_id, cq_head);
 
 	switch(sq_entry(entry_id).common.opcode) {
@@ -304,7 +312,7 @@ void nvmev_proc_admin(int entry_id) {
 			nvmev_admin_create_cq(entry_id, cq_head);
 			break;
 		case nvme_admin_identify:
-			if(sq_entry(entry_id).identify.cns == 0x01)
+			if (sq_entry(entry_id).identify.cns == 0x01)
 				nvmev_admin_identify_ctrl(entry_id, cq_head);
 			else
 				nvmev_admin_identify_namespace(entry_id, cq_head);
@@ -333,7 +341,7 @@ void nvmev_proc_admin(int entry_id) {
 			break;
 	}
 
-	if(++cq_head == queue->cq_depth) {
+	if (++cq_head == queue->cq_depth) {
 		cq_head = 0;
 		queue->phase = !queue->phase;
 	}
@@ -343,25 +351,26 @@ void nvmev_proc_admin(int entry_id) {
 
 
 
-void nvmev_proc_sq_admin(int new_db, int old_db) {
+void nvmev_proc_sq_admin(int new_db, int old_db)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	int num_proc = new_db - old_db;
 	int cur_entry = old_db;
 	int seq;
-	
-	if(unlikely(num_proc < 0)) num_proc+=queue->sq_depth;
 
-	for(seq = 0; seq < num_proc; seq++) {
+	if (unlikely(num_proc < 0)) num_proc += queue->sq_depth;
+
+	for (seq = 0; seq < num_proc; seq++) {
 		nvmev_proc_admin(cur_entry);
 
-		if(++cur_entry == queue->sq_depth) {
+		if (++cur_entry == queue->sq_depth) {
 			cur_entry = 0;
 		}
 	}
 
-	if(vdev->msix_enabled) {
-		if(unlikely(!queue->irq_desc)) {
-			if(queue->vector == 0)
+	if (vdev->msix_enabled) {
+		if (unlikely(!queue->irq_desc)) {
+			if (queue->vector == 0)
 				queue->vector = first_msi_entry(&vdev->pdev->dev)->irq;
 
 			queue->irq_desc = irq_to_desc(vdev->admin_q->vector);
@@ -369,29 +378,27 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 #ifdef CONFIG_NUMA
 		NVMEV_DEBUG("smphint(latest): %*pbl\n",
 				cpumask_pr_args(queue->irq_desc->irq_common_data.affinity));
-	
-		if(unlikely(!cpumask_subset(queue->irq_desc->irq_common_data.affinity,
+
+		if (unlikely(!cpumask_subset(queue->irq_desc->irq_common_data.affinity,
 						cpumask_of_node(vdev->pdev->dev.numa_node)))) {
 			NVMEV_DEBUG("Not a member of node %d\n", vdev->pdev->dev.numa_node);
 
-			NVMEV_DEBUG("Send to %*pbl, Vector %d\n", 
+			NVMEV_DEBUG("Send to %*pbl, Vector %d\n",
 					cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
 			apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
-		}
-		else {
-			if(unlikely(queue->irq_vector != 
+		} else {
+			if (unlikely(queue->irq_vector !=
 				(readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF))) {
 				queue->irq_vector = (readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF);
 			}
-			if(unlikely(cpumask_equal(queue->irq_desc->irq_common_data.affinity,
+			if (unlikely(cpumask_equal(queue->irq_desc->irq_common_data.affinity,
 							cpumask_of_node(vdev->pdev->dev.numa_node)))) {
-				NVMEV_DEBUG("EQ Send to %*pbl, Vector %d\n", 
+				NVMEV_DEBUG("EQ Send to %*pbl, Vector %d\n",
 						cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
 				apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
-			}
-			else {
-				NVMEV_DEBUG("Best Send to %*pbl, Vector %d\n", 
-						cpumask_pr_args(queue->irq_desc->irq_common_data.affinity), 
+			} else {
+				NVMEV_DEBUG("Best Send to %*pbl, Vector %d\n",
+						cpumask_pr_args(queue->irq_desc->irq_common_data.affinity),
 						queue->irq_vector);
 				apic->send_IPI_mask(queue->irq_desc->irq_common_data.affinity,
 						queue->irq_vector);
@@ -401,24 +408,24 @@ void nvmev_proc_sq_admin(int new_db, int old_db) {
 #else
 		NVMEV_DEBUG("Intr -> all, Vector->%u\n", cq->irq);
 
-		apic->send_IPI_mask(queue->irq_desc->irq_common_data.affinity, 
+		apic->send_IPI_mask(queue->irq_desc->irq_common_data.affinity,
 				queue->irq_vector);
 #endif
-	}
-	else {
-		NVMEV_DEBUG("PIN INTR %u %d node-%d\n", 
+	} else {
+		NVMEV_DEBUG("PIN INTR %u %d node-%d\n",
 				queue->irq_vector, smp_processor_id(),
 				vdev->pdev->dev.numa_node);
 		NVMEV_DEBUG("Node %d CPU Mask %*pbl\n", vdev->pdev->dev.numa_node,
 				cpumask_pr_args(cpumask_of_node(vdev->pdev->dev.numa_node)));
-		NVMEV_DEBUG("Send to %*pbl, Vector %d\n", 
+		NVMEV_DEBUG("Send to %*pbl, Vector %d\n",
 				cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
 		apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
 		//generateInterrupt(queue->irq_vector);
 	}
 }
 
-void nvmev_proc_cq_admin(int new_db, int old_db) {
+void nvmev_proc_cq_admin(int new_db, int old_db)
+{
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 
 	queue->cq_tail = new_db-1;

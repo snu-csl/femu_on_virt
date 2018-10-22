@@ -43,7 +43,7 @@
 #define OFFS_PCI_MSIX_CAP 0x50
 #define OFFS_PCIE_CAP 0x60
 
-#define SZ_HEADER 0x60 + SZ_PCIE_CAP
+#define SZ_HEADER (0x60 + SZ_PCIE_CAP)
 
 #define PCI_CFG_SPACE_SIZE	256
 #define PCIE_EXPCAP_START 0x50
@@ -61,9 +61,9 @@ struct nvmev_submission_queue {
 	int cqid;
 	int sq_priority;
 	bool phys_contig;
-	
+
 	int queue_size;
-	
+
 	struct nvme_command __iomem **sq;
 };
 
@@ -73,14 +73,14 @@ struct nvmev_completion_queue {
 	int irq_vector;
 	bool interrupt_enabled;
 	bool phys_contig;
-	
+
 	bool interrupt_ready;
 
 	bool affinity_settings;
 	const struct cpumask *cpu_mask;
 
 	int queue_size;
-	
+
 	int phase;
 	int cq_head, cq_tail;
 	struct nvme_completion __iomem **cq;
@@ -92,7 +92,7 @@ struct nvmev_admin_queue {
 	int irq;
 	int irq_vector;
 	int vector;
-	
+
 	bool affinity_settings;
 	const struct cpumask *cpu_mask;
 	struct msi_desc *desc;
@@ -103,24 +103,24 @@ struct nvmev_admin_queue {
 
 	struct nvme_command __iomem **nvme_sq;
 	struct nvme_completion __iomem **nvme_cq;
-	
+
 	struct irq_desc *irq_desc;
 };
 
 struct nvmev_config {
-	unsigned long memmap_start; //bytes offs
-	unsigned long memmap_size; //bytes offs
+	unsigned long memmap_start; // byte
+	unsigned long memmap_size;	// byte
 
-	unsigned long storage_start; //bytes offs
-	unsigned long storage_size;
+	unsigned long storage_start; //byte
+	unsigned long storage_size;	// byte
 
-	unsigned int read_latency; //ns
-	unsigned int write_latency; //ns
+	unsigned int read_latency;	// ns
+	unsigned int write_latency;	// ns
 
-	unsigned int read_bw; //MiB
-	unsigned int write_bw; //MiB
-	long long int read_bw_us;
-	long long int write_bw_us;
+	unsigned int read_bw;		//MiB
+	unsigned int write_bw;		//MiB
+	long long int read_bw_us;	// in B
+	long long int write_bw_us;	// in B
 
 	unsigned int cpu_nr_proc_reg;
 	unsigned int nr_io_cpu;
@@ -151,7 +151,7 @@ struct nvmev_proc_info {
 	unsigned int proc_io_seq;
 	unsigned int proc_io_seq_end;
 	long long int proc_io_nsecs;
-	
+
 	struct task_struct *nvmev_io_proc;
 	char *thread_name;
 };
@@ -165,7 +165,7 @@ struct nvmev_dev {
 	struct pcie_cap* pciecap;
 	struct aer_cap* aercap;
 	struct pci_exp_hdr* pcie_exp_cap;
-	
+
 	struct pci_dev *pdev;
 	struct pci_ops pci_ops;
 	struct pci_sysdata pci_sd;
@@ -218,7 +218,7 @@ void VDEV_SET_ARGS(struct nvmev_config *config,
 		unsigned int memmap_start, unsigned int memmap_size,
 		unsigned int read_latency, unsigned int write_latency,
 		unsigned int read_bw, unsigned int write_bw,
-		char *cpu_mask);
+		char *cpus);
 
 // HEADER Initialize
 void PCI_HEADER_SETTINGS(struct nvmev_dev* vdev, struct pci_header* pcihdr);

@@ -69,7 +69,7 @@ struct pci_header {
 		u8 sb:1;
 		u8 bc:1;
 	} bist;
-	
+
 	struct {
 		u32 rte:1;
 		u32 tp:2;

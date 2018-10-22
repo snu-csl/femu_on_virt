@@ -17,8 +17,4 @@ clean:
 
 .PHONY: cscope
 cscope:
-	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) cscope
-
-.PHONY: tags
-tags:
-	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) tags
+		cscope -b -R
