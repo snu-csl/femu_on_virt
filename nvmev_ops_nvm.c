@@ -26,7 +26,7 @@ long long int elapsed_nsecs(int opcode, unsigned int length, long long int nsecs
 {
 	long long int elapsed_nsecs = 0;
 	int unit_seq = 0;
-	int req_unit = length / 4096 + !!(length % 4096);
+	int req_unit = DIV_ROUND_UP(length, 4096);
 	int lowest_unit = 0;
 	long long int lowest_time = vdev->unit_stat[0];
 	int i;

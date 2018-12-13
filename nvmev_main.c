@@ -221,7 +221,6 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 	char input[128];
 	unsigned int *val = PDE_DATA(filp->f_inode);
 	unsigned int newval;
-	int temp;
 	long long int *old_stat;
 	bool force_slot = false;
 	copy_from_user(input, buf, len);
@@ -253,9 +252,9 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 		force_slot = true;
 	}
 	if (!force_slot) {
-		temp = (4096 / vdev->config.read_bw_us) + !!(4096 % vdev->config.read_bw_us);
-		vdev->nr_unit = vdev->config.read_latency / temp + !!(vdev->config.read_latency % temp);
-}
+		int us_per_page = DIV_ROUND_UP(4096, vdev->config.read_bw_us);
+		vdev->nr_unit = DIV_ROUND_UP(vdev->config.read_latency, us_per_page);
+	}
 	old_stat = vdev->unit_stat;
 	vdev->unit_stat = kzalloc(sizeof(unsigned long long) * vdev->nr_unit,
 			GFP_KERNEL);
@@ -314,7 +313,7 @@ void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 
 static int NVMeV_init(void)
 {
-	int temp;
+	int us_per_page;
 
 	pr_info("NVMe Virtual Device Initialize Start\n");
 
@@ -332,8 +331,8 @@ static int NVMeV_init(void)
 		goto ret_err_pci_bus;
 	}
 
-	temp = (4096 / vdev->config.read_bw_us) + !!(4096 % vdev->config.read_bw_us);
-	vdev->nr_unit = vdev->config.read_latency / temp + !!(vdev->config.read_latency % temp);
+	us_per_page = DIV_ROUND_UP(4096, vdev->config.read_bw_us);
+	vdev->nr_unit = DIV_ROUND_UP(vdev->config.read_latency, us_per_page);
 
 	vdev->unit_stat = kzalloc(sizeof(unsigned long long) * vdev->nr_unit,
 			GFP_KERNEL);
