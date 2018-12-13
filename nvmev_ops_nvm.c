@@ -713,7 +713,7 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev) {
 
 		proc_info->proc_io_nsecs = cpu_clock(vdev->config.cpu_nr_proc_reg);
 
-		proc_info->thread_name = kzalloc(sizeof(char) * 16, GFP_KERNEL);
+		proc_info->thread_name = kzalloc(sizeof(char) * 32, GFP_KERNEL);
 
 		sprintf(proc_info->thread_name, "nvmev_proc_io_%d", proc_idx);
 
