@@ -42,7 +42,7 @@ void nvmev_admin_create_cq(int eid, int cq_head)
 		cq->irq_vector = sq_entry(eid).create_cq.irq_vector;
 		cq->irq = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
 
-		NVMEV_ERROR("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
+		pr_info("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
 	}
 
 	//if queue size = 0 > vdev->bar->cap.mqes!!

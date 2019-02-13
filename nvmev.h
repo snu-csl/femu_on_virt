@@ -14,7 +14,7 @@
 
 #define PERF_DEBUG 0
 
-#define NVMEV_DRV_NAME "NVMe_Virt_Dev"
+#define NVMEV_DRV_NAME "NVMeVirt"
 
 #define NVMEV_INFO(string, args...) \
 	printk(KERN_INFO "[%s: %s] info: " string, NVMEV_DRV_NAME, __func__, ##args)
@@ -24,7 +24,7 @@
 #define ENABLE_DBG_PRINT	0
 #if ENABLE_DBG_PRINT
 	#define NVMEV_DEBUG(string, args...) \
-		printk(KERN_DEBUG "[%s %s] dbg: " string, NVMEV_DRV_NAME, __func__, ##args)
+		printk(KERN_DEBUG "[%s %s] " string, NVMEV_DRV_NAME, __func__, ##args)
 #else
 	#define NVMEV_DEBUG(string, args...)
 #endif
