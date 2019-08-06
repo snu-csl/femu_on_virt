@@ -203,9 +203,9 @@ unsigned int nvmev_proc_write(int sqid, int sq_entry)
 	//sq_entry(sq_entry).rw.prp1;
 	//sq_entry(sq_entry).rw.prp2;
 
-	NVMEV_DEBUG("qid %d entry %d lba %llu length %d\n", \
-			sqid, sq_entry, \
-			sq_entry(sq_entry).rw.slba, \
+	NVMEV_DEBUG("qid %d entry %d lba %llu length %d\n",
+			sqid, sq_entry,
+			sq_entry(sq_entry).rw.slba,
 			sq_entry(sq_entry).rw.length);
 
 	return nvmev_storage_io(sqid, sq_entry);
@@ -223,9 +223,9 @@ unsigned int nvmev_proc_read(int sqid, int sq_entry)
 	//sq_entry(sq_entry).rw.prp1;
 	//sq_entry(sq_entry).rw.prp2;
 
-	NVMEV_DEBUG("qid %d entry %d lba %llu length %d, %llu %llu\n", \
-			sqid, sq_entry, \
-			sq_entry(sq_entry).rw.slba, \
+	NVMEV_DEBUG("qid %d entry %d lba %llu length %d, %llu %llu\n",
+			sqid, sq_entry,
+			sq_entry(sq_entry).rw.slba,
 			sq_entry(sq_entry).rw.length,
 			sq_entry(sq_entry).rw.prp1,
 			sq_entry(sq_entry).rw.prp2);
@@ -597,13 +597,13 @@ static int nvmev_kthread_io_proc(void *data)
 			if (proc_entry->isProc == false && proc_entry->isCpy == false) {
 				nvmev_storage_memcpy(proc_entry->sqid, proc_entry->sq_entry);
 				proc_entry->isCpy = true;
-				NVMEV_DEBUG("%s proc Entry %u, %d %d, %d --> %d   COPY MEM\n", \
-						proc_info->thread_name, \
-						curr_entry,  \
-						proc_entry->sqid, \
-						proc_entry->cqid, \
-						proc_entry->sq_entry, \
-						proc_info->proc_table[curr_entry].next \
+				NVMEV_DEBUG("%s proc Entry %u, %d %d, %d --> %d   COPY MEM\n",
+						proc_info->thread_name,
+						curr_entry,
+						proc_entry->sqid,
+						proc_entry->cqid,
+						proc_entry->sq_entry,
+						proc_info->proc_table[curr_entry].next
 				);
 			}
 			if (proc_entry->isProc == false && proc_entry->isCpy == true &&
@@ -619,9 +619,9 @@ static int nvmev_kthread_io_proc(void *data)
 				}
 #endif
 
-				NVMEV_DEBUG("(%llu): %llu -> %llu -> %llu\n",  curr_nsecs, \
-						proc_entry->nsecs_start, \
-						proc_entry->nsecs_enqueue, \
+				NVMEV_DEBUG("(%llu): %llu -> %llu -> %llu\n",  curr_nsecs,
+						proc_entry->nsecs_start,
+						proc_entry->nsecs_enqueue,
 						proc_entry->nsecs_target);
 			//pr_info("%s:Out %llu\n", __func__, cpu_clock(0));
 
@@ -631,13 +631,13 @@ static int nvmev_kthread_io_proc(void *data)
 						proc_entry->sq_entry, proc_entry->command_id);
 				spin_unlock(&vdev->cq_entry_lock[proc_entry->cqid]);
 
-				NVMEV_DEBUG("%s proc Entry %u, %d %d, %d --> %d\n", \
-						proc_info->thread_name, \
-						curr_entry,  \
-						proc_entry->sqid, \
-						proc_entry->cqid, \
-						proc_entry->sq_entry, \
-						proc_info->proc_table[curr_entry].next \
+				NVMEV_DEBUG("%s proc Entry %u, %d %d, %d --> %d\n",
+						proc_info->thread_name,
+						curr_entry,
+						proc_entry->sqid,
+						proc_entry->cqid,
+						proc_entry->sq_entry,
+						proc_info->proc_table[curr_entry].next
 						);
 
 				proc_entry->isProc = true;

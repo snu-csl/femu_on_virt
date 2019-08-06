@@ -29,9 +29,9 @@ void nvmev_admin_create_cq(int eid, int cq_head)
 
 	cq->qid = sq_entry(eid).create_cq.cqid;
 
-	cq->interrupt_enabled = \
+	cq->interrupt_enabled =
 		(sq_entry(eid).create_cq.cq_flags & NVME_CQ_IRQ_ENABLED)? true: false;
-	cq->phys_contig = \
+	cq->phys_contig =
 		(sq_entry(eid).create_cq.cq_flags & NVME_QUEUE_PHYS_CONTIG)? true: false;
 	cq->queue_size = sq_entry(eid).create_cq.qsize + 1;
 	cq->phase = 1;
@@ -107,7 +107,7 @@ void nvmev_admin_create_sq(int eid, int cq_head)
 	sq->cqid = sq_entry(eid).create_sq.cqid;
 
 	sq->sq_priority = sq_entry(eid).create_sq.sq_flags & 0xFFFE;
-	sq->phys_contig = \
+	sq->phys_contig =
 		(sq_entry(eid).create_sq.sq_flags & NVME_QUEUE_PHYS_CONTIG)? true: false;
 	sq->queue_size = sq_entry(eid).create_sq.qsize + 1;
 
