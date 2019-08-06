@@ -268,6 +268,7 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	proc_info->proc_table[new_entry].nsecs_target = nsecs_target;
 	proc_info->proc_table[new_entry].isProc = false;
 	proc_info->proc_table[new_entry].isCpy = false;
+	proc_info->proc_table[new_entry].isCounted = false;
 	proc_info->proc_table[new_entry].next = -1;
 	proc_info->proc_table[new_entry].prev = -1;
 
@@ -312,12 +313,6 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 					proc_info->proc_table[new_entry].prev,
 					new_entry,
 					proc_info->proc_table[new_entry].next);
-		}
-	}
-	{
-		int nr_max = atomic_add_return(1, &vdev->nr_processing);
-		if (nr_max > atomic_read(&vdev->nr_processing_max)) {
-			atomic_set(&vdev->nr_processing_max, nr_max);
 		}
 	}
 }
@@ -592,13 +587,17 @@ static int nvmev_kthread_io_proc(void *data)
 #endif
 
 	while (!kthread_should_stop()) {
-		//curr_nsecs = ktime_to_us(ktime_get());
-		curr_nsecs = cpu_clock(vdev->config.cpu_nr_proc_reg); //local_clock();
+		curr_nsecs = cpu_clock(vdev->config.cpu_nr_proc_reg);
 		proc_info->proc_io_nsecs = curr_nsecs;
 		curr_entry = proc_info->proc_io_seq;
 		while (curr_entry != -1) {
 			proc_entry = &proc_info->proc_table[curr_entry];
-			if (proc_entry->isProc == false && proc_entry->isCpy == false) {
+			if (proc_entry->isProc == true) {
+				curr_entry = proc_info->proc_table[curr_entry].next;
+				continue;
+			}
+
+			if (proc_entry->isCpy == false) {
 				nvmev_storage_memcpy(proc_entry->sqid, proc_entry->sq_entry);
 				proc_entry->isCpy = true;
 				NVMEV_DEBUG("%s proc Entry %u, %d %d, %d --> %d   COPY MEM\n",
@@ -610,8 +609,17 @@ static int nvmev_kthread_io_proc(void *data)
 						proc_info->proc_table[curr_entry].next
 				);
 			}
-			if (proc_entry->isProc == false && proc_entry->isCpy == true &&
-					proc_entry->nsecs_target <= curr_nsecs) {
+
+			if (proc_entry->nsecs_start <= curr_nsecs) {
+				if (!proc_entry->isCounted) {
+					int nr_max = atomic_add_return(1, &vdev->nr_processing);
+					if (nr_max > atomic_read(&vdev->nr_processing_max)) {
+						atomic_set(&vdev->nr_processing_max, nr_max);
+					}
+					proc_entry->isCounted = true;
+				}
+			}
+			if (proc_entry->nsecs_target <= curr_nsecs) {
 #if PERF_DEBUG
 				elapsed_nr ++;
 				elapsed += (curr_nsecs - proc_entry->nsecs_start);
@@ -627,7 +635,6 @@ static int nvmev_kthread_io_proc(void *data)
 						proc_entry->nsecs_start,
 						proc_entry->nsecs_enqueue,
 						proc_entry->nsecs_target);
-			//pr_info("%s:Out %llu\n", __func__, cpu_clock(0));
 
 				spin_lock(&vdev->cq_entry_lock[proc_entry->cqid]);
 				fill_cq_result(proc_entry->sqid,
@@ -650,11 +657,10 @@ static int nvmev_kthread_io_proc(void *data)
 				atomic_dec(&vdev->nr_processing);
 
 				curr_entry = proc_info->proc_table[curr_entry].next;
-			} else if (proc_entry->isProc == true) {
-				//NVMEV_DEBUG("Move to Next %u %d\n", curr_entry, proc_info->proc_table[curr_entry].next);
-				curr_entry = proc_info->proc_table[curr_entry].next;
 			} else {
-				NVMEV_DEBUG("%s =====> Entry: %u, %lld %lld %d\n", proc_info->thread_name, curr_entry, curr_nsecs, proc_entry->nsecs_target, proc_entry->isProc);
+				NVMEV_DEBUG("%s =====> Entry: %u, %lld %lld %d\n",
+						proc_info->thread_name, curr_entry,curr_nsecs,
+						proc_entry->nsecs_target, proc_entry->isProc);
 				break;
 			}
 		}

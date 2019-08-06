@@ -140,6 +140,7 @@ struct nvmev_proc_table {
 
 	bool isCpy;
 	bool isProc;
+	bool isCounted;
 
 	unsigned int next, prev;
 };
