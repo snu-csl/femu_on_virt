@@ -191,16 +191,15 @@ void print_perf_configs(void)
 	NVMEV_INFO("  Read     : %u (ns)\n", vdev->config.read_latency);
 	NVMEV_INFO("  Write    : %u (ns)\n", vdev->config.write_latency);
 	NVMEV_INFO("* Bandwidth\n");
-	NVMEV_INFO("  Read     : %u (MiB/s)\n", vdev->config.read_bw);
-	NVMEV_INFO("             %lld (B/us)\n", vdev->config.read_bw_us);
-	NVMEV_INFO("  Write    : %u (MiB/s)\n", vdev->config.write_bw);
-	NVMEV_INFO("             %lld (B/us)\n", vdev->config.write_bw_us);
+	NVMEV_INFO("  Read     : %lu (MiB/s)\n", vdev->config.read_bw);
+	NVMEV_INFO("             %lu (B/us)\n", vdev->config.read_bw_us);
+	NVMEV_INFO("  Write    : %lu (MiB/s)\n", vdev->config.write_bw);
+	NVMEV_INFO("             %lu (B/us)\n", vdev->config.write_bw_us);
 	NVMEV_INFO("* IO depth : %d\n", vdev->nr_unit);
 }
 
 static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *offp)
 {
-	//ssize_t count = 0;
 	const char *fname = filp->f_path.dentry->d_name.name;
 	if (*offp) return 0;
 
@@ -209,7 +208,7 @@ static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *
 	} else if (strcmp(fname, "write_latency") == 0) {
 		snprintf(buf, len, "%u", vdev->config.write_latency);
 	} else if (strcmp(fname, "slot") == 0) {
-		snprintf(buf, len, "%u", vdev->config.read_bw);
+		snprintf(buf, len, "%u", vdev->nr_unit);
 	}
 	return 1;
 }
@@ -221,7 +220,7 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 	char input[128];
 	unsigned int *val = PDE_DATA(filp->f_inode);
 	unsigned int newval;
-	long long int *old_stat;
+	unsigned long long *old_stat;
 	bool force_slot = false;
 	copy_from_user(input, buf, len);
 
@@ -231,11 +230,11 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 
 	if (!strcmp(fname, "read_bw")) {
 		vdev->config.read_bw = newval;
-		vdev->config.read_bw_us = (long long int)((newval << 20) / 1000000);
+		vdev->config.read_bw_us = (unsigned long)((newval << 20) / 1000000);
 	}
 	else if (!strcmp(fname, "write_bw")) {
 		vdev->config.write_bw = newval;
-		vdev->config.write_bw_us = (long long int)((newval << 20) / 1000000);
+		vdev->config.write_bw_us = (unsigned long)((newval << 20) / 1000000);
 	}
 	else if (!strcmp(fname, "read_latency")) {
 		vdev->config.read_latency = newval;
@@ -245,10 +244,10 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 	}
 	else if (!strcmp(fname, "slot")) {
 		vdev->config.read_bw = newval * 4 * (1000000000 / vdev->config.read_latency) / 1024;
-		vdev->config.read_bw_us = (long long int)((vdev->config.read_bw << 20) / 1000000);
+		vdev->config.read_bw_us = (unsigned long long)((vdev->config.read_bw << 20) / 1000000);
 
 		vdev->config.write_bw = newval * 4 * (1000000000 / vdev->config.write_latency) / 1024;
-		vdev->config.write_bw_us = (long long int)((vdev->config.write_bw << 20) / 1000000);
+		vdev->config.write_bw_us = (unsigned long long)((vdev->config.write_bw << 20) / 1000000);
 		force_slot = true;
 	}
 	if (!force_slot) {

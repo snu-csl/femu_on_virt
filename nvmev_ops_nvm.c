@@ -22,13 +22,13 @@
 
 extern struct nvmev_dev *vdev;
 
-long long int elapsed_nsecs(int opcode, unsigned int length, long long int nsecs_start)
+unsigned long long elapsed_nsecs(int opcode, unsigned int length, unsigned long long nsecs_start)
 {
-	long long int elapsed_nsecs = 0;
+	unsigned long long elapsed_nsecs = 0;
 	int unit_seq = 0;
 	int req_unit = DIV_ROUND_UP(length, 4096);
 	int lowest_unit = 0;
-	long long int lowest_time = vdev->unit_stat[0];
+	unsigned long long lowest_time = vdev->unit_stat[0];
 	int i;
 
 	for (unit_seq = 1; unit_seq < vdev->nr_unit; unit_seq++) {
@@ -234,28 +234,29 @@ unsigned int nvmev_proc_read(int sqid, int sq_entry)
 }
 
 void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
-		long long int nsecs_start, long long int nsecs_elapse) {
+		unsigned long long nsecs_start, unsigned long long nsecs_elapse) {
 
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	unsigned int proc_turn = vdev->proc_turn;
 	struct nvmev_proc_info *proc_info = &vdev->proc_info[proc_turn++];
 
-	long long int nsecs_target = nsecs_elapse;
+	unsigned long long nsecs_target = nsecs_elapse;
 	unsigned int new_entry = proc_info->proc_free_seq;
 	unsigned int curr_entry = -1;
 
-	long long int nsecs_enqueue = cpu_clock(vdev->config.cpu_nr_proc_reg);
+	unsigned long long nsecs_enqueue = cpu_clock(vdev->config.cpu_nr_proc_reg);
 
 	if (proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
 	vdev->proc_turn = proc_turn;
 
 	proc_info->proc_free_seq = proc_info->proc_table[new_entry].next;
 
-	NVMEV_DEBUG("New Entry %s->%u[%d], sq-%d cq-%d, entry-%d %lld->%lld\n", proc_info->thread_name,
+	NVMEV_DEBUG("New Entry %s->%u[%d], sq-%d cq-%d, entry-%d %llu + %llu\n",
+			proc_info->thread_name,
 			new_entry,
 			sq_entry(sq_entry).rw.opcode,
-			sqid, cqid, sq_entry, nsecs_start, nsecs_target);
+			sqid, cqid, sq_entry, nsecs_start, nsecs_target - nsecs_start);
 
 	/////////////////////////////////
 	proc_info->proc_table[new_entry].sqid = sqid;
@@ -373,13 +374,12 @@ void nvmev_proc_io_cleanup(void)
 	return;
 }
 
-//void nvmev_proc_nvm(int sqid, int sq_entry, long long int nsecs_start)
+//void nvmev_proc_nvm(int sqid, int sq_entry, unsigned long long nsecs_start)
 void nvmev_proc_nvm(int sqid, int sq_entry)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	long long int nsecs_elapsed = 0;
-	//long long int nsecs_start = ktime_to_us(ktime_get());
-	long long int nsecs_start = cpu_clock(vdev->config.cpu_nr_proc_reg);
+	unsigned long long nsecs_elapsed = 0;
+	unsigned long long nsecs_start = cpu_clock(vdev->config.cpu_nr_proc_reg);
 	unsigned int io_len;
 #if PERF_DEBUG
 	unsigned long long prev_clock = 0;
@@ -453,13 +453,11 @@ void nvmev_proc_sq_io(int sqid, int new_db, int old_db)
 	int num_proc = new_db - old_db;
 	int seq;
 	int sq_entry = old_db;
-	//long long int nsecs_start = ktime_to_us(ktime_get());
 
 	if (unlikely(num_proc < 0)) num_proc += sq->queue_size;
 	if (unlikely(!sq)) return;
 
 	for (seq = 0; seq < num_proc; seq++) {
-		//nvmev_proc_nvm(sqid, sq_entry, nsecs_start);
 #if PERF_DEBUG
 		pr_info("%s:Entry %llu\n", __func__, cpu_clock(0));
 #endif
@@ -571,7 +569,7 @@ void fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id)
 static int nvmev_kthread_io_proc(void *data)
 {
 	struct nvmev_proc_info *proc_info = (struct nvmev_proc_info *)data;
-	long long int curr_nsecs;
+	unsigned long long curr_nsecs;
 	unsigned int curr_entry;
 	struct nvmev_completion_queue *cq;// = vdev->cqes[cqid];
 	struct nvmev_proc_table* proc_entry;

@@ -117,10 +117,10 @@ struct nvmev_config {
 	unsigned int read_latency;	// ns
 	unsigned int write_latency;	// ns
 
-	unsigned int read_bw;		//MiB
-	unsigned int write_bw;		//MiB
-	long long int read_bw_us;	// in B
-	long long int write_bw_us;	// in B
+	unsigned long read_bw;		//MiB
+	unsigned long write_bw;		//MiB
+	unsigned long read_bw_us;	// in B
+	unsigned long write_bw_us;	// in B
 
 	unsigned int cpu_nr_proc_reg;
 	unsigned int nr_io_cpu;

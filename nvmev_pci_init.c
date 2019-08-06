@@ -51,15 +51,15 @@ void VDEV_SET_ARGS(struct nvmev_config* config,
 	config->memmap_start = (unsigned long)memmap_start << 30;
 	config->memmap_size = (unsigned long)memmap_size << 20;
 	config->storage_start = config->memmap_start
-								+ (unsigned long)((1) << 20);
+								+ (unsigned long)(1 << 20);
 	config->storage_size = (unsigned long)(memmap_size - 1) << 20;
 
 	config->read_latency = read_latency;
 	config->write_latency = write_latency;
 	config->read_bw = read_bw;
-	config->read_bw_us = (long long int)((read_bw << 20) / 1000000);
+	config->read_bw_us = (unsigned long long)((read_bw << 20) / 1000000);
 	config->write_bw = write_bw;
-	config->write_bw_us = (long long int)((write_bw << 20) / 1000000);
+	config->write_bw_us = (unsigned long long)((write_bw << 20) / 1000000);
 
 	config->nr_io_cpu = 0;
 	config->cpu_nr_proc_io = NULL;
