@@ -202,6 +202,7 @@ static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *
 {
 	const char *fname = filp->f_path.dentry->d_name.name;
 	if (*offp) return 0;
+	buf[0] = '\0';
 
 	if (strcmp(fname, "read_latency") == 0) {
 		snprintf(buf, len, "%u", vdev->config.read_latency);
@@ -209,8 +210,13 @@ static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *
 		snprintf(buf, len, "%u", vdev->config.write_latency);
 	} else if (strcmp(fname, "slot") == 0) {
 		snprintf(buf, len, "%u", vdev->nr_unit);
+	} else if (strcmp(fname, "nr_processing") == 0) {
+		snprintf(buf, len, "%u %u",
+				atomic_read(&vdev->nr_processing),
+				atomic_read(&vdev->nr_processing_max));
 	}
-	return 1;
+	*offp += strlen(buf);
+	return *offp;
 }
 static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, loff_t *offp)
 {
@@ -260,6 +266,7 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 	kfree(old_stat);
 
 	print_perf_configs();
+	atomic_set(&vdev->nr_processing_max, 0);
 
 	return count;
 }
@@ -294,7 +301,9 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 	vdev->slot = proc_create_data(
 			"slot", 0664, vdev->proc_root,
 			&proc_file_fops, &vdev->nr_unit);
-
+	proc_create_data(
+			"nr_processing", 0444, vdev->proc_root,
+			&proc_file_fops, vdev);
 }
 
 void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
@@ -307,6 +316,8 @@ void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 	remove_proc_entry("read_bw", vdev->proc_root);
 	remove_proc_entry("write_bw", vdev->proc_root);
 	remove_proc_entry("slot", vdev->proc_root);
+	remove_proc_entry("nr_processing", vdev->proc_root);
+
 	remove_proc_entry("nvmev", NULL);
 }
 

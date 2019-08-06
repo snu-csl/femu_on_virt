@@ -209,6 +209,8 @@ struct nvmev_dev {
 	unsigned long long *unit_stat;
 	int nr_unit;
 
+	atomic_t nr_processing_max;
+	atomic_t nr_processing;
 };
 
 // VDEV Init, Final Function

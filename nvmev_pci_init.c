@@ -14,6 +14,9 @@ struct nvmev_dev *VDEV_INIT(void)
 	vdev->aercap = (void *)vdev->virtDev + PCI_CFG_SPACE_SIZE;
 	vdev->pcie_exp_cap = (void *)vdev->virtDev + PCI_CFG_SPACE_SIZE;
 
+	atomic_set(&vdev->nr_processing, 0);
+	atomic_set(&vdev->nr_processing_max, 0);
+
 	return vdev;
 }
 

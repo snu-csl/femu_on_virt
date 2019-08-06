@@ -314,6 +314,12 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 					proc_info->proc_table[new_entry].next);
 		}
 	}
+	{
+		int nr_max = atomic_add_return(1, &vdev->nr_processing);
+		if (nr_max > atomic_read(&vdev->nr_processing_max)) {
+			atomic_set(&vdev->nr_processing_max, nr_max);
+		}
+	}
 }
 
 void nvmev_proc_io_cleanup(void)
@@ -641,6 +647,7 @@ static int nvmev_kthread_io_proc(void *data)
 				proc_entry->isProc = true;
 				cq = vdev->cqes[proc_entry->cqid];
 				cq->interrupt_ready = true;
+				atomic_dec(&vdev->nr_processing);
 
 				curr_entry = proc_info->proc_table[curr_entry].next;
 			} else if (proc_entry->isProc == true) {
