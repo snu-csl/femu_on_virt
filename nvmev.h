@@ -140,7 +140,6 @@ struct nvmev_proc_table {
 
 	bool isCpy;
 	bool isProc;
-	bool isCounted;
 
 	unsigned int next, prev;
 };
@@ -155,6 +154,11 @@ struct nvmev_proc_info {
 
 	struct task_struct *nvmev_io_proc;
 	char *thread_name;
+};
+
+struct nvmev_sq_stat {
+	unsigned long long nr_processed;
+	int max_nr;
 };
 
 struct nvmev_dev {
@@ -210,8 +214,7 @@ struct nvmev_dev {
 	unsigned long long *unit_stat;
 	int nr_unit;
 
-	atomic_t nr_processing_max;
-	atomic_t nr_processing;
+	struct nvmev_sq_stat sq_stats[NR_MAX_IO_QUEUE + 1];
 };
 
 // VDEV Init, Final Function

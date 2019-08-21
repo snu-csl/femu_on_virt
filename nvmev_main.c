@@ -198,6 +198,15 @@ void print_perf_configs(void)
 	NVMEV_INFO("* IO depth : %d\n", vdev->nr_unit);
 }
 
+static int __get_nr_entries(int dbs_idx, int queue_size)
+{
+	int diff = vdev->dbs[dbs_idx] - vdev->old_dbs[dbs_idx];
+	if (diff < 0) {
+		diff += queue_size;
+	}
+	return diff;
+}
+
 static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *offp)
 {
 	const char *fname = filp->f_path.dentry->d_name.name;
@@ -210,10 +219,15 @@ static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *
 		snprintf(buf, len, "%u", vdev->config.write_latency);
 	} else if (strcmp(fname, "slot") == 0) {
 		snprintf(buf, len, "%u", vdev->nr_unit);
-	} else if (strcmp(fname, "nr_processing") == 0) {
-		snprintf(buf, len, "%u %u",
-				atomic_read(&vdev->nr_processing),
-				atomic_read(&vdev->nr_processing_max));
+	} else if (strcmp(fname, "stat") == 0) {
+		int offset = 0, i;
+		for (i = 1; i < vdev->nr_sq; i++) {
+			offset += snprintf(buf + offset, len - offset, "%d %d %llu ",
+					__get_nr_entries(i * 2, vdev->sqes[i]->queue_size),
+					vdev->sq_stats[i].max_nr, vdev->sq_stats[i].nr_processed);
+			smp_rmb();
+			vdev->sq_stats[i].max_nr = 0;
+		}
 	}
 	*offp += strlen(buf);
 	return *offp;
@@ -266,7 +280,8 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 	kfree(old_stat);
 
 	print_perf_configs();
-	atomic_set(&vdev->nr_processing_max, 0);
+
+	memset(vdev->sq_stats, 0x00, sizeof(vdev->sq_stats));
 
 	return count;
 }
@@ -302,7 +317,7 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 			"slot", 0664, vdev->proc_root,
 			&proc_file_fops, &vdev->nr_unit);
 	proc_create_data(
-			"nr_processing", 0444, vdev->proc_root,
+			"stat", 0444, vdev->proc_root,
 			&proc_file_fops, vdev);
 }
 
@@ -316,7 +331,7 @@ void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 	remove_proc_entry("read_bw", vdev->proc_root);
 	remove_proc_entry("write_bw", vdev->proc_root);
 	remove_proc_entry("slot", vdev->proc_root);
-	remove_proc_entry("nr_processing", vdev->proc_root);
+	remove_proc_entry("stat", vdev->proc_root);
 
 	remove_proc_entry("nvmev", NULL);
 }
