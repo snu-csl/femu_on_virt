@@ -428,5 +428,5 @@ void nvmev_proc_cq_admin(int new_db, int old_db)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 
-	queue->cq_tail = new_db-1;
+	queue->cq_tail = new_db - 1;
 }

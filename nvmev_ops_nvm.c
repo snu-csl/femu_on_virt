@@ -457,8 +457,6 @@ void nvmev_proc_sq_io(int sqid, int new_db, int old_db)
 	if (unlikely(num_proc < 0)) num_proc += sq->queue_size;
 	if (unlikely(!sq)) return;
 
-	vdev->sq_stats[sqid].max_nr = max_t(int, vdev->sq_stats[sqid].max_nr, num_proc);
-
 	for (seq = 0; seq < num_proc; seq++) {
 #if PERF_DEBUG
 		pr_info("%s: Entry %llu\n", __func__, cpu_clock(0));
@@ -468,13 +466,26 @@ void nvmev_proc_sq_io(int sqid, int new_db, int old_db)
 		if (++sq_entry == sq->queue_size) {
 			sq_entry = 0;
 		}
-		vdev->sq_stats[sqid].nr_processed++;
+		vdev->sq_stats[sqid].nr_dispatched++;
+		vdev->sq_stats[sqid].nr_in_flight++;
 	}
+	vdev->sq_stats[sqid].nr_dispatch++;
+	vdev->sq_stats[sqid].max_nr_in_flight =
+		max_t(int, vdev->sq_stats[sqid].max_nr_in_flight,
+				vdev->sq_stats[sqid].nr_in_flight);
 }
 
 void nvmev_proc_cq_io(int cqid, int new_db, int old_db)
 {
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
+	int i;
+	for (i = old_db; i != new_db; i++) {
+		if (i >= cq->queue_size) {
+			i = -1;
+			continue;
+		}
+		vdev->sq_stats[cq_entry(i).sq_id].nr_in_flight--;
+	}
 
 	cq->cq_tail = new_db - 1;
 	if (new_db == -1) cq->cq_tail = cq->queue_size - 1;

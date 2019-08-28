@@ -157,8 +157,10 @@ struct nvmev_proc_info {
 };
 
 struct nvmev_sq_stat {
-	unsigned long long nr_processed;
-	int max_nr;
+	unsigned int nr_dispatched;
+	unsigned int nr_dispatch;
+	unsigned int nr_in_flight;
+	unsigned int max_nr_in_flight;
 };
 
 struct nvmev_dev {
