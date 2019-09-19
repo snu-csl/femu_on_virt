@@ -375,12 +375,12 @@ void nvmev_proc_io_cleanup(void)
 }
 
 //void nvmev_proc_nvm(int sqid, int sq_entry, unsigned long long nsecs_start)
-void nvmev_proc_nvm(int sqid, int sq_entry)
+int nvmev_proc_nvm(int sqid, int sq_entry)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	unsigned long long nsecs_elapsed = 0;
 	unsigned long long nsecs_start = cpu_clock(vdev->config.cpu_nr_proc_reg);
-	unsigned int io_len;
+	unsigned int io_len = 0;
 #if PERF_DEBUG
 	unsigned long long prev_clock = 0;
 	unsigned long long prev_clock2 = 0;
@@ -394,28 +394,28 @@ void nvmev_proc_nvm(int sqid, int sq_entry)
 	prev_clock = local_clock();
 #endif
 	switch(sq_entry(sq_entry).common.opcode) {
-		case nvme_cmd_flush:
-			nvmev_proc_flush(sqid, sq_entry);
-			nsecs_elapsed = nsecs_start;
-			break;
-		case nvme_cmd_write:
-			io_len = nvmev_proc_write(sqid, sq_entry);
-			nsecs_elapsed = elapsed_nsecs(nvme_cmd_write, io_len, nsecs_start);
-			break;
-		case nvme_cmd_read:
-			io_len = nvmev_proc_read(sqid, sq_entry);
-			nsecs_elapsed = elapsed_nsecs(nvme_cmd_read, io_len, nsecs_start);
-			break;
-		case nvme_cmd_write_uncor:
-		case nvme_cmd_compare:
-		case nvme_cmd_write_zeroes:
-		case nvme_cmd_dsm:
-		case nvme_cmd_resv_register:
-		case nvme_cmd_resv_report:
-		case nvme_cmd_resv_acquire:
-		case nvme_cmd_resv_release:
-		default:
-			break;
+	case nvme_cmd_flush:
+		nvmev_proc_flush(sqid, sq_entry);
+		nsecs_elapsed = nsecs_start;
+		break;
+	case nvme_cmd_write:
+		io_len = nvmev_proc_write(sqid, sq_entry);
+		nsecs_elapsed = elapsed_nsecs(nvme_cmd_write, io_len, nsecs_start);
+		break;
+	case nvme_cmd_read:
+		io_len = nvmev_proc_read(sqid, sq_entry);
+		nsecs_elapsed = elapsed_nsecs(nvme_cmd_read, io_len, nsecs_start);
+		break;
+	case nvme_cmd_write_uncor:
+	case nvme_cmd_compare:
+	case nvme_cmd_write_zeroes:
+	case nvme_cmd_dsm:
+	case nvme_cmd_resv_register:
+	case nvme_cmd_resv_report:
+	case nvme_cmd_resv_acquire:
+	case nvme_cmd_resv_release:
+	default:
+		break;
 	}
 
 #if PERF_DEBUG
@@ -445,6 +445,7 @@ void nvmev_proc_nvm(int sqid, int sq_entry)
 		counter = 0;
 	}
 #endif
+	return io_len;
 }
 
 void nvmev_proc_sq_io(int sqid, int new_db, int old_db)
@@ -458,16 +459,18 @@ void nvmev_proc_sq_io(int sqid, int new_db, int old_db)
 	if (unlikely(!sq)) return;
 
 	for (seq = 0; seq < num_proc; seq++) {
+		int io_size;
 #if PERF_DEBUG
 		pr_info("%s: Entry %llu\n", __func__, cpu_clock(0));
 #endif
-		nvmev_proc_nvm(sqid, sq_entry);
+		io_size = nvmev_proc_nvm(sqid, sq_entry);
 
 		if (++sq_entry == sq->queue_size) {
 			sq_entry = 0;
 		}
 		vdev->sq_stats[sqid].nr_dispatched++;
 		vdev->sq_stats[sqid].nr_in_flight++;
+		vdev->sq_stats[sqid].total_io += io_size;
 	}
 	vdev->sq_stats[sqid].nr_dispatch++;
 	vdev->sq_stats[sqid].max_nr_in_flight =

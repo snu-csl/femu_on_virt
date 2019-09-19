@@ -161,6 +161,7 @@ struct nvmev_sq_stat {
 	unsigned int nr_dispatch;
 	unsigned int nr_in_flight;
 	unsigned int max_nr_in_flight;
+	unsigned long long total_io;
 };
 
 struct nvmev_dev {

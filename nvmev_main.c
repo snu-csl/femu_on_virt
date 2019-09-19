@@ -224,23 +224,26 @@ static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *
 		unsigned int nr_in_flight = 0;
 		unsigned int nr_dispatch = 0;
 		unsigned int nr_dispatched = 0;
+		unsigned long long total_io = 0;
 		for (i = 1; i < vdev->nr_sq; i++) {
 			offset += snprintf(buf + offset, len - offset,
-					"%u %u %u %u %u ",
+					"%u %u %u %u %u %llu ",
 					__get_nr_entries(i * 2, vdev->sqes[i]->queue_size),
 					vdev->sq_stats[i].nr_in_flight,
 					vdev->sq_stats[i].max_nr_in_flight,
 					vdev->sq_stats[i].nr_dispatch,
-					vdev->sq_stats[i].nr_dispatched);
+					vdev->sq_stats[i].nr_dispatched,
+					vdev->sq_stats[i].total_io);
 
 			nr_in_flight += vdev->sq_stats[i].nr_in_flight;
 			nr_dispatch += vdev->sq_stats[i].nr_dispatch;
 			nr_dispatched  += vdev->sq_stats[i].nr_dispatched;
+			total_io += vdev->sq_stats[i].total_io;
 
 			barrier();
 			vdev->sq_stats[i].max_nr_in_flight = 0;
 		}
-		offset += snprintf(buf + offset, len - offset, " / %u %u %u", nr_in_flight, nr_dispatch, nr_dispatched);
+		offset += snprintf(buf + offset, len - offset, " / %u %u %u %llu", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
 	}
 	*offp += strlen(buf);
 	return *offp;
