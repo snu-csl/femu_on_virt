@@ -415,12 +415,12 @@ void nvmev_proc_sq_admin(int new_db, int old_db)
 		NVMEV_DEBUG("PIN INTR %u %d node-%d\n",
 				queue->irq_vector, smp_processor_id(),
 				vdev->pdev->dev.numa_node);
-		NVMEV_DEBUG("Node %d CPU Mask %*pbl\n", vdev->pdev->dev.numa_node,
-				cpumask_pr_args(cpumask_of_node(vdev->pdev->dev.numa_node)));
+		// NVMEV_DEBUG("Node %d CPU Mask %*pbl\n", vdev->pdev->dev.numa_node,
+				// cpumask_pr_args(cpumask_of_node(vdev->pdev->dev.numa_node)));
 		NVMEV_DEBUG("Send to %*pbl, Vector %d\n",
-				cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
-		apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
-		//generateInterrupt(queue->irq_vector);
+				cpumask_pr_args(irq_to_desc(IRQ_NUM)->irq_common_data.affinity), queue->irq_vector);
+
+		apic->send_IPI_mask(irq_to_desc(IRQ_NUM)->irq_common_data.affinity, queue->irq_vector);
 	}
 }
 
