@@ -22,6 +22,36 @@
 
 extern struct nvmev_dev *vdev;
 
+static inline unsigned long long __get_wallclock(void)
+{
+	return cpu_clock(vdev->config.cpu_nr_proc_reg);
+}
+
+#define UNIT_SIZE (1 << 20)
+#define NR_UNITS 8
+
+static unsigned long long schedule_units(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
+{
+	unsigned long start_unit = (lba << 9) % UNIT_SIZE;
+	unsigned int nr_units = DIV_ROUND_UP(length, UNIT_SIZE);
+	unsigned long long latest = nsecs_start;
+	unsigned int latency = (opcode == nvme_cmd_write) ?
+			vdev->config.write_latency : vdev->config.read_latency;
+	int i;
+
+	for (i = 0; i < nr_units; i++) {
+		int unit = (start_unit + i)	% NR_UNITS;
+		if (vdev->unit_stat[unit] < nsecs_start) {
+			vdev->unit_stat[unit] = nsecs_start + latency;
+		} else {
+			vdev->unit_stat[unit] += latency;
+		}
+		latest = max(latest, vdev->unit_stat[unit]);
+	}
+
+	return latest;
+}
+
 unsigned long long elapsed_nsecs(int opcode, unsigned int length, unsigned long long nsecs_start)
 {
 	unsigned long long elapsed_nsecs = 0;
@@ -400,11 +430,15 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 		break;
 	case nvme_cmd_write:
 		io_len = nvmev_proc_write(sqid, sq_entry);
-		nsecs_elapsed = elapsed_nsecs(nvme_cmd_write, io_len, nsecs_start);
+		//nsecs_elapsed = elapsed_nsecs(nvme_cmd_write, io_len, nsecs_start);
+		nsecs_elapsed = schedule_units(nvme_cmd_write,
+					sq_entry(sq_entry).rw.slba, io_len, nsecs_start);
 		break;
 	case nvme_cmd_read:
 		io_len = nvmev_proc_read(sqid, sq_entry);
-		nsecs_elapsed = elapsed_nsecs(nvme_cmd_read, io_len, nsecs_start);
+		//nsecs_elapsed = elapsed_nsecs(nvme_cmd_read, io_len, nsecs_start);
+		nsecs_elapsed = schedule_units(nvme_cmd_read,
+					sq_entry(sq_entry).rw.slba, io_len, nsecs_start);
 		break;
 	case nvme_cmd_write_uncor:
 	case nvme_cmd_compare:
