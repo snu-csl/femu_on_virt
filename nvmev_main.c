@@ -170,10 +170,10 @@ int nvmev_args_verify(void)
 void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
 {
 	vdev->nvmev_reg_proc = kthread_create(nvmev_kthread_proc_reg, NULL, "nvmev_proc_reg");
-	NVMEV_INFO("Proc IO : %d\n", vdev->config.cpu_nr_proc_reg);
 	if (vdev->config.cpu_nr_proc_reg != -1)
 		kthread_bind(vdev->nvmev_reg_proc, vdev->config.cpu_nr_proc_reg);
 	wake_up_process(vdev->nvmev_reg_proc);
+	pr_info("nvmev_proc_reg started on %d\n", vdev->config.cpu_nr_proc_reg);
 }
 
 void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
@@ -311,7 +311,7 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 {
 	vdev->storage_mapped = memremap(vdev->config.storage_start,
 			vdev->config.storage_size, MEMREMAP_WB);
-	NVMEV_INFO("Storage : %lu -> %lu\n",
+	NVMEV_INFO("Storage : %lx + %lx\n",
 			vdev->config.storage_start, vdev->config.storage_size);
 	if (vdev->storage_mapped == NULL)
 		NVMEV_ERROR("Storage Memory Remap Error!!!!!\n");

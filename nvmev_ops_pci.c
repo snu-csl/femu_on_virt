@@ -34,7 +34,7 @@ void nvmev_proc_bars ()
 	unsigned int num_pages, i;
 
 #if 0
-// Read only Register
+	// Read only Register
 	if (old_bar->cap != bar->u_cap) {
 		memcpy(&old_bar->cap, &bar->cap, sizeof(old_bar->cap));
 	}
@@ -140,7 +140,7 @@ int nvmev_pci_read(struct pci_bus *bus, unsigned int devfn, int where, int size,
 {
 	if (devfn != 0) return 1;
 
-	memcpy(val, vdev->virtDev+where, size);
+	memcpy(val, vdev->virtDev + where, size);
 
 	return 0;
 };
@@ -151,7 +151,7 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 	u32 val;
 	int target = where;
 
-	memcpy(&val, vdev->virtDev+where, size);
+	memcpy(&val, vdev->virtDev + where, size);
 
 	if (where < OFFS_PCI_PM_CAP) {
 	// PCI_HDR
@@ -187,9 +187,11 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 			//MSIX enabled? -> admin queue irq setup
 			if ((val & mask) == mask) {
 				vdev->msix_enabled = true;
-				vdev->msix_table = ioremap(pci_resource_start(vdev->pdev,0) + 0x2000, NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
-				//vdev->msix_table = memremap(pci_resource_start(vdev->pdev,0) + 0x2000, NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE, MEMREMAP_WT);
-				vdev->admin_q->irq_vector = readl(vdev->msix_table+PCI_MSIX_ENTRY_DATA) & 0xFF;
+				vdev->msix_table =
+						ioremap(pci_resource_start(vdev->pdev, 0) + 0x2000,
+								NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
+				vdev->admin_q->irq_vector =
+						readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF;
 			}
 		}
 		else if (target == 4) mask = 0x0;
@@ -198,7 +200,7 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 		// PCIE_CAP
 	}
 	val = (val & (~mask)) | (_val & mask);
-	memcpy(vdev->virtDev+where, &val, size);
+	memcpy(vdev->virtDev + where, &val, size);
 
 	return 0;
 };
@@ -208,11 +210,12 @@ struct pci_bus* nvmev_create_pci_bus()
     struct pci_bus* nvmev_pci_bus = NULL;
 	struct resource *res;
 	struct pci_dev *dev;
-	memset (&vdev->pci_ops, 0, sizeof(vdev->pci_ops));
+
+	memset(&vdev->pci_ops, 0, sizeof(vdev->pci_ops));
     vdev->pci_ops.read = nvmev_pci_read;
     vdev->pci_ops.write = nvmev_pci_write;
 
-	memset (&vdev->pci_sd, 0, sizeof(vdev->pci_sd));
+	memset(&vdev->pci_sd, 0, sizeof(vdev->pci_sd));
 	vdev->pci_sd.domain = NVMEV_PCI_DOMAIN_NUM;
 	vdev->pci_sd.node = 0;
 

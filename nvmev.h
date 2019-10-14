@@ -135,9 +135,14 @@ struct nvmev_proc_table {
 	int sq_entry;
 	unsigned int command_id;
 
-	long long int nsecs_start;
-	long long int nsecs_enqueue;
-	long long int nsecs_target;
+	unsigned long long nsecs_start;
+	unsigned long long nsecs_target;
+
+	unsigned long long nsecs_enqueue;
+	unsigned long long nsecs_copy_start;
+	unsigned long long nsecs_copy_done;
+	unsigned long long nsecs_cq_filled;
+
 
 	bool isCpy;
 	bool isProc;
@@ -151,7 +156,7 @@ struct nvmev_proc_info {
 	unsigned int proc_free_last;
 	unsigned int proc_io_seq;
 	unsigned int proc_io_seq_end;
-	long long int proc_io_nsecs;
+	unsigned long long proc_io_nsecs;
 
 	struct task_struct *nvmev_io_proc;
 	char *thread_name;

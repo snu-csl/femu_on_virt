@@ -219,6 +219,11 @@ unsigned int nvmev_storage_memcpy(int sqid, int sq_entry)
 
 void nvmev_proc_flush(int sqid, int sq_entry)
 {
+#if ENABLE_DBG_PRINT
+	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+
+	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
+#endif
 	return;
 }
 
@@ -226,17 +231,12 @@ unsigned int nvmev_proc_write(int sqid, int sq_entry)
 {
 #if	ENABLE_DBG_PRINT
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-#endif
-	//LBA, LENGTH
-	//sq_entry(sq_entry).rw.slba;
-	//sq_entry(sq_entry).rw.length;
-	//sq_entry(sq_entry).rw.prp1;
-	//sq_entry(sq_entry).rw.prp2;
 
 	NVMEV_DEBUG("qid %d entry %d lba %llu length %d\n",
 			sqid, sq_entry,
 			sq_entry(sq_entry).rw.slba,
 			sq_entry(sq_entry).rw.length);
+#endif
 
 	return nvmev_storage_io(sqid, sq_entry);
 }
@@ -245,13 +245,6 @@ unsigned int nvmev_proc_read(int sqid, int sq_entry)
 {
 #if	ENABLE_DBG_PRINT
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-#endif
-
-	//LBA, LENGTH
-	//sq_entry(sq_entry).rw.slba;
-	//sq_entry(sq_entry).rw.length;
-	//sq_entry(sq_entry).rw.prp1;
-	//sq_entry(sq_entry).rw.prp2;
 
 	NVMEV_DEBUG("qid %d entry %d lba %llu length %d, %llu %llu\n",
 			sqid, sq_entry,
@@ -259,13 +252,14 @@ unsigned int nvmev_proc_read(int sqid, int sq_entry)
 			sq_entry(sq_entry).rw.length,
 			sq_entry(sq_entry).rw.prp1,
 			sq_entry(sq_entry).rw.prp2);
+#endif
 
 	return nvmev_storage_io(sqid, sq_entry);
 }
 
 void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
-		unsigned long long nsecs_start, unsigned long long nsecs_elapse) {
-
+		unsigned long long nsecs_start, unsigned long long nsecs_elapse)
+{
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	unsigned int proc_turn = vdev->proc_turn;
@@ -275,7 +269,7 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	unsigned int new_entry = proc_info->proc_free_seq;
 	unsigned int curr_entry = -1;
 
-	unsigned long long nsecs_enqueue = cpu_clock(vdev->config.cpu_nr_proc_reg);
+	unsigned long long nsecs_enqueue = local_clock();
 
 	if (proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
 	vdev->proc_turn = proc_turn;
@@ -409,10 +403,9 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	unsigned long long nsecs_elapsed = 0;
-	unsigned long long nsecs_start = cpu_clock(vdev->config.cpu_nr_proc_reg);
+	unsigned long long nsecs_start = local_clock();
 	unsigned int io_len = 0;
 #if PERF_DEBUG
-	unsigned long long prev_clock = 0;
 	unsigned long long prev_clock2 = 0;
 	unsigned long long prev_clock3 = 0;
 	unsigned long long prev_clock4 = 0;
@@ -420,14 +413,8 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 	static unsigned long long clock2 = 0;
 	static unsigned long long clock3 = 0;
 	static unsigned long long counter = 0;
-
-	prev_clock = local_clock();
 #endif
 	switch(sq_entry(sq_entry).common.opcode) {
-	case nvme_cmd_flush:
-		nvmev_proc_flush(sqid, sq_entry);
-		nsecs_elapsed = nsecs_start;
-		break;
 	case nvme_cmd_write:
 		io_len = nvmev_proc_write(sqid, sq_entry);
 		//nsecs_elapsed = elapsed_nsecs(nvme_cmd_write, io_len, nsecs_start);
@@ -439,6 +426,10 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 		//nsecs_elapsed = elapsed_nsecs(nvme_cmd_read, io_len, nsecs_start);
 		nsecs_elapsed = schedule_units(nvme_cmd_read,
 					sq_entry(sq_entry).rw.slba, io_len, nsecs_start);
+		break;
+	case nvme_cmd_flush:
+		nvmev_proc_flush(sqid, sq_entry);
+		nsecs_elapsed = nsecs_start;
 		break;
 	case nvme_cmd_write_uncor:
 	case nvme_cmd_compare:
@@ -465,13 +456,13 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 #if PERF_DEBUG
 	prev_clock4 = local_clock();
 
-	clock1 += (prev_clock2 - prev_clock);
+	clock1 += (prev_clock2 - nsecs_start);
 	clock2 += (prev_clock3 - prev_clock2);
 	clock3 += (prev_clock4 - prev_clock3);
 	counter++;
 
-	if (counter > 2000) {
-		pr_info("MEM: %llu, ENQ: %llu, CLN: %llu\n",
+	if (counter > 1000) {
+		pr_info("LAT: %llu, ENQ: %llu, CLN: %llu\n",
 				clock1 / counter, clock2 / counter, clock3 / counter);
 		clock1 = 0;
 		clock2 = 0;
@@ -494,9 +485,7 @@ void nvmev_proc_sq_io(int sqid, int new_db, int old_db)
 
 	for (seq = 0; seq < num_proc; seq++) {
 		int io_size;
-#if PERF_DEBUG
-		pr_info("%s: Entry %llu\n", __func__, cpu_clock(0));
-#endif
+
 		io_size = nvmev_proc_nvm(sqid, sq_entry);
 
 		if (++sq_entry == sq->queue_size) {
@@ -597,16 +586,8 @@ void fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id)
 static int nvmev_kthread_io_proc(void *data)
 {
 	struct nvmev_proc_info *proc_info = (struct nvmev_proc_info *)data;
-	unsigned long long curr_nsecs;
-	unsigned int curr_entry;
-	struct nvmev_completion_queue *cq;// = vdev->cqes[cqid];
-	struct nvmev_proc_table* proc_entry;
-	int qidx;
 
 #if PERF_DEBUG
-	static unsigned long long elapsed = 0;
-	static unsigned long long elapsed_nr = 0;
-
 	static unsigned long long intr_clock[33];
 	static unsigned long long intr_counter[33];
 
@@ -614,9 +595,13 @@ static int nvmev_kthread_io_proc(void *data)
 #endif
 
 	while (!kthread_should_stop()) {
-		curr_nsecs = cpu_clock(vdev->config.cpu_nr_proc_reg);
+		unsigned long long curr_nsecs = __get_wallclock();
+		unsigned int curr_entry = proc_info->proc_io_seq;
+		struct nvmev_completion_queue *cq;
+		struct nvmev_proc_table* proc_entry;
+		int qidx;
+
 		proc_info->proc_io_nsecs = curr_nsecs;
-		curr_entry = proc_info->proc_io_seq;
 		while (curr_entry != -1) {
 			proc_entry = &proc_info->proc_table[curr_entry];
 			if (proc_entry->isProc == true) {
@@ -625,7 +610,17 @@ static int nvmev_kthread_io_proc(void *data)
 			}
 
 			if (proc_entry->isCpy == false) {
+#if PERF_DEBUG
+				unsigned long long memcpy_start = __get_wallclock();
+				unsigned long long diff;
+				proc_entry->nsecs_copy_start = memcpy_start;
+#endif
 				nvmev_storage_memcpy(proc_entry->sqid, proc_entry->sq_entry);
+
+#if PERF_DEBUG
+				proc_entry->nsecs_copy_done = __get_wallclock();
+				diff = proc_entry->nsecs_copy_done - proc_entry->nsecs_copy_start;
+#endif
 				proc_entry->isCpy = true;
 				NVMEV_DEBUG("%s proc Entry %u, %d %d, %d --> %d   COPY MEM\n",
 						proc_info->thread_name,
@@ -638,21 +633,6 @@ static int nvmev_kthread_io_proc(void *data)
 			}
 
 			if (proc_entry->nsecs_target <= curr_nsecs) {
-#if PERF_DEBUG
-				elapsed_nr ++;
-				elapsed += (curr_nsecs - proc_entry->nsecs_start);
-
-				if (elapsed_nr > 1000) {
-					pr_info("Elapsed time -> %llu\n", elapsed / elapsed_nr);
-					elapsed_nr = 0;
-					elapsed = 0;
-				}
-#endif
-
-				NVMEV_DEBUG("(%llu): %llu -> %llu -> %llu\n",  curr_nsecs,
-						proc_entry->nsecs_start,
-						proc_entry->nsecs_enqueue,
-						proc_entry->nsecs_target);
 
 				spin_lock(&vdev->cq_entry_lock[proc_entry->cqid]);
 				fill_cq_result(proc_entry->sqid,
@@ -669,6 +649,16 @@ static int nvmev_kthread_io_proc(void *data)
 						proc_info->proc_table[curr_entry].next
 						);
 
+#if PERF_DEBUG
+				proc_entry->nsecs_cq_filled = __get_wallclock();
+				pr_info("%llu %llu %llu %llu %llu %llu\n",
+						proc_entry->nsecs_start,
+						proc_entry->nsecs_enqueue,
+						proc_entry->nsecs_copy_start,
+						proc_entry->nsecs_copy_done,
+						proc_entry->nsecs_cq_filled,
+						proc_entry->nsecs_target);
+#endif
 				proc_entry->isProc = true;
 				cq = vdev->cqes[proc_entry->cqid];
 				cq->interrupt_ready = true;
@@ -676,7 +666,7 @@ static int nvmev_kthread_io_proc(void *data)
 				curr_entry = proc_info->proc_table[curr_entry].next;
 			} else {
 				NVMEV_DEBUG("%s =====> Entry: %u, %lld %lld %d\n",
-						proc_info->thread_name, curr_entry,curr_nsecs,
+						proc_info->thread_name, curr_entry, curr_nsecs,
 						proc_entry->nsecs_target, proc_entry->isProc);
 				break;
 			}
@@ -739,7 +729,7 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev)
 		proc_info->proc_free_last = NR_MAX_PARALLEL_IO - 1;
 		proc_info->proc_io_seq = -1;
 
-		proc_info->proc_io_nsecs = cpu_clock(vdev->config.cpu_nr_proc_reg);
+		proc_info->proc_io_nsecs = __get_wallclock();
 
 		proc_info->thread_name = kzalloc(sizeof(char) * 32, GFP_KERNEL);
 
@@ -749,12 +739,9 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev)
 
 		kthread_bind(proc_info->nvmev_io_proc, vdev->config.cpu_nr_proc_io[proc_idx]);
 		wake_up_process(proc_info->nvmev_io_proc);
-	}
 
-	for (proc_idx = 0; proc_idx < vdev->config.nr_io_cpu; proc_idx++) {
-		proc_info = &vdev->proc_info[proc_idx];
-		pr_err("%s start\n", proc_info->thread_name);
-		wake_up_process(proc_info->nvmev_io_proc);
+		pr_info("%s started at cpu %d\n",
+				proc_info->thread_name, vdev->config.cpu_nr_proc_io[proc_idx]);
 	}
 }
 
