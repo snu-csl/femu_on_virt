@@ -494,13 +494,14 @@ void nvmev_proc_cq_io(int cqid, int new_db, int old_db)
 	if (new_db == -1) cq->cq_tail = cq->queue_size - 1;
 }
 
-void nvmev_intr_issue(int cqid)
+static void __signal_cq_completion(int cqid)
 {
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
-	struct msi_desc *msi_desc;
+	struct cpumask *target = &vdev->first_cpu_on_node; /* SIgnal 0 by default */
 
 	if (vdev->msix_enabled) {
 		if (unlikely(!cq->irq_desc)) {
+			struct msi_desc *msi_desc;
 			for_each_msi_entry(msi_desc, (&vdev->pdev->dev)) {
 				if (msi_desc->msi_attrib.entry_nr == cq->irq_vector)
 					break;
@@ -517,48 +518,24 @@ void nvmev_intr_issue(int cqid)
 
 		if (unlikely(!cpumask_subset(cq->irq_desc->irq_common_data.affinity,
 						cpumask_of_node(vdev->pdev->dev.numa_node)))) {
-			//apic->send_IPI_mask(cpumask_of_node(vdev->pdev->dev.numa_node),
 			NVMEV_DEBUG("Invalid affinity, -> 0\n");
-			apic->send_IPI_mask(&vdev->first_cpu_on_node, cq->irq);
 		} else {
-			/*
-			if (IS_ERR_OR_NULL(per_cpu(vector_irq, cpumask_first(cq->irq_desc->irq_common_data.affinity))[cq->irq])) {
-				NVMEV_INFO("NULL\n");
-				apic->send_IPI_mask(cpumask_of_node(vdev->pdev->dev.numa_node),
-					cq->irq);
-			} else {
-			*/
-			/*
-			if (cq->irq != (readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF)) {
-				NVMEV_ERROR("2nd IPI %u\n", readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF);
-				apic->send_IPI_mask(cq->irq_desc->irq_common_data.affinity,
-					readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF);
-			} else {
-				NVMEV_ERROR("1st IPI %u\n", cq->irq);
-				apic->send_IPI_mask(cq->irq_desc->irq_common_data.affinity,
-					cq->irq);
-			}
-			*/
 			if (unlikely(cq->irq != (readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF))) {
 				NVMEV_DEBUG("IRQ : %d -> %d\n", cq->irq, (readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF));
 				cq->irq = (readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF);
 			}
 			if (unlikely(cpumask_equal(cq->irq_desc->irq_common_data.affinity, cpumask_of_node(vdev->pdev->dev.numa_node)))) {
 				NVMEV_DEBUG("Every... -> 0\n");
-				apic->send_IPI_mask(&vdev->first_cpu_on_node, cq->irq);
 			} else {
 				NVMEV_DEBUG("Send to Target CPU\n");
-				apic->send_IPI_mask(cq->irq_desc->irq_common_data.affinity, cq->irq);
+				target = cq->irq_desc->irq_common_data.affinity;
 			}
-
-
-			//}
 		}
 #else
 		NVMEV_DEBUG("Intr -> all, Vector->%u\n", cq->irq);
-
-		apic->send_IPI_mask(cq->irq_desc->irq_common_data.affinity, cq->irq);
+		target = cq->irq_desc->irq_common_data.affinity;
 #endif
+		apic->send_IPI_mask(target, cq->irq);
 	} else {
 		generateInterrupt(cq->irq);
 	}
@@ -681,7 +658,7 @@ static int nvmev_kthread_io_proc(void *data)
 					prev_clock = local_clock();
 #endif
 					cq->interrupt_ready = false;
-					nvmev_intr_issue(qidx);
+					__signal_cq_completion(qidx);
 #if PERF_DEBUG
 					intr_clock[qidx] += (local_clock() - prev_clock);
 					intr_counter[qidx]++;

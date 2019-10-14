@@ -357,6 +357,8 @@ void nvmev_proc_sq_admin(int new_db, int old_db)
 	int num_proc = new_db - old_db;
 	int cur_entry = old_db;
 	int seq;
+	struct cpumask *target = &vdev->first_cpu_on_node; /* Signal 0 by default */
+	const char * desc = NULL;
 
 	if (unlikely(num_proc < 0)) num_proc += queue->sq_depth;
 
@@ -373,7 +375,12 @@ void nvmev_proc_sq_admin(int new_db, int old_db)
 			if (queue->vector == 0)
 				queue->vector = first_msi_entry(&vdev->pdev->dev)->irq;
 
-			queue->irq_desc = irq_to_desc(vdev->admin_q->vector);
+			queue->irq_desc = irq_to_desc(queue->vector);
+
+			printk("Node: %d, first: %*pbl, aff: %*pbl\n", vdev->pdev->dev.numa_node,
+					cpumask_pr_args(&vdev->first_cpu_on_node),
+					cpumask_pr_args(queue->irq_desc->irq_common_data.affinity));
+
 		}
 #ifdef CONFIG_NUMA
 		NVMEV_DEBUG("smphint(latest): %*pbl\n",
@@ -382,46 +389,36 @@ void nvmev_proc_sq_admin(int new_db, int old_db)
 		if (unlikely(!cpumask_subset(queue->irq_desc->irq_common_data.affinity,
 						cpumask_of_node(vdev->pdev->dev.numa_node)))) {
 			NVMEV_DEBUG("Not a member of node %d\n", vdev->pdev->dev.numa_node);
-
-			NVMEV_DEBUG("Send to %*pbl, Vector %d\n",
-					cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
-			apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
+			desc = "Remote";
 		} else {
 			if (unlikely(queue->irq_vector !=
-				(readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF))) {
+					(readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF))) {
 				queue->irq_vector = (readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF);
 			}
 			if (unlikely(cpumask_equal(queue->irq_desc->irq_common_data.affinity,
 							cpumask_of_node(vdev->pdev->dev.numa_node)))) {
-				NVMEV_DEBUG("EQ Send to %*pbl, Vector %d\n",
-						cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
-				apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
+				desc = "Every";
 			} else {
-				NVMEV_DEBUG("Best Send to %*pbl, Vector %d\n",
-						cpumask_pr_args(queue->irq_desc->irq_common_data.affinity),
-						queue->irq_vector);
-				apic->send_IPI_mask(queue->irq_desc->irq_common_data.affinity,
-						queue->irq_vector);
-
+				target = queue->irq_desc->irq_common_data.affinity;
+				desc = "Best";
 			}
 		}
 #else
-		NVMEV_DEBUG("Intr -> all, Vector->%u\n", cq->irq);
-
-		apic->send_IPI_mask(queue->irq_desc->irq_common_data.affinity,
-				queue->irq_vector);
+		desc = "Intr -> all"
+		target = queue->irq_desc->irq_common_data.affinity;
 #endif
 	} else {
 		NVMEV_DEBUG("PIN INTR %u %d node-%d\n",
 				queue->irq_vector, smp_processor_id(),
 				vdev->pdev->dev.numa_node);
-		NVMEV_DEBUG("Node %d CPU Mask %*pbl\n", vdev->pdev->dev.numa_node,
-				cpumask_pr_args(cpumask_of_node(vdev->pdev->dev.numa_node)));
-		NVMEV_DEBUG("Send to %*pbl, Vector %d\n",
-				cpumask_pr_args(&vdev->first_cpu_on_node), queue->irq_vector);
-		apic->send_IPI_mask(&vdev->first_cpu_on_node, queue->irq_vector);
+
+		desc = "Non-msix";
 		//generateInterrupt(queue->irq_vector);
 	}
+
+	NVMEV_DEBUG("Send %s IPI to %*pbl, vector %d\n",
+			desc, cpumask_pr_args(target), queue->irq_vector);
+	apic->send_IPI_mask(target, queue->irq_vector);
 }
 
 void nvmev_proc_cq_admin(int new_db, int old_db)
