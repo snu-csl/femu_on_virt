@@ -27,31 +27,33 @@ static inline unsigned long long __get_wallclock(void)
 	return cpu_clock(vdev->config.cpu_nr_proc_reg);
 }
 
-#define UNIT_SIZE (1 << 20)
-#define NR_UNITS 8
-
-static unsigned long long schedule_units(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
+static unsigned long long schedule_io_units(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
 {
-	unsigned long start_unit = (lba << 9) % UNIT_SIZE;
-	unsigned int nr_units = DIV_ROUND_UP(length, UNIT_SIZE);
+	unsigned long io_unit = DIV_ROUND_UP(lba << 9, vdev->config.io_unit_size)
+							% vdev->config.nr_io_units;
 	unsigned long long latest = nsecs_start;
-	unsigned int latency = (opcode == nvme_cmd_write) ?
-			vdev->config.write_latency : vdev->config.read_latency;
-	int i;
+	unsigned int latency = 0;
 
-	for (i = 0; i < nr_units; i++) {
-		int unit = (start_unit + i)	% NR_UNITS;
-		if (vdev->unit_stat[unit] < nsecs_start) {
-			vdev->unit_stat[unit] = nsecs_start + latency;
-		} else {
-			vdev->unit_stat[unit] += latency;
-		}
-		latest = max(latest, vdev->unit_stat[unit]);
+	if (opcode == nvme_cmd_write) {
+		latency = vdev->config.write_latency;
+	} else if (opcode == nvme_cmd_read) {
+		latency = vdev->config.read_latency;
 	}
+
+	do {
+		vdev->unit_stat[io_unit] = max(nsecs_start, vdev->unit_stat[io_unit]) + latency;
+
+		latest = max(latest, vdev->unit_stat[io_unit]);
+
+		length -= min(length, vdev->config.io_unit_size);
+		if (++io_unit >= vdev->config.nr_io_units) io_unit = 0;
+	} while (length > 0);
 
 	return latest;
 }
 
+#if 0
+/* The original schedule_io_units */
 unsigned long long elapsed_nsecs(int opcode, unsigned int length, unsigned long long nsecs_start)
 {
 	unsigned long long elapsed_nsecs = 0;
@@ -88,24 +90,9 @@ unsigned long long elapsed_nsecs(int opcode, unsigned int length, unsigned long 
 		if (elapsed_nsecs < vdev->unit_stat[unit_seq])
 			elapsed_nsecs = vdev->unit_stat[unit_seq];
 	}
-	/*
-	switch(opcode) {
-		case nvme_cmd_write:
-			elapsed_nsecs += vdev->config.write_latency;
-			if (vdev->config.write_bw_us)
-				elapsed_nsecs += (length / vdev->config.write_bw_us);
-			break;
-		case nvme_cmd_read:
-			elapsed_nsecs += vdev->config.read_latency;
-			if (vdev->config.read_bw_us)
-				elapsed_nsecs += (length / vdev->config.read_bw_us);
-			break;
-		default:
-			break;
-	}
-	*/
 	return elapsed_nsecs;
 }
+#endif
 
 unsigned int nvmev_storage_io(int sqid, int sq_entry)
 {
@@ -120,7 +107,6 @@ unsigned int nvmev_storage_io(int sqid, int sq_entry)
 unsigned int nvmev_storage_memcpy(int sqid, int sq_entry)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	//unsigned long long start_bytes;
 	unsigned long long io_offs;
 	unsigned int mem_offs;
 	unsigned int length_bytes;
@@ -132,12 +118,11 @@ unsigned int nvmev_storage_memcpy(int sqid, int sq_entry)
 	u64 *paddr_list = NULL;
 	void* temp_ptr;
 	void *vaddr;
-	//int temp;
 
 	io_offs = sq_entry(sq_entry).rw.slba << 9;
 	length_bytes = (sq_entry(sq_entry).rw.length + 1) << 9;
 	remain_io = length_bytes;
-	//NVMEV_INFO("IO REQ: %llu %u\n", io_offs, length_bytes);
+
 	while (remain_io) {
 		prp_offs++;
 		if (prp_offs == 1) {
@@ -150,10 +135,8 @@ unsigned int nvmev_storage_memcpy(int sqid, int sq_entry)
 				temp_ptr = kmap_atomic_pfn(PRP_PFN(paddr2));
 				temp_ptr+= (paddr2 & 0xFFF);
 				paddr_list = temp_ptr;
-				//NVMEV_INFO("PRP2 Addr: %llu\n", paddr2);
-				paddr = paddr_list[prp2_offs];
 
-				//NVMEV_INFO("PRP Offs %d: %llu\n", prp2_offs, paddr);
+				paddr = paddr_list[prp2_offs];
 
 				prp2_offs++;
 			}
@@ -163,31 +146,8 @@ unsigned int nvmev_storage_memcpy(int sqid, int sq_entry)
 		}
 
 		vaddr = kmap_atomic_pfn(PRP_PFN(paddr));
-		/*
-		if (paddr & 0xFFF) {
-			mem_offs = paddr & 0xFFF;
-			NVMEV_DEBUG("Offset Mismatch =Remain_io = %u==============\n", remain_io);
-			if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
-				NVMEV_DEBUG("Write %llu->%p, %llu %u\n", paddr, vaddr, io_offs, remain_io);
-			} else {
-				NVMEV_DEBUG("Read %llu->%p, %llu %u\n", paddr, vaddr, io_offs, remain_io);
-			}
 
-			NVMEV_ERROR("PRP 1 0: 0x%llx %llx\n", paddr, paddr&0xFFF);
-			if (paddr_list != NULL) {
-				while (paddr_list[temp] != 0) {
-					NVMEV_ERROR("PRP 2 %d: 0x%llx %llx\n", temp, paddr_list[temp], paddr_list[temp]&0xFFF);
-					temp++;
-				}
-			}
-
-
-		}
-		*/
-		if (remain_io > 4096)
-			io_size = 4096;
-		else
-			io_size = remain_io;
+		io_size = min_t(unsigned int, remain_io, 4096);
 
 		if (paddr & 0xFFF) {
 			mem_offs = paddr & 0xFFF;
@@ -197,11 +157,9 @@ unsigned int nvmev_storage_memcpy(int sqid, int sq_entry)
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			// write
 			memcpy(vdev->storage_mapped + io_offs, vaddr + mem_offs, io_size);
-			//NVMEV_INFO("Write %llu->%p, %u %llu %u\n", paddr, vaddr + mem_offs, mem_offs, io_offs, io_size);
 		} else {
 			// read
 			memcpy(vaddr + mem_offs, vdev->storage_mapped + io_offs, io_size);
-			//NVMEV_INFO("Read %llu->%p, %u %llu %u\n", paddr, vaddr + mem_offs, mem_offs, io_offs, io_size);
 		}
 
 		kunmap_atomic(vaddr);
@@ -417,14 +375,12 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 	switch(sq_entry(sq_entry).common.opcode) {
 	case nvme_cmd_write:
 		io_len = nvmev_proc_write(sqid, sq_entry);
-		//nsecs_elapsed = elapsed_nsecs(nvme_cmd_write, io_len, nsecs_start);
-		nsecs_elapsed = schedule_units(nvme_cmd_write,
+		nsecs_elapsed = schedule_io_units(nvme_cmd_write,
 					sq_entry(sq_entry).rw.slba, io_len, nsecs_start);
 		break;
 	case nvme_cmd_read:
 		io_len = nvmev_proc_read(sqid, sq_entry);
-		//nsecs_elapsed = elapsed_nsecs(nvme_cmd_read, io_len, nsecs_start);
-		nsecs_elapsed = schedule_units(nvme_cmd_read,
+		nsecs_elapsed = schedule_io_units(nvme_cmd_read,
 					sq_entry(sq_entry).rw.slba, io_len, nsecs_start);
 		break;
 	case nvme_cmd_flush:

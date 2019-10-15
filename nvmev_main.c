@@ -9,6 +9,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
+#include <linux/delay.h>
 #include <asm/e820.h>
 #include "nvmev.h"
 
@@ -43,28 +44,29 @@
 struct nvmev_dev *vdev = NULL;
 EXPORT_SYMBOL(vdev);
 
-unsigned int memmap_start = 0;
-unsigned int memmap_size = 0;
+unsigned long memmap_start = 0;
+unsigned long memmap_size = 0;
 unsigned int read_latency = 0;
 unsigned int write_latency = 0;
-unsigned int read_bw = 0;
-unsigned int write_bw = 0;
+unsigned int nr_io_units = 0;
+unsigned int io_unit_size = 0;
 char *cpus;
 
-module_param(memmap_start, uint, 0);
+module_param(memmap_start, ulong, 0);
 MODULE_PARM_DESC(memmap_start, "Memmap start in GiB");
-module_param(memmap_size, uint, 0);
+module_param(memmap_size, ulong, 0);
 MODULE_PARM_DESC(memmap_size, "Memmap size in MiB");
 module_param(read_latency, uint, 0);
 MODULE_PARM_DESC(read_latency, "Read latency in nanoseconds");
 module_param(write_latency, uint, 0);
 MODULE_PARM_DESC(write_latency, "Write latency in nanoseconds");
-module_param(read_bw, uint, 0);
-MODULE_PARM_DESC(read_bw, "Max read bandwidth (MiB/s)");
-module_param(write_bw, uint, 0);
-MODULE_PARM_DESC(write_bw, "Max write bandwidth (MiB/s)");
+module_param(nr_io_units, uint, 0);
+MODULE_PARM_DESC(nr_io_units, "Number of I/O units that operate in parallel");
+module_param(io_unit_size, uint, 0);
+MODULE_PARM_DESC(io_unit_size, "Size of each I/O unit");
 module_param(cpus, charp, 0);
 MODULE_PARM_DESC(cpus, "CPU list for process, completion(int.) threads, Seperated by Comma(,)");
+
 
 static void nvmev_proc_dbs(void)
 {
@@ -127,7 +129,7 @@ static int nvmev_kthread_proc_reg(void *data)
 	return 0;
 }
 
-int nvmev_args_verify(void)
+static int nvmev_args_verify(void)
 {
 	unsigned long resv_start_bytes;
 	unsigned long resv_end_bytes;
@@ -146,22 +148,35 @@ int nvmev_args_verify(void)
 		return -EINVAL;
 	}
 
-	resv_start_bytes = (unsigned long)memmap_start << 30;
-	resv_end_bytes = resv_start_bytes + ((unsigned long)memmap_size << 20) - 1;
+	resv_start_bytes = memmap_start << 30;
+	resv_end_bytes = resv_start_bytes + (memmap_size << 20) - 1;
 
 	if (e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RAM) ||
 		e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RESERVED_KERN)) {
-		NVMEV_ERROR("[mem %#010llx-%#010llx] is usable, not reseved region\n",
-		       (unsigned long long) resv_start_bytes,
-		       (unsigned long long) resv_end_bytes);
+		NVMEV_ERROR("[mem %#010lx-%#010lx] is usable, not reseved region\n",
+		       (unsigned long) resv_start_bytes,
+		       (unsigned long) resv_end_bytes);
 		return -EPERM;
 	}
 
 	if (!e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RESERVED)) {
-		NVMEV_ERROR("[mem %#010llx-%#010llx] is not reseved region\n",
-		       (unsigned long long) resv_start_bytes,
-		       (unsigned long long) resv_end_bytes);
+		NVMEV_ERROR("[mem %#010lx-%#010lx] is not reseved region\n",
+		       (unsigned long) resv_start_bytes,
+		       (unsigned long) resv_end_bytes);
 		return -EPERM;
+	}
+
+	if (nr_io_units == 0 || io_unit_size == 0) {
+		NVMEV_ERROR("Need non-zero IO unit size and at least one IO unit\n");
+		return -EINVAL;
+	}
+	if (read_latency == 0) {
+		NVMEV_ERROR("Need non-zero read latency\n");
+		return -EINVAL;
+	}
+	if (write_latency == 0) {
+		NVMEV_ERROR("Need non-zero write latency\n");
+		return -EINVAL;
 	}
 
 	return 0;
@@ -186,16 +201,19 @@ void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
 
 void print_perf_configs(void)
 {
+	unsigned long unit_perf_kb =
+			vdev->config.nr_io_units * vdev->config.io_unit_size >> 10;
 	NVMEV_INFO("=============== Configure Change =============\n");
 	NVMEV_INFO("* Latency\n");
 	NVMEV_INFO("  Read     : %u (ns)\n", vdev->config.read_latency);
 	NVMEV_INFO("  Write    : %u (ns)\n", vdev->config.write_latency);
 	NVMEV_INFO("* Bandwidth\n");
-	NVMEV_INFO("  Read     : %lu (MiB/s)\n", vdev->config.read_bw);
-	NVMEV_INFO("             %lu (B/us)\n", vdev->config.read_bw_us);
-	NVMEV_INFO("  Write    : %lu (MiB/s)\n", vdev->config.write_bw);
-	NVMEV_INFO("             %lu (B/us)\n", vdev->config.write_bw_us);
-	NVMEV_INFO("* IO depth : %d\n", vdev->nr_unit);
+	NVMEV_INFO("  Read     : %lu (MiB/s)\n",
+			(1000000000UL / vdev->config.read_latency) * unit_perf_kb >> 10);
+	NVMEV_INFO("  Write    : %lu (MiB/s)\n",
+			(1000000000UL / vdev->config.write_latency) * unit_perf_kb >> 10);
+	NVMEV_INFO("* IO units : %d x %d\n",
+			vdev->config.nr_io_units, vdev->config.io_unit_size);
 }
 
 static int __get_nr_entries(int dbs_idx, int queue_size)
@@ -217,8 +235,9 @@ static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *
 		snprintf(buf, len, "%u", vdev->config.read_latency);
 	} else if (strcmp(fname, "write_latency") == 0) {
 		snprintf(buf, len, "%u", vdev->config.write_latency);
-	} else if (strcmp(fname, "slot") == 0) {
-		snprintf(buf, len, "%u", vdev->nr_unit);
+	} else if (strcmp(fname, "io_units") == 0) {
+		snprintf(buf, len, "%u %u",
+				vdev->config.nr_io_units, vdev->config.io_unit_size);
 	} else if (strcmp(fname, "stat") == 0) {
 		int offset = 0, i;
 		unsigned int nr_in_flight = 0;
@@ -254,50 +273,37 @@ static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, lof
 	const char* fname = filp->f_path.dentry->d_name.name;
 	char *endptr;
 	char input[128];
-	unsigned int *val = PDE_DATA(filp->f_inode);
 	unsigned int newval;
 	unsigned long long *old_stat;
-	bool force_slot = false;
+
 	copy_from_user(input, buf, len);
 
 	newval = simple_strtol(input, &endptr, 10);
 
-	*val = newval;
-
-	if (!strcmp(fname, "read_bw")) {
-		vdev->config.read_bw = newval;
-		vdev->config.read_bw_us = (unsigned long)((newval << 20) / 1000000);
-	}
-	else if (!strcmp(fname, "write_bw")) {
-		vdev->config.write_bw = newval;
-		vdev->config.write_bw_us = (unsigned long)((newval << 20) / 1000000);
-	}
-	else if (!strcmp(fname, "read_latency")) {
+	if (!strcmp(fname, "read_latency")) {
 		vdev->config.read_latency = newval;
-	}
-	else if (!strcmp(fname, "write_latency")) {
+	} else if (!strcmp(fname, "write_latency")) {
 		vdev->config.write_latency = newval;
-	}
-	else if (!strcmp(fname, "slot")) {
-		vdev->config.read_bw = newval * 4 * (1000000000 / vdev->config.read_latency) / 1024;
-		vdev->config.read_bw_us = (unsigned long long)((vdev->config.read_bw << 20) / 1000000);
+	} else if (!strcmp(fname, "io_units")) {
+		if (sscanf(input, "%d %d",
+				&vdev->config.nr_io_units, &vdev->config.io_unit_size) != 2) {
+			goto out;
+		}
 
-		vdev->config.write_bw = newval * 4 * (1000000000 / vdev->config.write_latency) / 1024;
-		vdev->config.write_bw_us = (unsigned long long)((vdev->config.write_bw << 20) / 1000000);
-		force_slot = true;
-	}
-	if (!force_slot) {
-		int us_per_page = DIV_ROUND_UP(4096, vdev->config.read_bw_us);
-		vdev->nr_unit = DIV_ROUND_UP(vdev->config.read_latency, us_per_page);
-	}
-	old_stat = vdev->unit_stat;
-	vdev->unit_stat = kzalloc(sizeof(unsigned long long) * vdev->nr_unit,
-			GFP_KERNEL);
-	kfree(old_stat);
+		old_stat = vdev->unit_stat;
+		vdev->unit_stat = kzalloc(
+				sizeof(*vdev->unit_stat) * vdev->config.nr_io_units, GFP_KERNEL);
 
-	print_perf_configs();
+		mdelay(100);	/* XXX: Delay the free of old stat so that outstanding
+						 * requests accessing the unit_stat are all returned
+						 */
+		kfree(old_stat);
+	}
 
 	memset(vdev->sq_stats, 0x00, sizeof(vdev->sq_stats));
+
+out:
+	print_perf_configs();
 
 	return count;
 }
@@ -309,32 +315,23 @@ static const struct file_operations proc_file_fops = {
 
 void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 {
-	vdev->storage_mapped = memremap(vdev->config.storage_start,
-			vdev->config.storage_size, MEMREMAP_WB);
 	NVMEV_INFO("Storage : %lx + %lx\n",
 			vdev->config.storage_start, vdev->config.storage_size);
+
+	vdev->storage_mapped = memremap(vdev->config.storage_start,
+			vdev->config.storage_size, MEMREMAP_WB);
 	if (vdev->storage_mapped == NULL)
-		NVMEV_ERROR("Storage Memory Remap Error!!!!!\n");
+		NVMEV_ERROR("Failed to map storage memory.\n");
 
 	vdev->proc_root = proc_mkdir("nvmev", NULL);
-	vdev->read_latency = proc_create_data(
-			"read_latency", 0664, vdev->proc_root,
-			&proc_file_fops, &vdev->config.read_latency);
-	vdev->write_latency = proc_create_data(
-			"write_latency", 0664, vdev->proc_root,
-			&proc_file_fops, &vdev->config.write_latency);
-	vdev->read_bw = proc_create_data(
-			"read_bw", 0664, vdev->proc_root,
-			&proc_file_fops, &vdev->config.read_bw);
-	vdev->write_bw = proc_create_data(
-			"write_bw", 0664, vdev->proc_root,
-			&proc_file_fops, &vdev->config.write_bw);
-	vdev->slot = proc_create_data(
-			"slot", 0664, vdev->proc_root,
-			&proc_file_fops, &vdev->nr_unit);
-	proc_create_data(
-			"stat", 0444, vdev->proc_root,
-			&proc_file_fops, vdev);
+	vdev->proc_read_latency = proc_create(
+			"read_latency", 0664, vdev->proc_root, &proc_file_fops);
+	vdev->proc_write_latency = proc_create(
+			"write_latency", 0664, vdev->proc_root, &proc_file_fops);
+	vdev->proc_io_units = proc_create(
+			"io_units", 0664, vdev->proc_root, &proc_file_fops);
+	vdev->proc_stat = proc_create(
+			"stat", 0444, vdev->proc_root, &proc_file_fops);
 }
 
 void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
@@ -344,39 +341,60 @@ void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 
 	remove_proc_entry("read_latency", vdev->proc_root);
 	remove_proc_entry("write_latency", vdev->proc_root);
-	remove_proc_entry("read_bw", vdev->proc_root);
-	remove_proc_entry("write_bw", vdev->proc_root);
-	remove_proc_entry("slot", vdev->proc_root);
+	remove_proc_entry("io_units", vdev->proc_root);
 	remove_proc_entry("stat", vdev->proc_root);
 
 	remove_proc_entry("nvmev", NULL);
 }
 
+static bool VDEV_SET_ARGS(struct nvmev_config* config)
+{
+	bool first = true;
+	unsigned int cpu_nr;
+	char *cpu;
+
+	config->memmap_start = memmap_start << 30;
+	config->memmap_size = memmap_size << 20;
+	config->storage_start = config->memmap_start + (1UL << 20);
+	config->storage_size = (memmap_size - 1) << 20;
+
+	config->read_latency = read_latency;
+	config->write_latency = write_latency;
+	config->nr_io_units = nr_io_units;
+	config->io_unit_size = io_unit_size;
+
+	config->nr_io_cpu = 0;
+	config->cpu_nr_proc_reg = -1;
+	config->cpu_nr_proc_io = kcalloc(sizeof(unsigned int), 32, GFP_KERNEL);
+
+	while ((cpu = strsep(&cpus, ",")) != NULL) {
+		cpu_nr = (unsigned int)simple_strtol(cpu, NULL, 10);
+		if (first) {
+			config->cpu_nr_proc_reg = cpu_nr;
+		} else {
+			config->cpu_nr_proc_io[config->nr_io_cpu] = cpu_nr;
+			config->nr_io_cpu++;
+		}
+		first = false;
+	}
+
+	return true;
+}
+
 static int NVMeV_init(void)
 {
-	int us_per_page;
-
-	pr_info("NVMe Virtual Device Initialize Start\n");
-
 	if (nvmev_args_verify() < 0)
 		goto ret_err;
 
 	vdev = VDEV_INIT();
+	if (!vdev) goto ret_err;
 
-	VDEV_SET_ARGS(&vdev->config,
-			memmap_start, memmap_size,
-			read_latency, write_latency, read_bw, write_bw,
-			cpus);
-
-	if (!vdev->config.read_bw_us) {
+	if (!VDEV_SET_ARGS(&vdev->config)) {
 		goto ret_err_pci_bus;
 	}
 
-	us_per_page = DIV_ROUND_UP(4096, vdev->config.read_bw_us);
-	vdev->nr_unit = DIV_ROUND_UP(vdev->config.read_latency, us_per_page);
-
-	vdev->unit_stat = kzalloc(sizeof(unsigned long long) * vdev->nr_unit,
-			GFP_KERNEL);
+	vdev->unit_stat = kzalloc(
+			sizeof(*vdev->unit_stat) * vdev->config.nr_io_units, GFP_KERNEL);
 
 	PCI_HEADER_SETTINGS(vdev, vdev->pcihdr);
 	PCI_PMCAP_SETTINGS(vdev->pmcap);

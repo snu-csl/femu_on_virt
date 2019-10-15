@@ -47,18 +47,10 @@
       cpus=1,3,17,19    \ # List of CPUs to process I/O requests (should have at least 2)
       read_latency=1000 \ # in usec
       write_latency=1000 \ # in usec
-      read_bw=2000 \ # Target bandwidth in MiB/sec
-      write_bw=2000  # Target bandwidth in MiB/sec
+			io_unit_size=4096 \ # I/O unit
+			nr_io_units=8			  # Number of I/O units that can be accessed in parallel
   ```
 
-- (CAUTION) The current setting up procedure does not work properly (sometimes sets up the system counter-intuitively). To workaround the buggy setup, load the module with some arbitrary parameters, and later set read/write latency and the parallelism degree explicitly as follow:
+- With the `nr_io_units` of internal parallel I/O units, the bandwidth can be calculated as:
 
-  ```bash
-  $ sudo sh -c 'echo 1  > /proc/nvmev/read_latency'
-  $ sudo sh -c 'echo 1  > /proc/nvmev/write_latency'
-  $ sudo sh -c 'echo 32 > /proc/nvmev/slot'
-  ```
-
-  With the `slot` of internal parallelism degree, the bandwidth can be calculated as:
-
-  Bandwidth (Bytes/sec) = slot * 4KB / (latency in second)
+  Bandwidth (bytes/sec) = `nr_io_units` * `io_unit_size` / (latency in second)

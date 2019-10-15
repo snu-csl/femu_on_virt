@@ -118,10 +118,8 @@ struct nvmev_config {
 	unsigned int read_latency;	// ns
 	unsigned int write_latency;	// ns
 
-	unsigned long read_bw;		//MiB
-	unsigned long write_bw;		//MiB
-	unsigned long read_bw_us;	// in B
-	unsigned long write_bw_us;	// in B
+	unsigned int nr_io_units;
+	unsigned int io_unit_size;	// byte
 
 	unsigned int cpu_nr_proc_reg;
 	unsigned int nr_io_cpu;
@@ -214,14 +212,12 @@ struct nvmev_dev {
 	cpumask_t first_cpu_on_node;
 
 	struct proc_dir_entry *proc_root;
-	struct proc_dir_entry *read_latency;
-	struct proc_dir_entry *write_latency;
-	struct proc_dir_entry *read_bw;
-	struct proc_dir_entry *write_bw;
-	struct proc_dir_entry *slot;
+	struct proc_dir_entry *proc_read_latency;
+	struct proc_dir_entry *proc_write_latency;
+	struct proc_dir_entry *proc_io_units;
+	struct proc_dir_entry *proc_stat;
 
 	unsigned long long *unit_stat;
-	int nr_unit;
 
 	struct nvmev_sq_stat sq_stats[NR_MAX_IO_QUEUE + 1];
 };
@@ -229,11 +225,6 @@ struct nvmev_dev {
 // VDEV Init, Final Function
 struct nvmev_dev* VDEV_INIT(void);
 void VDEV_FINALIZE(struct nvmev_dev* vdev);
-void VDEV_SET_ARGS(struct nvmev_config *config,
-		unsigned int memmap_start, unsigned int memmap_size,
-		unsigned int read_latency, unsigned int write_latency,
-		unsigned int read_bw, unsigned int write_bw,
-		char *cpus);
 
 // HEADER Initialize
 void PCI_HEADER_SETTINGS(struct nvmev_dev* vdev, struct pci_header* pcihdr);
