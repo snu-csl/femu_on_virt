@@ -216,18 +216,15 @@ unsigned int nvmev_proc_read(int sqid, int sq_entry)
 }
 
 void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
-		unsigned long long nsecs_start, unsigned long long nsecs_elapse)
+		unsigned long long nsecs_start, unsigned long long nsecs_target)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	unsigned int proc_turn = vdev->proc_turn;
 	struct nvmev_proc_info *proc_info = &vdev->proc_info[proc_turn++];
 
-	unsigned long long nsecs_target = nsecs_elapse;
 	unsigned int new_entry = proc_info->proc_free_seq;
 	unsigned int curr_entry = -1;
-
-	unsigned long long nsecs_enqueue = local_clock();
 
 	if (proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
 	vdev->proc_turn = proc_turn;
@@ -246,10 +243,10 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 	proc_info->proc_table[new_entry].sq_entry = sq_entry;
 	proc_info->proc_table[new_entry].command_id = sq_entry(sq_entry).common.command_id;
 	proc_info->proc_table[new_entry].nsecs_start = nsecs_start;
-	proc_info->proc_table[new_entry].nsecs_enqueue = nsecs_enqueue;
+	proc_info->proc_table[new_entry].nsecs_enqueue = local_clock();
 	proc_info->proc_table[new_entry].nsecs_target = nsecs_target;
-	proc_info->proc_table[new_entry].isProc = false;
-	proc_info->proc_table[new_entry].isCpy = false;
+	proc_info->proc_table[new_entry].is_completed = false;
+	proc_info->proc_table[new_entry].is_copied = false;
 	proc_info->proc_table[new_entry].next = -1;
 	proc_info->proc_table[new_entry].prev = -1;
 
@@ -264,8 +261,7 @@ void nvmev_proc_io_enqueue(int sqid, int cqid, int sq_entry,
 		while (curr_entry != -1) {
 			NVMEV_DEBUG("Move-> Current: %u, Target, %llu, ioproc: %llu, New target: %llu\n",
 					curr_entry, proc_info->proc_table[curr_entry].nsecs_target,
-					proc_info->proc_io_nsecs,
-					nsecs_target);
+					proc_info->proc_io_nsecs, nsecs_target);
 			if (proc_info->proc_table[curr_entry].nsecs_target <= proc_info->proc_io_nsecs)
 				break;
 
@@ -317,10 +313,10 @@ void nvmev_proc_io_cleanup(void)
 		NVMEV_DEBUG("Before Start: Start: %u Curr: %u\n", start_entry, curr_entry);
 		while (curr_entry != -1) {
 			proc_entry = &proc_info->proc_table[curr_entry];
-			if (proc_entry->isProc == true && proc_entry->isCpy == true &&
+			if (proc_entry->is_completed == true && proc_entry->is_copied == true &&
 					proc_entry->nsecs_target <= proc_info->proc_io_nsecs) {
 				NVMEV_DEBUG("Cleanup Target : %d %d %d\n",
-						curr_entry, proc_entry->isProc, proc_entry->isCpy);
+						curr_entry, proc_entry->is_completed, proc_entry->is_copied);
 				last_entry = curr_entry;
 				curr_entry = proc_entry->next;
 			} else
@@ -360,7 +356,7 @@ void nvmev_proc_io_cleanup(void)
 int nvmev_proc_nvm(int sqid, int sq_entry)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	unsigned long long nsecs_elapsed = 0;
+	unsigned long long nsecs_target = 0;
 	unsigned long long nsecs_start = local_clock();
 	unsigned int io_len = 0;
 #if PERF_DEBUG
@@ -375,17 +371,17 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 	switch(sq_entry(sq_entry).common.opcode) {
 	case nvme_cmd_write:
 		io_len = nvmev_proc_write(sqid, sq_entry);
-		nsecs_elapsed = schedule_io_units(nvme_cmd_write,
+		nsecs_target = schedule_io_units(nvme_cmd_write,
 					sq_entry(sq_entry).rw.slba, io_len, nsecs_start);
 		break;
 	case nvme_cmd_read:
 		io_len = nvmev_proc_read(sqid, sq_entry);
-		nsecs_elapsed = schedule_io_units(nvme_cmd_read,
+		nsecs_target = schedule_io_units(nvme_cmd_read,
 					sq_entry(sq_entry).rw.slba, io_len, nsecs_start);
 		break;
 	case nvme_cmd_flush:
 		nvmev_proc_flush(sqid, sq_entry);
-		nsecs_elapsed = nsecs_start;
+		nsecs_target = nsecs_start;
 		break;
 	case nvme_cmd_write_uncor:
 	case nvme_cmd_compare:
@@ -403,7 +399,7 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 	prev_clock2 = local_clock();
 #endif
 	nvmev_proc_io_enqueue(sqid, sq->cqid, sq_entry,
-			nsecs_start, nsecs_elapsed);
+			nsecs_start, nsecs_target);
 #if PERF_DEBUG
 	prev_clock3 = local_clock();
 #endif
@@ -560,12 +556,12 @@ static int nvmev_kthread_io_proc(void *data)
 		proc_info->proc_io_nsecs = curr_nsecs;
 		while (curr_entry != -1) {
 			proc_entry = &proc_info->proc_table[curr_entry];
-			if (proc_entry->isProc == true) {
+			if (proc_entry->is_completed == true) {
 				curr_entry = proc_info->proc_table[curr_entry].next;
 				continue;
 			}
 
-			if (proc_entry->isCpy == false) {
+			if (proc_entry->is_copied == false) {
 #if PERF_DEBUG
 				unsigned long long memcpy_start = __get_wallclock();
 				unsigned long long diff;
@@ -577,7 +573,7 @@ static int nvmev_kthread_io_proc(void *data)
 				proc_entry->nsecs_copy_done = __get_wallclock();
 				diff = proc_entry->nsecs_copy_done - proc_entry->nsecs_copy_start;
 #endif
-				proc_entry->isCpy = true;
+				proc_entry->is_copied = true;
 				NVMEV_DEBUG("%s proc Entry %u, %d %d, %d --> %d   COPY MEM\n",
 						proc_info->thread_name,
 						curr_entry,
@@ -615,7 +611,7 @@ static int nvmev_kthread_io_proc(void *data)
 						proc_entry->nsecs_cq_filled,
 						proc_entry->nsecs_target);
 #endif
-				proc_entry->isProc = true;
+				proc_entry->is_completed = true;
 				cq = vdev->cqes[proc_entry->cqid];
 				cq->interrupt_ready = true;
 
@@ -623,7 +619,7 @@ static int nvmev_kthread_io_proc(void *data)
 			} else {
 				NVMEV_DEBUG("%s =====> Entry: %u, %lld %lld %d\n",
 						proc_info->thread_name, curr_entry, curr_nsecs,
-						proc_entry->nsecs_target, proc_entry->isProc);
+						proc_entry->nsecs_target, proc_entry->is_completed);
 				break;
 			}
 		}

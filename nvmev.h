@@ -141,9 +141,8 @@ struct nvmev_proc_table {
 	unsigned long long nsecs_copy_done;
 	unsigned long long nsecs_cq_filled;
 
-
-	bool isCpy;
-	bool isProc;
+	bool is_copied;
+	bool is_completed;
 
 	unsigned int next, prev;
 };
