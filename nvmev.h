@@ -115,11 +115,13 @@ struct nvmev_config {
 	unsigned long storage_start; //byte
 	unsigned long storage_size;	// byte
 
-	unsigned int read_latency;	// ns
-	unsigned int write_latency;	// ns
+	unsigned int read_time;		// ns
+	unsigned int read_delay;	// ns
+	unsigned int write_time;	// ns
+	unsigned int write_delay;	// ns
 
 	unsigned int nr_io_units;
-	unsigned int io_unit_size;	// byte
+	unsigned int io_unit_shift;	// 2^
 
 	unsigned int cpu_nr_proc_reg;
 	unsigned int nr_io_cpu;
@@ -211,8 +213,8 @@ struct nvmev_dev {
 	cpumask_t first_cpu_on_node;
 
 	struct proc_dir_entry *proc_root;
-	struct proc_dir_entry *proc_read_latency;
-	struct proc_dir_entry *proc_write_latency;
+	struct proc_dir_entry *proc_read_times;
+	struct proc_dir_entry *proc_write_times;
 	struct proc_dir_entry *proc_io_units;
 	struct proc_dir_entry *proc_stat;
 

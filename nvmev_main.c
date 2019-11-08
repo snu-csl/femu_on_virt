@@ -46,24 +46,30 @@ EXPORT_SYMBOL(vdev);
 
 unsigned long memmap_start = 0;
 unsigned long memmap_size = 0;
-unsigned int read_latency = 0;
-unsigned int write_latency = 0;
+unsigned int read_time = 0;
+unsigned int read_delay = 0;
+unsigned int write_time = 0;
+unsigned int write_delay = 0;
 unsigned int nr_io_units = 0;
-unsigned int io_unit_size = 0;
+unsigned int io_unit_shift = 0;
 char *cpus;
 
 module_param(memmap_start, ulong, 0);
 MODULE_PARM_DESC(memmap_start, "Memmap start in GiB");
 module_param(memmap_size, ulong, 0);
 MODULE_PARM_DESC(memmap_size, "Memmap size in MiB");
-module_param(read_latency, uint, 0);
-MODULE_PARM_DESC(read_latency, "Read latency in nanoseconds");
-module_param(write_latency, uint, 0);
-MODULE_PARM_DESC(write_latency, "Write latency in nanoseconds");
+module_param(read_time, uint, 0);
+MODULE_PARM_DESC(read_time, "Read time in nanoseconds");
+module_param(read_delay, uint, 0);
+MODULE_PARM_DESC(read_delay, "Read delay in nanoseconds");
+module_param(write_time, uint, 0);
+MODULE_PARM_DESC(write_time, "Write time in nanoseconds");
+module_param(write_delay, uint, 0);
+MODULE_PARM_DESC(write_delay, "Write delay in nanoseconds");
 module_param(nr_io_units, uint, 0);
 MODULE_PARM_DESC(nr_io_units, "Number of I/O units that operate in parallel");
-module_param(io_unit_size, uint, 0);
-MODULE_PARM_DESC(io_unit_size, "Size of each I/O unit");
+module_param(io_unit_shift, uint, 0);
+MODULE_PARM_DESC(io_unit_shift, "Size of each I/O unit (2^)");
 module_param(cpus, charp, 0);
 MODULE_PARM_DESC(cpus, "CPU list for process, completion(int.) threads, Seperated by Comma(,)");
 
@@ -166,16 +172,16 @@ static int nvmev_args_verify(void)
 		return -EPERM;
 	}
 
-	if (nr_io_units == 0 || io_unit_size == 0) {
+	if (nr_io_units == 0 || io_unit_shift == 0) {
 		NVMEV_ERROR("Need non-zero IO unit size and at least one IO unit\n");
 		return -EINVAL;
 	}
-	if (read_latency == 0) {
-		NVMEV_ERROR("Need non-zero read latency\n");
+	if (read_time == 0) {
+		NVMEV_ERROR("Need non-zero read time\n");
 		return -EINVAL;
 	}
-	if (write_latency == 0) {
-		NVMEV_ERROR("Need non-zero write latency\n");
+	if (write_time == 0) {
+		NVMEV_ERROR("Need non-zero write time\n");
 		return -EINVAL;
 	}
 
@@ -202,18 +208,21 @@ void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
 void print_perf_configs(void)
 {
 	unsigned long unit_perf_kb =
-			vdev->config.nr_io_units * vdev->config.io_unit_size >> 10;
-	NVMEV_INFO("=============== Configure Change =============\n");
-	NVMEV_INFO("* Latency\n");
-	NVMEV_INFO("  Read     : %u (ns)\n", vdev->config.read_latency);
-	NVMEV_INFO("  Write    : %u (ns)\n", vdev->config.write_latency);
-	NVMEV_INFO("* Bandwidth\n");
-	NVMEV_INFO("  Read     : %lu (MiB/s)\n",
-			(1000000000UL / vdev->config.read_latency) * unit_perf_kb >> 10);
-	NVMEV_INFO("  Write    : %lu (MiB/s)\n",
-			(1000000000UL / vdev->config.write_latency) * unit_perf_kb >> 10);
+			vdev->config.nr_io_units << (vdev->config.io_unit_shift - 10);
+
+	NVMEV_INFO("=============== Configurations ===============\n");
 	NVMEV_INFO("* IO units : %d x %d\n",
-			vdev->config.nr_io_units, vdev->config.io_unit_size);
+			vdev->config.nr_io_units, 1 << vdev->config.io_unit_shift);
+	NVMEV_INFO("* I/O times\n");
+	NVMEV_INFO("  Read     : %u + %u ns\n",
+				vdev->config.read_time, vdev->config.read_delay);
+	NVMEV_INFO("  Write    : %u + %u ns\n",
+				vdev->config.write_time, vdev->config.write_delay);
+	NVMEV_INFO("* Bandwidth\n");
+	NVMEV_INFO("  Read     : %lu MiB/s\n",
+			(1000000000UL / vdev->config.read_time) * unit_perf_kb >> 10);
+	NVMEV_INFO("  Write    : %lu MiB/s\n",
+			(1000000000UL / vdev->config.write_time) * unit_perf_kb >> 10);
 }
 
 static int __get_nr_entries(int dbs_idx, int queue_size)
@@ -225,27 +234,20 @@ static int __get_nr_entries(int dbs_idx, int queue_size)
 	return diff;
 }
 
-static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *offp)
+static ssize_t proc_file_read(struct file *filp, char __user *buf, size_t len, loff_t *ppos)
 {
 	const char *fname = filp->f_path.dentry->d_name.name;
-	if (*offp) return 0;
-	buf[0] = '\0';
+	char output[128] = { '\0' };
+	loff_t offset = 0;
 
-	if (strcmp(fname, "read_latency") == 0) {
-		snprintf(buf, len, "%u", vdev->config.read_latency);
-	} else if (strcmp(fname, "write_latency") == 0) {
-		snprintf(buf, len, "%u", vdev->config.write_latency);
-	} else if (strcmp(fname, "io_units") == 0) {
-		snprintf(buf, len, "%u %u",
-				vdev->config.nr_io_units, vdev->config.io_unit_size);
-	} else if (strcmp(fname, "stat") == 0) {
-		int offset = 0, i;
+	if (strcmp(fname, "stat") == 0) {
+		int i;
 		unsigned int nr_in_flight = 0;
 		unsigned int nr_dispatch = 0;
 		unsigned int nr_dispatched = 0;
 		unsigned long long total_io = 0;
 		for (i = 1; i < vdev->nr_sq; i++) {
-			offset += snprintf(buf + offset, len - offset,
+			offset += snprintf(output + offset, len - offset,
 					"%u %u %u %u %u %llu ",
 					__get_nr_entries(i * 2, vdev->sqes[i]->queue_size),
 					vdev->sq_stats[i].nr_in_flight,
@@ -262,33 +264,44 @@ static ssize_t proc_file_read(struct file *filp, char *buf, size_t len, loff_t *
 			barrier();
 			vdev->sq_stats[i].max_nr_in_flight = 0;
 		}
-		offset += snprintf(buf + offset, len - offset, " / %u %u %u %llu", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
+		offset += snprintf(output + offset, len - offset, " / %u %u %u %llu", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
+	} else {
+		if (*ppos) return 0;
+
+		if (strcmp(fname, "read_times") == 0) {
+			offset += snprintf(output, len, "%u + %u",
+					vdev->config.read_time, vdev->config.read_delay);
+		} else if (strcmp(fname, "write_times") == 0) {
+			offset += snprintf(output, len, "%u + %u",
+					vdev->config.write_time, vdev->config.write_delay);
+		} else if (strcmp(fname, "io_units") == 0) {
+			offset += snprintf(output, len, "%u x %u",
+					vdev->config.nr_io_units, vdev->config.io_unit_shift);
+		}
 	}
-	*offp += strlen(buf);
-	return *offp;
+
+	*ppos += offset;
+	copy_to_user(buf, output, offset);
+
+	return *ppos;
 }
-static ssize_t proc_file_write(struct file *filp,const char *buf,size_t len, loff_t *offp)
+static ssize_t proc_file_write(struct file *filp, const char __user *buf, size_t len, loff_t *offp)
 {
 	ssize_t count = len;
-	const char* fname = filp->f_path.dentry->d_name.name;
-	char *endptr;
+	const char *fname = filp->f_path.dentry->d_name.name;
 	char input[128];
-	unsigned int newval;
+	unsigned int ret;
 	unsigned long long *old_stat;
 
-	copy_from_user(input, buf, len);
+	copy_from_user(input, buf, min(len, sizeof(input)));
 
-	newval = simple_strtol(input, &endptr, 10);
-
-	if (!strcmp(fname, "read_latency")) {
-		vdev->config.read_latency = newval;
-	} else if (!strcmp(fname, "write_latency")) {
-		vdev->config.write_latency = newval;
+	if (!strcmp(fname, "read_times")) {
+		ret = sscanf(input, "%u %u", &vdev->config.read_time, &vdev->config.read_delay);
+	} else if (!strcmp(fname, "write_times")) {
+		ret = sscanf(input, "%u %u", &vdev->config.write_time, &vdev->config.write_delay);
 	} else if (!strcmp(fname, "io_units")) {
-		if (sscanf(input, "%d %d",
-				&vdev->config.nr_io_units, &vdev->config.io_unit_size) != 2) {
-			goto out;
-		}
+		ret = sscanf(input, "%d %d", &vdev->config.nr_io_units, &vdev->config.io_unit_shift);
+		if (ret < 1) goto out;
 
 		old_stat = vdev->unit_stat;
 		vdev->unit_stat = kzalloc(
@@ -324,10 +337,10 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 		NVMEV_ERROR("Failed to map storage memory.\n");
 
 	vdev->proc_root = proc_mkdir("nvmev", NULL);
-	vdev->proc_read_latency = proc_create(
-			"read_latency", 0664, vdev->proc_root, &proc_file_fops);
-	vdev->proc_write_latency = proc_create(
-			"write_latency", 0664, vdev->proc_root, &proc_file_fops);
+	vdev->proc_read_times = proc_create(
+			"read_times", 0664, vdev->proc_root, &proc_file_fops);
+	vdev->proc_write_times = proc_create(
+			"write_times", 0664, vdev->proc_root, &proc_file_fops);
 	vdev->proc_io_units = proc_create(
 			"io_units", 0664, vdev->proc_root, &proc_file_fops);
 	vdev->proc_stat = proc_create(
@@ -339,8 +352,8 @@ void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 	if (vdev->storage_mapped)
 		memunmap(vdev->storage_mapped);
 
-	remove_proc_entry("read_latency", vdev->proc_root);
-	remove_proc_entry("write_latency", vdev->proc_root);
+	remove_proc_entry("read_times", vdev->proc_root);
+	remove_proc_entry("write_times", vdev->proc_root);
 	remove_proc_entry("io_units", vdev->proc_root);
 	remove_proc_entry("stat", vdev->proc_root);
 
@@ -358,10 +371,12 @@ static bool VDEV_SET_ARGS(struct nvmev_config* config)
 	config->storage_start = config->memmap_start + (1UL << 20);
 	config->storage_size = (memmap_size - 1) << 20;
 
-	config->read_latency = read_latency;
-	config->write_latency = write_latency;
+	config->read_time = read_time;
+	config->read_delay = read_delay;
+	config->write_time = write_time;
+	config->write_delay = write_delay;
 	config->nr_io_units = nr_io_units;
-	config->io_unit_size = io_unit_size;
+	config->io_unit_shift = io_unit_shift;
 
 	config->nr_io_cpu = 0;
 	config->cpu_nr_proc_reg = -1;

@@ -29,70 +29,32 @@ static inline unsigned long long __get_wallclock(void)
 
 static unsigned long long schedule_io_units(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
 {
-	unsigned long io_unit = DIV_ROUND_UP(lba << 9, vdev->config.io_unit_size)
+	unsigned int io_unit_size = 1 << vdev->config.io_unit_shift;
+	unsigned long io_unit = DIV_ROUND_UP(lba << 9, io_unit_size)
 							% vdev->config.nr_io_units;
-	unsigned long long latest = nsecs_start;
+	unsigned long long latest;
 	unsigned int latency = 0;
 
 	if (opcode == nvme_cmd_write) {
-		latency = vdev->config.write_latency;
+		latency = vdev->config.write_time;
+		nsecs_start += vdev->config.write_delay;
 	} else if (opcode == nvme_cmd_read) {
-		latency = vdev->config.read_latency;
+		latency = vdev->config.read_time;
+		nsecs_start += vdev->config.read_delay;
 	}
+	latest = nsecs_start;
 
 	do {
 		vdev->unit_stat[io_unit] = max(nsecs_start, vdev->unit_stat[io_unit]) + latency;
 
 		latest = max(latest, vdev->unit_stat[io_unit]);
 
-		length -= min(length, vdev->config.io_unit_size);
+		length -= min(length, io_unit_size);
 		if (++io_unit >= vdev->config.nr_io_units) io_unit = 0;
 	} while (length > 0);
 
 	return latest;
 }
-
-#if 0
-/* The original schedule_io_units */
-unsigned long long elapsed_nsecs(int opcode, unsigned int length, unsigned long long nsecs_start)
-{
-	unsigned long long elapsed_nsecs = 0;
-	int unit_seq = 0;
-	int req_unit = DIV_ROUND_UP(length, 4096);
-	int lowest_unit = 0;
-	unsigned long long lowest_time = vdev->unit_stat[0];
-	int i;
-
-	for (unit_seq = 1; unit_seq < vdev->nr_unit; unit_seq++) {
-		if (vdev->unit_stat[unit_seq] < lowest_time) {
-			lowest_time = vdev->unit_stat[unit_seq];
-			lowest_unit = unit_seq;
-		}
-	}
-
-	for (i = 0; i < req_unit; i++) {
-		unit_seq = (lowest_unit + i) % vdev->nr_unit;
-		if (vdev->unit_stat[unit_seq] < nsecs_start) {
-			vdev->unit_stat[unit_seq] = nsecs_start;
-		}
-
-		switch(opcode) {
-			case nvme_cmd_write:
-				vdev->unit_stat[unit_seq] += vdev->config.write_latency;
-				break;
-			case nvme_cmd_read:
-				vdev->unit_stat[unit_seq] += vdev->config.read_latency;
-				break;
-			default:
-				break;
-		}
-
-		if (elapsed_nsecs < vdev->unit_stat[unit_seq])
-			elapsed_nsecs = vdev->unit_stat[unit_seq];
-	}
-	return elapsed_nsecs;
-}
-#endif
 
 unsigned int nvmev_storage_io(int sqid, int sq_entry)
 {
