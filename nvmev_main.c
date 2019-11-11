@@ -234,21 +234,27 @@ static int __get_nr_entries(int dbs_idx, int queue_size)
 	return diff;
 }
 
-static ssize_t proc_file_read(struct file *filp, char __user *buf, size_t len, loff_t *ppos)
+static int proc_file_read(struct seq_file *m, void *data)
 {
-	const char *fname = filp->f_path.dentry->d_name.name;
-	char output[128] = { '\0' };
-	loff_t offset = 0;
+	const char *filename = m->private;
 
-	if (strcmp(fname, "stat") == 0) {
+	if (strcmp(filename, "read_times") == 0) {
+		seq_printf(m, "%u + %u",
+				vdev->config.read_time, vdev->config.read_delay);
+	} else if (strcmp(filename, "write_times") == 0) {
+		seq_printf(m, "%u + %u",
+				vdev->config.write_time, vdev->config.write_delay);
+	} else if (strcmp(filename, "io_units") == 0) {
+		seq_printf(m, "%u x %u",
+				vdev->config.nr_io_units, vdev->config.io_unit_shift);
+	} else if (strcmp(filename, "stat") == 0) {
 		int i;
 		unsigned int nr_in_flight = 0;
 		unsigned int nr_dispatch = 0;
 		unsigned int nr_dispatched = 0;
 		unsigned long long total_io = 0;
 		for (i = 1; i < vdev->nr_sq; i++) {
-			offset += snprintf(output + offset, len - offset,
-					"%u %u %u %u %u %llu ",
+			seq_printf(m, "%u %u %u %u %u %llu ",
 					__get_nr_entries(i * 2, vdev->sqes[i]->queue_size),
 					vdev->sq_stats[i].nr_in_flight,
 					vdev->sq_stats[i].max_nr_in_flight,
@@ -264,42 +270,26 @@ static ssize_t proc_file_read(struct file *filp, char __user *buf, size_t len, l
 			barrier();
 			vdev->sq_stats[i].max_nr_in_flight = 0;
 		}
-		offset += snprintf(output + offset, len - offset, " / %u %u %u %llu", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
-	} else {
-		if (*ppos) return 0;
-
-		if (strcmp(fname, "read_times") == 0) {
-			offset += snprintf(output, len, "%u + %u",
-					vdev->config.read_time, vdev->config.read_delay);
-		} else if (strcmp(fname, "write_times") == 0) {
-			offset += snprintf(output, len, "%u + %u",
-					vdev->config.write_time, vdev->config.write_delay);
-		} else if (strcmp(fname, "io_units") == 0) {
-			offset += snprintf(output, len, "%u x %u",
-					vdev->config.nr_io_units, vdev->config.io_unit_shift);
-		}
+		seq_printf(m, " / %u %u %u %llu", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
 	}
 
-	*ppos += offset;
-	copy_to_user(buf, output, offset);
-
-	return *ppos;
+	return 0;
 }
-static ssize_t proc_file_write(struct file *filp, const char __user *buf, size_t len, loff_t *offp)
+static ssize_t proc_file_write(struct file *file, const char __user *buf, size_t len, loff_t *offp)
 {
 	ssize_t count = len;
-	const char *fname = filp->f_path.dentry->d_name.name;
+	const char *filename = file->f_path.dentry->d_name.name;
 	char input[128];
 	unsigned int ret;
 	unsigned long long *old_stat;
 
 	copy_from_user(input, buf, min(len, sizeof(input)));
 
-	if (!strcmp(fname, "read_times")) {
+	if (!strcmp(filename, "read_times")) {
 		ret = sscanf(input, "%u %u", &vdev->config.read_time, &vdev->config.read_delay);
-	} else if (!strcmp(fname, "write_times")) {
+	} else if (!strcmp(filename, "write_times")) {
 		ret = sscanf(input, "%u %u", &vdev->config.write_time, &vdev->config.write_delay);
-	} else if (!strcmp(fname, "io_units")) {
+	} else if (!strcmp(filename, "io_units")) {
 		ret = sscanf(input, "%d %d", &vdev->config.nr_io_units, &vdev->config.io_unit_shift);
 		if (ret < 1) goto out;
 
@@ -320,10 +310,20 @@ out:
 
 	return count;
 }
+
+static int proc_file_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, proc_file_read,
+			(char *)file->f_path.dentry->d_name.name);
+}
+
 static const struct file_operations proc_file_fops = {
 	.owner = THIS_MODULE,
-	.read = proc_file_read,
+	.open = proc_file_open,
 	.write = proc_file_write,
+	.read	= seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
 };
 
 void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
