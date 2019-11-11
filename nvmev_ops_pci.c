@@ -96,6 +96,13 @@ void nvmev_proc_bars ()
 		queue->sq_depth = bar->aqa.asqs + 1;
 		queue->cq_depth = bar->aqa.acqs + 1;
 		vdev->admin_q = queue;
+
+		/*
+		 * MSI is re-enabled so that MSI interrupt vectors
+		 * can be allocated by the nvme driver
+		 */
+
+		vdev->pdev->no_msi = 0;
 	}
 	if (old_bar->asq != bar->u_asq) {
 		queue = vdev->admin_q;
@@ -201,7 +208,6 @@ struct pci_bus* nvmev_create_pci_bus()
     struct pci_bus* nvmev_pci_bus = NULL;
 	struct resource *res;
 	struct pci_dev *dev;
-
 	memset (&vdev->pci_ops, 0, sizeof(vdev->pci_ops));
     vdev->pci_ops.read = nvmev_pci_read;
     vdev->pci_ops.write = nvmev_pci_write;
@@ -214,6 +220,11 @@ struct pci_bus* nvmev_create_pci_bus()
     nvmev_pci_bus = pci_scan_bus(NVMEV_PCI_BUS_NUM, &vdev->pci_ops, (void *)&vdev->pci_sd);
 	//pci_rescan_bus(nvmev_pci_bus);
 
+	if (!nvmev_pci_bus){
+		NVMEV_ERROR("Fail to create PCI bus\n");
+		return NULL;
+	}
+
 	list_for_each_entry(dev, &nvmev_pci_bus->devices, bus_list) {
 		res = &dev->resource[0];
 		res->parent = &iomem_resource;
@@ -224,6 +235,15 @@ struct pci_bus* nvmev_create_pci_bus()
 		NVMEV_INFO("%s: %p %p %p\n", __func__, vdev,
 				vdev->bar, vdev->old_bar);
 		vdev->pdev = dev;
+
+		/*
+		 * Prevents a crash when the nvme driver assigns an
+		 * initial single MSI vector. Virt has no admin queue
+		 * at this point and will crash when reading the MSI
+		 * BAR
+		 */
+
+		vdev->pdev->no_msi = 1;
 	}
 	pci_bus_add_devices(nvmev_pci_bus);
 	vdev->pcihdr->cmd.mse = 1;
@@ -233,11 +253,7 @@ struct pci_bus* nvmev_create_pci_bus()
 	vdev->bar->cap.mpsmin = 0;
 	vdev->bar->cap.mqes = 1024 - 1; //base value = 0, 0 means depth 1
 
-    if (nvmev_pci_bus){
-		NVMEV_INFO("Successfully created Virtual PCI bus\n");
-    } else {
-		NVMEV_ERROR("Fail to create PCI bus\n");
-	}
+	NVMEV_INFO("Successfully created Virtual PCI bus\n");
 
 	return nvmev_pci_bus;
 };

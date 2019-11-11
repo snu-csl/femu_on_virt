@@ -429,7 +429,7 @@ static void NVMeV_exit(void)
 	NVMEV_IO_PROC_FINAL(vdev);
 
 	if (vdev->virt_bus != NULL) {
-		pci_remove_bus(vdev->virt_bus);
+		pci_remove_root_bus(vdev->virt_bus);
 
 		for (i = 0; i < vdev->nr_sq; i++) {
 			//iounmap
@@ -442,6 +442,7 @@ static void NVMeV_exit(void)
 
 		VDEV_FINALIZE(vdev);
 	}
+
 	pr_info("NVMe Virtual Device Close\n");
 }
 

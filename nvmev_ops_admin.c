@@ -408,11 +408,8 @@ void nvmev_proc_sq_admin(int new_db, int old_db)
 		target = queue->irq_desc->irq_common_data.affinity;
 #endif
 	} else {
-		NVMEV_DEBUG("PIN INTR %u %d node-%d\n",
-				queue->irq_vector, smp_processor_id(),
-				vdev->pdev->dev.numa_node);
-
 		desc = "Non-msix";
+		target = irq_to_desc(IRQ_NUM)->irq_common_data.affinity;
 		//generateInterrupt(queue->irq_vector);
 	}
 

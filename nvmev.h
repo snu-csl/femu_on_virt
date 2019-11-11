@@ -8,6 +8,7 @@
 #include <linux/irq.h>
 #include <uapi/linux/irqnr.h>
 #include <linux/proc_fs.h>
+#include <linux/uaccess.h>
 
 #include "nvmev_hdr.h"
 #include "nvme_hdr.h"
