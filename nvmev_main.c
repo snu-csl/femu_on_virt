@@ -52,6 +52,9 @@ unsigned int write_time = 0;
 unsigned int write_delay = 0;
 unsigned int nr_io_units = 0;
 unsigned int io_unit_shift = 0;
+
+unsigned long long completion_lag = 0;
+
 char *cpus;
 
 module_param(memmap_start, ulong, 0);
@@ -271,6 +274,8 @@ static int proc_file_read(struct seq_file *m, void *data)
 			vdev->sq_stats[i].max_nr_in_flight = 0;
 		}
 		seq_printf(m, " / %u %u %u %llu", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
+	} else if (strcmp(filename, "debug") == 0) {
+		seq_printf(m, "%llu", completion_lag);
 	}
 
 	return 0;
@@ -301,6 +306,8 @@ static ssize_t proc_file_write(struct file *file, const char __user *buf, size_t
 						 * requests accessing the unit_stat are all returned
 						 */
 		kfree(old_stat);
+	} else if (!strcmp(filename, "debug") == 0) {
+
 	}
 
 	memset(vdev->sq_stats, 0x00, sizeof(vdev->sq_stats));
@@ -345,6 +352,8 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 			"io_units", 0664, vdev->proc_root, &proc_file_fops);
 	vdev->proc_stat = proc_create(
 			"stat", 0444, vdev->proc_root, &proc_file_fops);
+	vdev->proc_stat = proc_create(
+			"debug", 0444, vdev->proc_root, &proc_file_fops);
 }
 
 void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
@@ -356,6 +365,7 @@ void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 	remove_proc_entry("write_times", vdev->proc_root);
 	remove_proc_entry("io_units", vdev->proc_root);
 	remove_proc_entry("stat", vdev->proc_root);
+	remove_proc_entry("debug", vdev->proc_root);
 
 	remove_proc_entry("nvmev", NULL);
 }

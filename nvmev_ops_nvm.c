@@ -497,6 +497,24 @@ void fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id)
 	cq->cq_head = cq_head;
 }
 
+extern unsigned long long completion_lag;
+static unsigned long long __lag_cumul = 0;
+static unsigned int __lag_cnt = 0;
+
+static void __update_lag(unsigned long long target, unsigned long long now)
+{
+	__lag_cumul += (now - target);
+	if (++__lag_cnt >= 10000) {
+		unsigned long lag_current = __lag_cumul / __lag_cnt;
+
+		NVMEV_DEBUG("Completion lag %llu --> %llu\n", completion_lag, lag_current);
+
+		completion_lag = (completion_lag + 3 * lag_current) >> 2;
+		__lag_cumul = 0;
+		__lag_cnt = 0;
+	}
+}
+
 static int nvmev_kthread_io_proc(void *data)
 {
 	struct nvmev_proc_info *proc_info = (struct nvmev_proc_info *)data;
@@ -546,8 +564,8 @@ static int nvmev_kthread_io_proc(void *data)
 				);
 			}
 
-			if (proc_entry->nsecs_target <= curr_nsecs) {
-
+			if (proc_entry->nsecs_target <= curr_nsecs + completion_lag) {
+				__update_lag(proc_entry->nsecs_target, curr_nsecs + completion_lag);
 				spin_lock(&vdev->cq_entry_lock[proc_entry->cqid]);
 				fill_cq_result(proc_entry->sqid,
 						proc_entry->cqid,
