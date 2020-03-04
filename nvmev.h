@@ -13,21 +13,20 @@
 #include "nvmev_hdr.h"
 #include "nvme_hdr.h"
 
-#define PERF_DEBUG 0
+#undef NVMEV_DEBUG_VERBOSE
 
 #define NVMEV_DRV_NAME "NVMeVirt"
 
 #define NVMEV_INFO(string, args...) \
-	printk(KERN_INFO "[%s: %s] info: " string, NVMEV_DRV_NAME, __func__, ##args)
+	printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
 #define NVMEV_ERROR(string, args...) \
-	printk(KERN_ERR "[%s: %s] error: " string, NVMEV_DRV_NAME, __func__, ##args)
+	printk(KERN_ERR "%s: " string, NVMEV_DRV_NAME, ##args)
 
-#define ENABLE_DBG_PRINT	0
-#if ENABLE_DBG_PRINT
-	#define NVMEV_DEBUG(string, args...) \
-		printk(KERN_DEBUG "[%s %s] " string, NVMEV_DRV_NAME, __func__, ##args)
+#ifdef NVMEV_DEBUG_VERBOSE
+#define NVMEV_DEBUG(string, args...) \
+	printk(KERN_DEBUG "%s: " string, NVMEV_DRV_NAME, ##args)
 #else
-	#define NVMEV_DEBUG(string, args...)
+#define NVMEV_DEBUG(string, args...)
 #endif
 
 #define NVMEV_PCI_DOMAIN_NUM 0x0001

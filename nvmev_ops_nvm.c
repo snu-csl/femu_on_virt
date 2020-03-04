@@ -4,6 +4,8 @@
 #include <linux/highmem.h>
 #include "nvmev.h"
 
+#undef PERF_DEBUG
+
 #define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 
 #define num_sq_per_page	(PAGE_SIZE / sizeof(struct nvme_command))
@@ -148,7 +150,7 @@ unsigned int nvmev_storage_memcpy(int sqid, int sq_entry)
 
 void nvmev_proc_flush(int sqid, int sq_entry)
 {
-#if ENABLE_DBG_PRINT
+#ifdef NVMEV_DEBUG_VERBOSE
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
@@ -158,7 +160,7 @@ void nvmev_proc_flush(int sqid, int sq_entry)
 
 unsigned int nvmev_proc_write(int sqid, int sq_entry)
 {
-#if	ENABLE_DBG_PRINT
+#ifdef NVMEV_DEBUG_VERBOSE
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	NVMEV_DEBUG("qid %d entry %d lba %llu length %d\n",
@@ -172,7 +174,7 @@ unsigned int nvmev_proc_write(int sqid, int sq_entry)
 
 unsigned int nvmev_proc_read(int sqid, int sq_entry)
 {
-#if	ENABLE_DBG_PRINT
+#ifdef NVMEV_DEBUG_VERBOSE
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	NVMEV_DEBUG("qid %d entry %d lba %llu length %d, %llu %llu\n",
@@ -330,7 +332,7 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 	unsigned long long nsecs_target = 0;
 	unsigned long long nsecs_start = local_clock();
 	unsigned int io_len = 0;
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 	unsigned long long prev_clock2 = 0;
 	unsigned long long prev_clock3 = 0;
 	unsigned long long prev_clock4 = 0;
@@ -366,17 +368,17 @@ int nvmev_proc_nvm(int sqid, int sq_entry)
 		break;
 	}
 
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 	prev_clock2 = local_clock();
 #endif
 	nvmev_proc_io_enqueue(sqid, sq->cqid, sq_entry,
 			nsecs_start, nsecs_target);
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 	prev_clock3 = local_clock();
 #endif
 
 	nvmev_proc_io_cleanup();
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 	prev_clock4 = local_clock();
 
 	clock1 += (prev_clock2 - nsecs_start);
@@ -528,7 +530,7 @@ static int nvmev_kthread_io_proc(void *data)
 {
 	struct nvmev_proc_info *proc_info = (struct nvmev_proc_info *)data;
 
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 	static unsigned long long intr_clock[33];
 	static unsigned long long intr_counter[33];
 
@@ -551,14 +553,14 @@ static int nvmev_kthread_io_proc(void *data)
 			}
 
 			if (proc_entry->is_copied == false) {
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 				unsigned long long memcpy_start = __get_wallclock();
 				unsigned long long diff;
 				proc_entry->nsecs_copy_start = memcpy_start;
 #endif
 				nvmev_storage_memcpy(proc_entry->sqid, proc_entry->sq_entry);
 
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 				proc_entry->nsecs_copy_done = __get_wallclock();
 				diff = proc_entry->nsecs_copy_done - proc_entry->nsecs_copy_start;
 #endif
@@ -590,7 +592,7 @@ static int nvmev_kthread_io_proc(void *data)
 						proc_info->proc_table[curr_entry].next
 						);
 
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 				proc_entry->nsecs_cq_filled = __get_wallclock();
 				pr_info("%llu %llu %llu %llu %llu %llu\n",
 						proc_entry->nsecs_start,
@@ -619,12 +621,12 @@ static int nvmev_kthread_io_proc(void *data)
 			if (!cq->interrupt_enabled) continue;
 			if (spin_trylock(&vdev->cq_irq_lock[qidx])) {
 				if (cq->interrupt_ready == true) {
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 					prev_clock = local_clock();
 #endif
 					cq->interrupt_ready = false;
 					__signal_cq_completion(qidx);
-#if PERF_DEBUG
+#ifdef PERF_DEBUG
 					intr_clock[qidx] += (local_clock() - prev_clock);
 					intr_counter[qidx]++;
 

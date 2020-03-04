@@ -42,7 +42,7 @@ void nvmev_admin_create_cq(int eid, int cq_head)
 		cq->irq_vector = sq_entry(eid).create_cq.irq_vector;
 		cq->irq = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
 
-		pr_info("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
+		NVMEV_DEBUG("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
 	}
 
 	//if queue size = 0 > vdev->bar->cap.mqes!!
@@ -236,7 +236,8 @@ void nvmev_admin_set_features(int eid, int cq_head)
 
 	int num_queue;
 
-	pr_info("%s: %x\n", __func__, sq_entry(eid).features.fid);
+	NVMEV_INFO("%s: %x\n", __func__, sq_entry(eid).features.fid);
+
 	switch(sq_entry(eid).features.fid) {
 		case NVME_FEAT_ARBITRATION:
 		case NVME_FEAT_POWER_MGMT:
@@ -292,7 +293,9 @@ void nvmev_proc_admin(int entry_id)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	int cq_head = queue->cq_head;
-	pr_info("%s: %x id-%d command-%d %d\n", __func__, sq_entry(entry_id).identify.opcode,
+
+	NVMEV_DEBUG("%s: %x %d %d %d\n", __func__,
+			sq_entry(entry_id).identify.opcode,
 			entry_id, sq_entry(entry_id).common.command_id, cq_head);
 
 	switch(sq_entry(entry_id).common.opcode) {
@@ -377,7 +380,8 @@ void nvmev_proc_sq_admin(int new_db, int old_db)
 
 			queue->irq_desc = irq_to_desc(queue->vector);
 
-			printk("Node: %d, first: %*pbl, aff: %*pbl\n", vdev->pdev->dev.numa_node,
+			NVMEV_DEBUG("Node: %d, first: %*pbl, aff: %*pbl\n",
+					vdev->pdev->dev.numa_node,
 					cpumask_pr_args(&vdev->first_cpu_on_node),
 					cpumask_pr_args(queue->irq_desc->irq_common_data.affinity));
 
