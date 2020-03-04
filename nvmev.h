@@ -115,10 +115,12 @@ struct nvmev_config {
 	unsigned long storage_start; //byte
 	unsigned long storage_size;	// byte
 
-	unsigned int read_time;		// ns
 	unsigned int read_delay;	// ns
-	unsigned int write_time;	// ns
+	unsigned int read_time;		// ns
+	unsigned int read_trailing;	// ns
 	unsigned int write_delay;	// ns
+	unsigned int write_time;	// ns
+	unsigned int write_trailing;// ns
 
 	unsigned int nr_io_units;
 	unsigned int io_unit_shift;	// 2^

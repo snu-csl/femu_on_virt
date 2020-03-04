@@ -27,27 +27,36 @@ static inline unsigned long long __get_wallclock(void)
 	return cpu_clock(vdev->config.cpu_nr_proc_reg);
 }
 
+/* Return the time to complete */
 static unsigned long long schedule_io_units(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
 {
 	unsigned int io_unit_size = 1 << vdev->config.io_unit_shift;
-	unsigned long io_unit = DIV_ROUND_UP(lba << 9, io_unit_size)
-							% vdev->config.nr_io_units;
-	unsigned long long latest;
+	unsigned int io_unit = (lba >> (vdev->config.io_unit_shift - 9)) % vdev->config.nr_io_units;
+	int nr_io_units = min(vdev->config.nr_io_units, DIV_ROUND_UP(length, io_unit_size));
+	unsigned long long latest;	/* Time of completion */
+	unsigned int delay = 0;
 	unsigned int latency = 0;
+	unsigned int trailing = 0;
 
 	if (opcode == nvme_cmd_write) {
+		delay = vdev->config.write_delay;
 		latency = vdev->config.write_time;
-		nsecs_start += vdev->config.write_delay;
+		trailing = vdev->config.write_trailing;
 	} else if (opcode == nvme_cmd_read) {
+		delay = vdev->config.read_delay;
 		latency = vdev->config.read_time;
-		nsecs_start += vdev->config.read_delay;
+		trailing = vdev->config.read_trailing;
 	}
-	latest = nsecs_start;
+
+	latest = max(nsecs_start, vdev->unit_stat[io_unit]) + delay - latency;
 
 	do {
-		vdev->unit_stat[io_unit] = max(nsecs_start, vdev->unit_stat[io_unit]) + latency;
+		latest += latency;
 
-		latest = max(latest, vdev->unit_stat[io_unit]);
+		vdev->unit_stat[io_unit] = latest;
+		if (nr_io_units-- > 0) {
+			vdev->unit_stat[io_unit] += trailing;
+		}
 
 		length -= min(length, io_unit_size);
 		if (++io_unit >= vdev->config.nr_io_units) io_unit = 0;

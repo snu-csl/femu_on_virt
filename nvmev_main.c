@@ -42,14 +42,18 @@
  ****************************************************************/
 
 struct nvmev_dev *vdev = NULL;
-EXPORT_SYMBOL(vdev);
 
 unsigned long memmap_start = 0;
 unsigned long memmap_size = 0;
+
 unsigned int read_time = 0;
 unsigned int read_delay = 0;
+unsigned int read_trailing = 0;
+
 unsigned int write_time = 0;
 unsigned int write_delay = 0;
+unsigned int write_trailing = 0;
+
 unsigned int nr_io_units = 0;
 unsigned int io_unit_shift = 0;
 
@@ -65,10 +69,14 @@ module_param(read_time, uint, 0);
 MODULE_PARM_DESC(read_time, "Read time in nanoseconds");
 module_param(read_delay, uint, 0);
 MODULE_PARM_DESC(read_delay, "Read delay in nanoseconds");
+module_param(read_trailing, uint, 0);
+MODULE_PARM_DESC(read_trailing, "Read trailing in nanoseconds");
 module_param(write_time, uint, 0);
 MODULE_PARM_DESC(write_time, "Write time in nanoseconds");
 module_param(write_delay, uint, 0);
 MODULE_PARM_DESC(write_delay, "Write delay in nanoseconds");
+module_param(write_trailing, uint, 0);
+MODULE_PARM_DESC(write_trailing, "Write trailing in nanoseconds");
 module_param(nr_io_units, uint, 0);
 MODULE_PARM_DESC(nr_io_units, "Number of I/O units that operate in parallel");
 module_param(io_unit_shift, uint, 0);
@@ -212,20 +220,21 @@ void print_perf_configs(void)
 {
 	unsigned long unit_perf_kb =
 			vdev->config.nr_io_units << (vdev->config.io_unit_shift - 10);
+	struct nvmev_config *cfg = &vdev->config;
 
 	NVMEV_INFO("=============== Configurations ===============\n");
 	NVMEV_INFO("* IO units : %d x %d\n",
-			vdev->config.nr_io_units, 1 << vdev->config.io_unit_shift);
+			cfg->nr_io_units, 1 << cfg->io_unit_shift);
 	NVMEV_INFO("* I/O times\n");
-	NVMEV_INFO("  Read     : %u + %u ns\n",
-				vdev->config.read_time, vdev->config.read_delay);
-	NVMEV_INFO("  Write    : %u + %u ns\n",
-				vdev->config.write_time, vdev->config.write_delay);
+	NVMEV_INFO("  Read     : %u + %u x + %u ns\n",
+				cfg->read_delay, cfg->read_time, cfg->read_trailing);
+	NVMEV_INFO("  Write    : %u + %u x + %u ns\n",
+				cfg->write_delay, cfg->write_time, cfg->write_trailing);
 	NVMEV_INFO("* Bandwidth\n");
 	NVMEV_INFO("  Read     : %lu MiB/s\n",
-			(1000000000UL / vdev->config.read_time) * unit_perf_kb >> 10);
+			(1000000000UL / (cfg->read_time + cfg->read_delay + cfg->read_trailing)) * unit_perf_kb >> 10);
 	NVMEV_INFO("  Write    : %lu MiB/s\n",
-			(1000000000UL / vdev->config.write_time) * unit_perf_kb >> 10);
+			(1000000000UL / (cfg->write_time + cfg->write_delay + cfg->write_trailing)) * unit_perf_kb >> 10);
 }
 
 static int __get_nr_entries(int dbs_idx, int queue_size)
@@ -240,16 +249,17 @@ static int __get_nr_entries(int dbs_idx, int queue_size)
 static int proc_file_read(struct seq_file *m, void *data)
 {
 	const char *filename = m->private;
+	struct nvmev_config *cfg = &vdev->config;
 
 	if (strcmp(filename, "read_times") == 0) {
-		seq_printf(m, "%u + %u",
-				vdev->config.read_time, vdev->config.read_delay);
+		seq_printf(m, "%u + %u x + %u",
+				cfg->read_delay, cfg->read_time, cfg->read_trailing);
 	} else if (strcmp(filename, "write_times") == 0) {
-		seq_printf(m, "%u + %u",
-				vdev->config.write_time, vdev->config.write_delay);
+		seq_printf(m, "%u + %u x + %u",
+				cfg->write_delay, cfg->write_time, cfg->write_trailing);
 	} else if (strcmp(filename, "io_units") == 0) {
 		seq_printf(m, "%u x %u",
-				vdev->config.nr_io_units, vdev->config.io_unit_shift);
+				cfg->nr_io_units, cfg->io_unit_shift);
 	} else if (strcmp(filename, "stat") == 0) {
 		int i;
 		unsigned int nr_in_flight = 0;
@@ -287,20 +297,21 @@ static ssize_t proc_file_write(struct file *file, const char __user *buf, size_t
 	char input[128];
 	unsigned int ret;
 	unsigned long long *old_stat;
+	struct nvmev_config *cfg = &vdev->config;
 
 	copy_from_user(input, buf, min(len, sizeof(input)));
 
 	if (!strcmp(filename, "read_times")) {
-		ret = sscanf(input, "%u %u", &vdev->config.read_time, &vdev->config.read_delay);
+		ret = sscanf(input, "%u %u %u", &cfg->read_delay, &cfg->read_time, &cfg->read_trailing);
 	} else if (!strcmp(filename, "write_times")) {
-		ret = sscanf(input, "%u %u", &vdev->config.write_time, &vdev->config.write_delay);
+		ret = sscanf(input, "%u %u %u", &cfg->write_delay, &cfg->write_time, &cfg->write_trailing);
 	} else if (!strcmp(filename, "io_units")) {
-		ret = sscanf(input, "%d %d", &vdev->config.nr_io_units, &vdev->config.io_unit_shift);
+		ret = sscanf(input, "%d %d", &cfg->nr_io_units, &cfg->io_unit_shift);
 		if (ret < 1) goto out;
 
 		old_stat = vdev->unit_stat;
 		vdev->unit_stat = kzalloc(
-				sizeof(*vdev->unit_stat) * vdev->config.nr_io_units, GFP_KERNEL);
+				sizeof(*vdev->unit_stat) * cfg->nr_io_units, GFP_KERNEL);
 
 		mdelay(100);	/* XXX: Delay the free of old stat so that outstanding
 						 * requests accessing the unit_stat are all returned
@@ -383,8 +394,10 @@ static bool VDEV_SET_ARGS(struct nvmev_config* config)
 
 	config->read_time = read_time;
 	config->read_delay = read_delay;
+	config->read_trailing = read_trailing;
 	config->write_time = write_time;
 	config->write_delay = write_delay;
+	config->write_trailing = write_trailing;
 	config->nr_io_units = nr_io_units;
 	config->io_unit_shift = io_unit_shift;
 
