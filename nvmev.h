@@ -13,7 +13,7 @@
 #include "nvmev_hdr.h"
 #include "nvme_hdr.h"
 
-#undef NVMEV_DEBUG_VERBOSE
+#undef CONFIG_NVMEV_DEBUG_VERBOSE
 
 #define NVMEV_DRV_NAME "NVMeVirt"
 
@@ -22,7 +22,7 @@
 #define NVMEV_ERROR(string, args...) \
 	printk(KERN_ERR "%s: " string, NVMEV_DRV_NAME, ##args)
 
-#ifdef NVMEV_DEBUG_VERBOSE
+#ifdef CONFIG_NVMEV_DEBUG_VERBOSE
 #define NVMEV_DEBUG(string, args...) \
 	printk(KERN_DEBUG "%s: " string, NVMEV_DRV_NAME, ##args)
 #else
@@ -71,10 +71,13 @@ struct nvmev_completion_queue {
 	int qid;
 	int irq;
 	int irq_vector;
-	bool interrupt_enabled;
+	bool irq_enabled;
 	bool phys_contig;
 
 	bool interrupt_ready;
+
+	spinlock_t entry_lock;
+	spinlock_t irq_lock;
 
 	bool affinity_settings;
 	const struct cpumask *cpu_mask;
@@ -172,13 +175,13 @@ struct nvmev_sq_stat {
 
 struct nvmev_dev {
 	struct pci_bus *virt_bus;
-	void* virtDev;
-	struct pci_header* pcihdr;
-	struct pci_pm_cap* pmcap;
-	struct pci_msix_cap* msixcap;
-	struct pcie_cap* pciecap;
-	struct aer_cap* aercap;
-	struct pci_exp_hdr* pcie_exp_cap;
+	void *virtDev;
+	struct pci_header *pcihdr;
+	struct pci_pm_cap *pmcap;
+	struct pci_msix_cap *msixcap;
+	struct pcie_cap *pciecap;
+	struct aer_cap *aercap;
+	struct pci_exp_hdr *pcie_exp_cap;
 
 	struct pci_dev *pdev;
 	struct pci_ops pci_ops;
@@ -205,11 +208,9 @@ struct nvmev_dev {
 	int nr_sq, nr_cq;
 
 	struct nvmev_admin_queue *admin_q;
-	struct nvmev_ns** ns_arr;
-	struct nvmev_submission_queue* sqes[NR_MAX_IO_QUEUE + 1];
-	struct nvmev_completion_queue* cqes[NR_MAX_IO_QUEUE + 1];
-	spinlock_t cq_entry_lock[NR_MAX_IO_QUEUE + 1];
-	spinlock_t cq_irq_lock[NR_MAX_IO_QUEUE + 1];
+	struct nvmev_ns **ns_arr;
+	struct nvmev_submission_queue *sqes[NR_MAX_IO_QUEUE + 1];
+	struct nvmev_completion_queue *cqes[NR_MAX_IO_QUEUE + 1];
 
 	cpumask_t first_cpu_on_node;
 
@@ -225,20 +226,20 @@ struct nvmev_dev {
 };
 
 // VDEV Init, Final Function
-struct nvmev_dev* VDEV_INIT(void);
-void VDEV_FINALIZE(struct nvmev_dev* vdev);
+struct nvmev_dev *VDEV_INIT(void);
+void VDEV_FINALIZE(struct nvmev_dev *vdev);
 
 // HEADER Initialize
-void PCI_HEADER_SETTINGS(struct nvmev_dev* vdev, struct pci_header* pcihdr);
-void PCI_PMCAP_SETTINGS(struct pci_pm_cap* pmcap);
-void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap* msixcap);
-void PCI_PCIECAP_SETTINGS(struct pcie_cap* pciecap);
-void PCI_AERCAP_SETTINGS(struct aer_cap* aercap);
-void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr* exp_cap);
+void PCI_HEADER_SETTINGS(struct nvmev_dev *vdev, struct pci_header *pcihdr);
+void PCI_PMCAP_SETTINGS(struct pci_pm_cap *pmcap);
+void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap *msixcap);
+void PCI_PCIECAP_SETTINGS(struct pcie_cap *pciecap);
+void PCI_AERCAP_SETTINGS(struct aer_cap *aercap);
+void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr *exp_cap);
 
 // OPS_PCI
-void nvmev_clone_pci_mem(struct nvmev_dev* vdev);
-struct pci_bus* nvmev_create_pci_bus(void);
+void nvmev_clone_pci_mem(struct nvmev_dev *vdev);
+struct pci_bus *nvmev_create_pci_bus(void);
 void nvmev_proc_bars (void);
 int get_vector_from_irq(int irq);
 void generateInterrupt(int vector);
@@ -248,8 +249,8 @@ void nvmev_proc_sq_admin(int new_db, int old_db);
 void nvmev_proc_cq_admin(int new_db, int old_db);
 
 // OPS I/O QUEUE
-void NVMEV_IO_PROC_INIT(struct nvmev_dev* vdev);
-void NVMEV_IO_PROC_FINAL(struct nvmev_dev* vdev);
+void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev);
+void NVMEV_IO_PROC_FINAL(struct nvmev_dev *vdev);
 void nvmev_proc_sq_io(int qid, int new_db, int old_db);
 void nvmev_proc_cq_io(int qid, int new_db, int old_db);
 

@@ -58,10 +58,8 @@ void nvmev_proc_bars ()
 		//////////////////////////////////
 		// Enable
 		//////////////////////////////////
-		if (bar->cc.en == 1)
-			bar->csts.rdy = 1;
-		else if (bar->cc.en == 0)
-			bar->csts.rdy = 0;
+		if (bar->cc.en == 0 || bar->cc.en == 1)
+			bar->csts.rdy = bar->cc.en;
 
 		//////////////////////////////////
 		// Shutdown
@@ -97,20 +95,19 @@ void nvmev_proc_bars ()
 		queue->cq_depth = bar->aqa.acqs + 1;
 		vdev->admin_q = queue;
 
+		printk("%s: irq_vector %d, irq %d\n", __func__, queue->irq_vector, queue->irq);
+
 		/*
 		 * MSI is re-enabled so that MSI interrupt vectors
 		 * can be allocated by the nvme driver
 		 */
-
 		vdev->pdev->no_msi = 0;
 	}
 	if (old_bar->asq != bar->u_asq) {
 		queue = vdev->admin_q;
 		memcpy(&old_bar->asq, &bar->asq, sizeof(old_bar->asq));
 
-		num_pages = (queue->sq_depth * sizeof(struct nvme_command)) / PAGE_SIZE;
-		if ((queue->sq_depth * sizeof(struct nvme_command)) % PAGE_SIZE) num_pages++;
-
+		num_pages = DIV_ROUND_UP(queue->sq_depth * sizeof(struct nvme_command), PAGE_SIZE);
 		vdev->admin_q->nvme_sq = kzalloc(sizeof(struct nvme_command *) * num_pages, GFP_KERNEL);
 		if (queue->nvme_sq == NULL)
 			NVMEV_ERROR("Error on Setup Admin Queue [Submission]\n");
@@ -123,9 +120,7 @@ void nvmev_proc_bars ()
 		queue = vdev->admin_q;
 		memcpy(&old_bar->acq, &bar->acq, sizeof(old_bar->acq));
 
-		num_pages = (queue->cq_depth * sizeof(struct nvme_completion)) / PAGE_SIZE;
-		if ((queue->cq_depth * sizeof(struct nvme_completion)) % PAGE_SIZE) num_pages++;
-
+		num_pages = DIV_ROUND_UP(queue->cq_depth * sizeof(struct nvme_completion), PAGE_SIZE);
 		vdev->admin_q->nvme_cq = kzalloc(sizeof(struct nvme_completion*) * num_pages, GFP_KERNEL);
 		if (queue->nvme_cq == NULL)
 			NVMEV_ERROR("Error on Setup Admin Queue [Completion]\n");
@@ -192,6 +187,8 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 								NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
 				vdev->admin_q->irq_vector =
 						readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF;
+				NVMEV_INFO("msi-x enabled. table at 0x%p, irq_vector %d\n",
+						vdev->msix_table, vdev->admin_q->irq_vector);
 			}
 		}
 		else if (target == 4) mask = 0x0;
@@ -231,10 +228,10 @@ struct pci_bus* nvmev_create_pci_bus()
 	list_for_each_entry(dev, &nvmev_pci_bus->devices, bus_list) {
 		res = &dev->resource[0];
 		res->parent = &iomem_resource;
-		//vdev->bar = ioremap(pci_resource_start(dev, 0), 8192);
-		vdev->bar = memremap(pci_resource_start(dev, 0), 8192, MEMREMAP_WT);
-		memset(vdev->bar, 0x0, 8192);
-		vdev->dbs = ((void *)vdev->bar) + 4096;
+		//vdev->bar = ioremap(pci_resource_start(dev, 0), PAGE_SIZE * 2);
+		vdev->bar = memremap(pci_resource_start(dev, 0), PAGE_SIZE * 2, MEMREMAP_WT);
+		memset(vdev->bar, 0x0, PAGE_SIZE * 2);
+		vdev->dbs = ((void *)vdev->bar) + PAGE_SIZE;
 		NVMEV_INFO("%s: %p %p %p\n", __func__, vdev,
 				vdev->bar, vdev->old_bar);
 		vdev->pdev = dev;
@@ -245,7 +242,6 @@ struct pci_bus* nvmev_create_pci_bus()
 		 * at this point and will crash when reading the MSI
 		 * BAR
 		 */
-
 		vdev->pdev->no_msi = 1;
 	}
 	pci_bus_add_devices(nvmev_pci_bus);
@@ -279,22 +275,22 @@ void nvmev_clone_pci_mem(struct nvmev_dev* vdev)
 void generateInterrupt(int vector)
 {
 	switch(vector) {
-		case 0x0: asm("int $0x0"); break;
-		case 0x1: asm("int $0x1"); break;
-		case 0x2: asm("int $0x2"); break;
-		case 0x3: asm("int $0x3"); break;
-		case 0x4: asm("int $0x4"); break;
-		case 0x5: asm("int $0x5"); break;
-		case 0x6: asm("int $0x6"); break;
-		case 0x7: asm("int $0x7"); break;
-		case 0x8: asm("int $0x8"); break;
-		case 0x9: asm("int $0x9"); break;
-		case 0xA: asm("int $0xA"); break;
-		case 0xB: asm("int $0xB"); break;
-		case 0xC: asm("int $0xC"); break;
-		case 0xD: asm("int $0xD"); break;
-		case 0xE: asm("int $0xE"); break;
-		case 0xF: asm("int $0xF"); break;
+		case 0x00: asm("int $0x00"); break;
+		case 0x01: asm("int $0x01"); break;
+		case 0x02: asm("int $0x02"); break;
+		case 0x03: asm("int $0x03"); break;
+		case 0x04: asm("int $0x04"); break;
+		case 0x05: asm("int $0x05"); break;
+		case 0x06: asm("int $0x06"); break;
+		case 0x07: asm("int $0x07"); break;
+		case 0x08: asm("int $0x08"); break;
+		case 0x09: asm("int $0x09"); break;
+		case 0x0A: asm("int $0x0A"); break;
+		case 0x0B: asm("int $0x0B"); break;
+		case 0x0C: asm("int $0x0C"); break;
+		case 0x0D: asm("int $0x0D"); break;
+		case 0x0E: asm("int $0x0E"); break;
+		case 0x0F: asm("int $0x0F"); break;
 		case 0x10: asm("int $0x10"); break;
 		case 0x11: asm("int $0x11"); break;
 		case 0x12: asm("int $0x12"); break;

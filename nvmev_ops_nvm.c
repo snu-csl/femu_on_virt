@@ -150,17 +150,17 @@ unsigned int nvmev_storage_memcpy(int sqid, int sq_entry)
 
 void nvmev_proc_flush(int sqid, int sq_entry)
 {
-#ifdef NVMEV_DEBUG_VERBOSE
+#ifdef CONFIG_NVMEV_DEBUG_VERBOSE
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
-	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
+	NVMEV_DEBUG("qid %d entry %d sq %p\n", sqid, sq_entry, sq);
 #endif
 	return;
 }
 
 unsigned int nvmev_proc_write(int sqid, int sq_entry)
 {
-#ifdef NVMEV_DEBUG_VERBOSE
+#ifdef CONFIG_NVMEV_DEBUG_VERBOSE
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	NVMEV_DEBUG("qid %d entry %d lba %llu length %d\n",
@@ -174,7 +174,7 @@ unsigned int nvmev_proc_write(int sqid, int sq_entry)
 
 unsigned int nvmev_proc_read(int sqid, int sq_entry)
 {
-#ifdef NVMEV_DEBUG_VERBOSE
+#ifdef CONFIG_NVMEV_DEBUG_VERBOSE
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
 	NVMEV_DEBUG("qid %d entry %d lba %llu length %d, %llu %llu\n",
@@ -494,6 +494,7 @@ void fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id)
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
 	int cq_head = cq->cq_head;
 
+	spin_lock(&cq->entry_lock);
 	cq_entry(cq_head).command_id = command_id;
 	cq_entry(cq_head).sq_id = sqid;
 	cq_entry(cq_head).sq_head = sq_entry;
@@ -506,6 +507,7 @@ void fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id)
 	}
 
 	cq->cq_head = cq_head;
+	spin_unlock(&cq->entry_lock);
 }
 
 extern unsigned long long completion_lag;
@@ -518,7 +520,7 @@ static void __update_lag(unsigned long long target, unsigned long long now)
 	if (++__lag_cnt >= 10000) {
 		unsigned long lag_current = __lag_cumul / __lag_cnt;
 
-		NVMEV_DEBUG("Completion lag %llu --> %llu\n", completion_lag, lag_current);
+		NVMEV_DEBUG("Completion lag %llu --> %lu\n", completion_lag, lag_current);
 
 		completion_lag = (completion_lag + 3 * lag_current) >> 2;
 		__lag_cumul = 0;
@@ -577,11 +579,9 @@ static int nvmev_kthread_io_proc(void *data)
 
 			if (proc_entry->nsecs_target <= curr_nsecs + completion_lag) {
 				__update_lag(proc_entry->nsecs_target, curr_nsecs + completion_lag);
-				spin_lock(&vdev->cq_entry_lock[proc_entry->cqid]);
-				fill_cq_result(proc_entry->sqid,
-						proc_entry->cqid,
+
+				fill_cq_result(proc_entry->sqid, proc_entry->cqid,
 						proc_entry->sq_entry, proc_entry->command_id);
-				spin_unlock(&vdev->cq_entry_lock[proc_entry->cqid]);
 
 				NVMEV_DEBUG("%s proc Entry %u, %d %d, %d --> %d\n",
 						proc_info->thread_name,
@@ -618,8 +618,8 @@ static int nvmev_kthread_io_proc(void *data)
 		for (qidx = 1; qidx <= vdev->nr_cq; qidx++) {
 			cq = vdev->cqes[qidx];
 			if (cq == NULL) continue;
-			if (!cq->interrupt_enabled) continue;
-			if (spin_trylock(&vdev->cq_irq_lock[qidx])) {
+			if (!cq->irq_enabled) continue;
+			if (spin_trylock(&cq->irq_lock)) {
 				if (cq->interrupt_ready == true) {
 #ifdef PERF_DEBUG
 					prev_clock = local_clock();
@@ -640,7 +640,7 @@ static int nvmev_kthread_io_proc(void *data)
 					NVMEV_DEBUG("Gen Interrupt %d\n", qidx);
 				}
 
-				spin_unlock(&vdev->cq_irq_lock[qidx]);
+				spin_unlock(&cq->irq_lock);
 			}
 		}
 		cond_resched();

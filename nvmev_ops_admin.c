@@ -20,6 +20,7 @@ void nvmev_admin_create_cq(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_completion_queue *cq;
+	struct nvme_create_cq *cmd = &sq_entry(eid).create_cq;
 	unsigned int num_pages, i;
 	int dbs_idx;
 
@@ -27,46 +28,47 @@ void nvmev_admin_create_cq(int eid, int cq_head)
 
 	/* Todo : Physically dis-contiguous prp list */
 
-	cq->qid = sq_entry(eid).create_cq.cqid;
+	cq->qid = cmd->cqid;
 
-	cq->interrupt_enabled =
-		(sq_entry(eid).create_cq.cq_flags & NVME_CQ_IRQ_ENABLED)? true: false;
-	cq->phys_contig =
-		(sq_entry(eid).create_cq.cq_flags & NVME_QUEUE_PHYS_CONTIG)? true: false;
-	cq->queue_size = sq_entry(eid).create_cq.qsize + 1;
+	cq->irq_enabled = cmd->cq_flags & NVME_CQ_IRQ_ENABLED ? true : false;
+	cq->phys_contig = cmd->cq_flags & NVME_QUEUE_PHYS_CONTIG ? true : false;
+	cq->queue_size = cmd->qsize + 1;
 	cq->phase = 1;
 
 	cq->interrupt_ready = false;
 
-	if (cq->interrupt_enabled) {
-		cq->irq_vector = sq_entry(eid).create_cq.irq_vector;
+	if (cq->irq_enabled) {
+		cq->irq_vector = cmd->irq_vector;
 		cq->irq = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
 
-		NVMEV_DEBUG("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq, cq->irq_vector);
+		NVMEV_DEBUG("%s: IRQ Vector: %d -> %d\n", __func__, cq->irq_vector, cq->irq);
 	}
 
 	//if queue size = 0 > vdev->bar->cap.mqes!!
 	//num_queue_pages?
 
+	printk("NVMEV: %d %d\n", cq->irq_vector, cq->irq);
+
 	cq->cq_head = 0;
 	cq->cq_tail = -1;
 
-	//multiple pages
-	num_pages = (cq->queue_size * sizeof(struct nvme_completion)) / PAGE_SIZE;
-	cq->cq = kzalloc(sizeof(struct nvme_completion*) * num_pages, GFP_KERNEL);
+	spin_lock_init(&cq->entry_lock);
+	spin_lock_init(&cq->irq_lock);
 
+	//multiple pages
+	num_pages = DIV_ROUND_UP(cq->queue_size * sizeof(struct nvme_completion), PAGE_SIZE);
+	cq->cq = kzalloc(sizeof(struct nvme_completion*) * num_pages, GFP_KERNEL);
 	for (i = 0; i < num_pages; i++) {
-		cq->cq[i] = page_address(pfn_to_page(sq_entry(eid).create_cq.prp1 >> PAGE_SHIFT) + i);
+		cq->cq[i] = page_address(pfn_to_page(cmd->prp1 >> PAGE_SHIFT) + i);
 	}
+
 	vdev->cqes[cq->qid] = cq;
-	spin_lock_init(&vdev->cq_entry_lock[cq->qid]);
-	spin_lock_init(&vdev->cq_irq_lock[cq->qid]);
 
 	dbs_idx = cq->qid * 2 + 1;
 	vdev->dbs[dbs_idx] = 0;
 	vdev->old_dbs[dbs_idx] = 0;
 
-	cq_entry(cq_head).command_id = sq_entry(eid).create_cq.command_id;
+	cq_entry(cq_head).command_id = cmd->command_id;
 	cq_entry(cq_head).sq_id = 0;
 	cq_entry(cq_head).sq_head = eid;
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
@@ -321,6 +323,7 @@ void nvmev_proc_admin(int entry_id)
 				nvmev_admin_identify_namespace(entry_id, cq_head);
 			break;
 		case nvme_admin_abort_cmd:
+			break;
 		case nvme_admin_set_features:
 			nvmev_admin_set_features(entry_id, cq_head);
 			break;
