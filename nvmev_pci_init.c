@@ -7,12 +7,12 @@ struct nvmev_dev *VDEV_INIT(void)
 
 	vdev->virtDev = kzalloc(PAGE_SIZE, GFP_KERNEL);
 
-	vdev->pcihdr = (void *)vdev->virtDev + OFFS_PCI_HDR;
-	vdev->pmcap = (void *)vdev->virtDev + OFFS_PCI_PM_CAP;
-	vdev->msixcap = (void *)vdev->virtDev + OFFS_PCI_MSIX_CAP;
-	vdev->pciecap = (void *)vdev->virtDev + OFFS_PCIE_CAP;
-	vdev->aercap = (void *)vdev->virtDev + PCI_CFG_SPACE_SIZE;
-	vdev->pcie_exp_cap = (void *)vdev->virtDev + PCI_CFG_SPACE_SIZE;
+	vdev->pcihdr = vdev->virtDev + OFFS_PCI_HDR;
+	vdev->pmcap = vdev->virtDev + OFFS_PCI_PM_CAP;
+	vdev->msixcap = vdev->virtDev + OFFS_PCI_MSIX_CAP;
+	vdev->pciecap = vdev->virtDev + OFFS_PCIE_CAP;
+	vdev->aercap = vdev->virtDev + PCI_CFG_SPACE_SIZE;
+	vdev->pcie_exp_cap = vdev->virtDev + PCI_CFG_SPACE_SIZE;
 
 	memset(vdev->sq_stats, 0x00, sizeof(vdev->sq_stats));
 
@@ -41,10 +41,8 @@ void VDEV_FINALIZE(struct nvmev_dev *vdev)
 		kfree(vdev);
 }
 
-void PCI_HEADER_SETTINGS(struct nvmev_dev* vdev,
-		struct pci_header* pcihdr) {
-	unsigned long pva;
-
+void PCI_HEADER_SETTINGS(struct pci_header* pcihdr, unsigned long base_pa)
+{
 	pcihdr->id.did = 0x0101;
 	pcihdr->id.vid = 0x0c51;
 	/*
@@ -63,14 +61,10 @@ void PCI_HEADER_SETTINGS(struct nvmev_dev* vdev,
 	pcihdr->cc.scc = 0x08;
 	pcihdr->cc.pi = 0x02;
 
-	pva = vdev->config.memmap_start;
-	//0x0000000780000000;
-	//-0x00000007ffffffff//PFN_PHYS(page_to_pfn(bar_pages));
-
 	pcihdr->mlbar.tp = PCI_BASE_ADDRESS_MEM_TYPE_64 >> 1;
-	pcihdr->mlbar.ba = (pva & 0xFFFFFFFF) >> 14;
+	pcihdr->mlbar.ba = (base_pa & 0xFFFFFFFF) >> 14;
 
-	pcihdr->mulbar = pva >> 32;
+	pcihdr->mulbar = base_pa >> 32;
 
 	pcihdr->ss.ssid = 0x370d;
 	pcihdr->ss.ssvid = 0x0c51;
@@ -164,5 +158,4 @@ void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr* exp_cap)
 	pcie_exp_cap->id.cid = PCI_EXT_CAP_ID_SECPCI;
 	pcie_exp_cap->id.cver = 1;
 	pcie_exp_cap->id.next = 0;
-
 }

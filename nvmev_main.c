@@ -434,7 +434,7 @@ static int NVMeV_init(void)
 	vdev->unit_stat = kzalloc(
 			sizeof(*vdev->unit_stat) * vdev->config.nr_io_units, GFP_KERNEL);
 
-	PCI_HEADER_SETTINGS(vdev, vdev->pcihdr);
+	PCI_HEADER_SETTINGS(vdev->pcihdr, vdev->config.memmap_start);
 	PCI_PMCAP_SETTINGS(vdev->pmcap);
 	PCI_MSIXCAP_SETTINGS(vdev->msixcap);
 	PCI_PCIECAP_SETTINGS(vdev->pciecap);
@@ -445,9 +445,6 @@ static int NVMeV_init(void)
 	vdev->virt_bus = nvmev_create_pci_bus();
 	if (!vdev->virt_bus)
 		goto ret_err_pci_bus;
-	else {
-		nvmev_clone_pci_mem(vdev);
-	}
 
 	print_perf_configs();
 

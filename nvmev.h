@@ -69,12 +69,10 @@ struct nvmev_submission_queue {
 
 struct nvmev_completion_queue {
 	int qid;
-	int irq;
 	int irq_vector;
 	bool irq_enabled;
-	bool phys_contig;
-
 	bool interrupt_ready;
+	bool phys_contig;
 
 	spinlock_t entry_lock;
 	spinlock_t irq_lock;
@@ -88,26 +86,23 @@ struct nvmev_completion_queue {
 	int cq_head, cq_tail;
 	struct nvme_completion __iomem **cq;
 
-	struct irq_desc *irq_desc;
+	// struct irq_desc *irq_desc;
 };
 
 struct nvmev_admin_queue {
 	int irq;
-	int irq_vector;
 	int vector;
 
 	bool affinity_settings;
 	const struct cpumask *cpu_mask;
-	struct msi_desc *desc;
+	struct irq_desc *irq_desc;
 
 	int phase;
 	int sq_depth, cq_depth;
-	int cq_head, cq_tail;
+	int cq_head;
 
 	struct nvme_command __iomem **nvme_sq;
 	struct nvme_completion __iomem **nvme_cq;
-
-	struct irq_desc *irq_desc;
 };
 
 struct nvmev_config {
@@ -208,7 +203,6 @@ struct nvmev_dev {
 	int nr_sq, nr_cq;
 
 	struct nvmev_admin_queue *admin_q;
-	struct nvmev_ns **ns_arr;
 	struct nvmev_submission_queue *sqes[NR_MAX_IO_QUEUE + 1];
 	struct nvmev_completion_queue *cqes[NR_MAX_IO_QUEUE + 1];
 
@@ -220,6 +214,8 @@ struct nvmev_dev {
 	struct proc_dir_entry *proc_io_units;
 	struct proc_dir_entry *proc_stat;
 
+	struct nvmev_ns **ns_arr;
+
 	unsigned long long *unit_stat;
 
 	struct nvmev_sq_stat sq_stats[NR_MAX_IO_QUEUE + 1];
@@ -230,7 +226,7 @@ struct nvmev_dev *VDEV_INIT(void);
 void VDEV_FINALIZE(struct nvmev_dev *vdev);
 
 // HEADER Initialize
-void PCI_HEADER_SETTINGS(struct nvmev_dev *vdev, struct pci_header *pcihdr);
+void PCI_HEADER_SETTINGS(struct pci_header *pcihdr, unsigned long base_pa);
 void PCI_PMCAP_SETTINGS(struct pci_pm_cap *pmcap);
 void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap *msixcap);
 void PCI_PCIECAP_SETTINGS(struct pcie_cap *pciecap);
@@ -238,10 +234,8 @@ void PCI_AERCAP_SETTINGS(struct aer_cap *aercap);
 void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr *exp_cap);
 
 // OPS_PCI
-void nvmev_clone_pci_mem(struct nvmev_dev *vdev);
 struct pci_bus *nvmev_create_pci_bus(void);
-void nvmev_proc_bars (void);
-int get_vector_from_irq(int irq);
+void nvmev_proc_bars(void);
 void generateInterrupt(int vector);
 
 // OPS ADMIN QUEUE

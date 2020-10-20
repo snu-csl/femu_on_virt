@@ -11,7 +11,7 @@ struct __apic_chip_data {
 	u8			move_in_progress : 1;
 };
 
-int get_vector_from_irq(int irq)
+static int __vector_from_irq(int irq)
 {
 	struct irq_data * irqd = irq_get_irq_data(irq);
 	struct irq_cfg *irqd_cfg;
@@ -26,7 +26,7 @@ int get_vector_from_irq(int irq)
 	return irqd_cfg->vector;
 }
 
-void nvmev_proc_bars ()
+void nvmev_proc_bars()
 {
 	struct __nvme_bar *old_bar = vdev->old_bar;
 	struct nvme_ctrl_regs *bar = vdev->bar;
@@ -34,7 +34,7 @@ void nvmev_proc_bars ()
 	unsigned int num_pages, i;
 
 #if 0
-	// Read only Register
+	// Read-only register
 	if (old_bar->cap != bar->u_cap) {
 		memcpy(&old_bar->cap, &bar->cap, sizeof(old_bar->cap));
 	}
@@ -83,19 +83,19 @@ void nvmev_proc_bars ()
 	if (old_bar->aqa != bar->u_aqa) {
 		//Admin Queue Initial..
 		memcpy(&old_bar->aqa, &bar->aqa, sizeof(old_bar->aqa));
+
 		queue =	kzalloc(sizeof(struct nvmev_admin_queue), GFP_KERNEL);
 
 		queue->irq = IRQ_NUM;
-		queue->irq_vector = get_vector_from_irq(queue->irq);
-		queue->vector = 0;
+		queue->vector = __vector_from_irq(queue->irq);
 		queue->cq_head = 0;
-		queue->cq_tail = -1;
 		queue->phase = 1;
-		queue->sq_depth = bar->aqa.asqs + 1;
+		queue->sq_depth = bar->aqa.asqs + 1; /* asqs and acqs are 0-based */
 		queue->cq_depth = bar->aqa.acqs + 1;
-		vdev->admin_q = queue;
 
-		printk("%s: irq_vector %d, irq %d\n", __func__, queue->irq_vector, queue->irq);
+		printk("%s: irq %d, vector %d\n", __func__, queue->irq, queue->vector);
+
+		vdev->admin_q = queue;
 
 		/*
 		 * MSI is re-enabled so that MSI interrupt vectors
@@ -104,26 +104,26 @@ void nvmev_proc_bars ()
 		vdev->pdev->no_msi = 0;
 	}
 	if (old_bar->asq != bar->u_asq) {
-		queue = vdev->admin_q;
 		memcpy(&old_bar->asq, &bar->asq, sizeof(old_bar->asq));
 
+		queue = vdev->admin_q;
+
 		num_pages = DIV_ROUND_UP(queue->sq_depth * sizeof(struct nvme_command), PAGE_SIZE);
-		vdev->admin_q->nvme_sq = kzalloc(sizeof(struct nvme_command *) * num_pages, GFP_KERNEL);
-		if (queue->nvme_sq == NULL)
-			NVMEV_ERROR("Error on Setup Admin Queue [Submission]\n");
+		queue->nvme_sq = kzalloc(sizeof(struct nvme_command *) * num_pages, GFP_KERNEL);
+		BUG_ON(!queue->nvme_sq && "Error on setup admin queue [submission]");
 
 		for (i = 0; i < num_pages; i++) {
 			vdev->admin_q->nvme_sq[i] = page_address(pfn_to_page(vdev->bar->u_asq >> PAGE_SHIFT) + i);
 		}
 	}
 	if (old_bar->acq != bar->u_acq) {
-		queue = vdev->admin_q;
 		memcpy(&old_bar->acq, &bar->acq, sizeof(old_bar->acq));
+
+		queue = vdev->admin_q;
 
 		num_pages = DIV_ROUND_UP(queue->cq_depth * sizeof(struct nvme_completion), PAGE_SIZE);
 		vdev->admin_q->nvme_cq = kzalloc(sizeof(struct nvme_completion*) * num_pages, GFP_KERNEL);
-		if (queue->nvme_cq == NULL)
-			NVMEV_ERROR("Error on Setup Admin Queue [Completion]\n");
+		BUG_ON(!queue->nvme_cq && "Error on setup admin queue [completion]");
 
 		for (i = 0; i < num_pages; i++) {
 			vdev->admin_q->nvme_cq[i] = page_address(pfn_to_page(vdev->bar->u_acq >> PAGE_SHIFT) + i);
@@ -151,14 +151,13 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 	if (where < OFFS_PCI_PM_CAP) {
 	// PCI_HDR
 		if (target == 0x0) mask = 0x0;
-		else if (target == 0x4) mask = 0x0547;
-		else if (target == 0x6) mask = 0xF200;
-		else if (target == 0x9) mask = 0x0;
-		else if (target == 0xd) mask = 0x0;
-		else if (target == 0xe) mask = 0x0;
-		else if (target == 0xf) mask = 0x40;
+		else if (target == 0x04) mask = 0x0547;
+		else if (target == 0x06) mask = 0xF200;
+		else if (target == 0x09) mask = 0x0;
+		else if (target == 0x0d) mask = 0x0;
+		else if (target == 0x0e) mask = 0x0;
+		else if (target == 0x0f) mask = 0x40;
 		else if (target == 0x10) mask = 0xFFFFC000;
-		//else if (target == 0x18) mask = 0xFFFFFFF8;
 		else if (target == 0x18) mask = 0x0;
 		else if (target == 0x1c) mask = 0x0;
 		else if (target == 0x20) mask = 0x0;
@@ -174,8 +173,7 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 	} else if (where < OFFS_PCIE_CAP) {
 	// PCI_MSIX_CAP
 		target -= OFFS_PCI_MSIX_CAP;
-		if (target == 0)
-			mask = 0x0;
+		if (target == 0) mask = 0x0;
 		else if (target == 2) {
 			mask = 0xC000;
 
@@ -185,27 +183,40 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 				vdev->msix_table =
 						ioremap(pci_resource_start(vdev->pdev, 0) + 0x2000,
 								NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
-				vdev->admin_q->irq_vector =
-						readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF;
-				NVMEV_INFO("msi-x enabled. table at 0x%p, irq_vector %d\n",
-						vdev->msix_table, vdev->admin_q->irq_vector);
+
+				NVMEV_INFO("msi-x enabled\n");
 			}
 		}
 		else if (target == 4) mask = 0x0;
 		else if (target == 8) mask = 0x0;
 	} else {
-		// PCIE_CAP
+	// PCIE_CAP
 	}
+
 	val = (val & (~mask)) | (_val & mask);
 	memcpy(vdev->virtDev + where, &val, size);
 
 	return 0;
 };
 
+static void __populate_old_bars_dbs(struct nvmev_dev* vdev)
+{
+	vdev->old_dbs = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (vdev->old_dbs == NULL) {
+		NVMEV_ERROR("Allocating old DBs memory");
+	}
+	vdev->old_bar = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (vdev->old_bar == NULL) {
+		NVMEV_ERROR("Allocating old BAR memory");
+	}
+
+	memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
+	memcpy(vdev->old_dbs, vdev->dbs, sizeof(*vdev->old_dbs));
+}
+
 struct pci_bus* nvmev_create_pci_bus()
 {
     struct pci_bus* nvmev_pci_bus = NULL;
-	struct resource *res;
 	struct pci_dev *dev;
 
 	memset(&vdev->pci_ops, 0, sizeof(vdev->pci_ops));
@@ -214,11 +225,10 @@ struct pci_bus* nvmev_create_pci_bus()
 
 	memset(&vdev->pci_sd, 0, sizeof(vdev->pci_sd));
 	vdev->pci_sd.domain = NVMEV_PCI_DOMAIN_NUM;
-	vdev->pci_sd.node = 0;
+	vdev->pci_sd.node = 1;
 
-	// Create Root Bus
-    nvmev_pci_bus = pci_scan_bus(NVMEV_PCI_BUS_NUM, &vdev->pci_ops, (void *)&vdev->pci_sd);
-	//pci_rescan_bus(nvmev_pci_bus);
+	// Create the root bus
+    nvmev_pci_bus = pci_scan_bus(NVMEV_PCI_BUS_NUM, &vdev->pci_ops, &vdev->pci_sd);
 
 	if (!nvmev_pci_bus){
 		NVMEV_ERROR("Fail to create PCI bus\n");
@@ -226,14 +236,14 @@ struct pci_bus* nvmev_create_pci_bus()
 	}
 
 	list_for_each_entry(dev, &nvmev_pci_bus->devices, bus_list) {
-		res = &dev->resource[0];
+		struct resource *res = &dev->resource[0];
 		res->parent = &iomem_resource;
+
 		//vdev->bar = ioremap(pci_resource_start(dev, 0), PAGE_SIZE * 2);
 		vdev->bar = memremap(pci_resource_start(dev, 0), PAGE_SIZE * 2, MEMREMAP_WT);
 		memset(vdev->bar, 0x0, PAGE_SIZE * 2);
+
 		vdev->dbs = ((void *)vdev->bar) + PAGE_SIZE;
-		NVMEV_INFO("%s: %p %p %p\n", __func__, vdev,
-				vdev->bar, vdev->old_bar);
 		vdev->pdev = dev;
 
 		/*
@@ -245,32 +255,20 @@ struct pci_bus* nvmev_create_pci_bus()
 		vdev->pdev->no_msi = 1;
 	}
 	pci_bus_add_devices(nvmev_pci_bus);
+
 	vdev->pcihdr->cmd.mse = 1;
 
-	vdev->bar->vs.mnr = 0;
 	vdev->bar->vs.mjr = 1;
+	vdev->bar->vs.mnr = 0;
 	vdev->bar->cap.mpsmin = 0;
 	vdev->bar->cap.mqes = 1024 - 1; //base value = 0, 0 means depth 1
 
-	NVMEV_INFO("Successfully created Virtual PCI bus\n");
+	__populate_old_bars_dbs(vdev);
+
+	NVMEV_INFO("Successfully created virtual PCI bus\n");
 
 	return nvmev_pci_bus;
 };
-
-void nvmev_clone_pci_mem(struct nvmev_dev* vdev)
-{
-	vdev->old_dbs = kzalloc(4096, GFP_KERNEL);
-	if (vdev->old_dbs == NULL) {
-		NVMEV_ERROR("Allocating old DBs memory");
-	}
-	vdev->old_bar = kzalloc(4096, GFP_KERNEL);
-	if (vdev->old_bar == NULL) {
-		NVMEV_ERROR("Allocating old BAR memory");
-	}
-
-	memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
-	memcpy(vdev->old_dbs, vdev->dbs, sizeof(*vdev->old_dbs));
-}
 
 void generateInterrupt(int vector)
 {
