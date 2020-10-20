@@ -1,22 +1,13 @@
 #include "nvmev.h"
 
-#define num_sq_per_page	(PAGE_SIZE / sizeof(struct nvme_command))
-#define num_cq_per_page (PAGE_SIZE / sizeof(struct nvme_completion))
-
-#define entry_sq_page_num(entry_id) (entry_id / num_sq_per_page)
-#define entry_cq_page_num(entry_id) (entry_id / num_cq_per_page)
-
-#define entry_sq_page_offs(entry_id) (entry_id % num_sq_per_page)
-#define entry_cq_page_offs(entry_id) (entry_id % num_cq_per_page)
-
 #define sq_entry(entry_id) \
-	queue->nvme_sq[entry_sq_page_num(entry_id)][entry_sq_page_offs(entry_id)]
+	queue->nvme_sq[SQ_ENTRY_TO_PAGE_NUM(entry_id)][SQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
 #define cq_entry(entry_id) \
-	queue->nvme_cq[entry_cq_page_num(entry_id)][entry_cq_page_offs(entry_id)]
+	queue->nvme_cq[CQ_ENTRY_TO_PAGE_NUM(entry_id)][CQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
 
 extern struct nvmev_dev *vdev;
 
-void nvmev_admin_create_cq(int eid, int cq_head)
+static void __nvmev_admin_create_cq(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_completion_queue *cq;
@@ -63,7 +54,7 @@ void nvmev_admin_create_cq(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_delete_cq(int eid, int cq_head)
+static void __nvmev_admin_delete_cq(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_completion_queue *cq;
@@ -83,7 +74,7 @@ void nvmev_admin_delete_cq(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_create_sq(int eid, int cq_head)
+static void __nvmev_admin_create_sq(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_submission_queue *sq;
@@ -121,7 +112,7 @@ void nvmev_admin_create_sq(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_delete_sq(int eid, int cq_head)
+static void __nvmev_admin_delete_sq(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvmev_submission_queue *sq;
@@ -141,7 +132,7 @@ void nvmev_admin_delete_sq(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_identify_ctrl(int eid, int cq_head)
+static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_id_ctrl* ctrl;
@@ -166,11 +157,11 @@ void nvmev_admin_identify_ctrl(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_get_log_page(int eid, int cq_head)
+static void __nvmev_admin_get_log_page(int eid, int cq_head)
 {
 }
 
-void nvmev_admin_identify_namespace(int eid, int cq_head)
+static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_id_ns* ns;
@@ -220,7 +211,7 @@ void nvmev_admin_identify_namespace(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_set_features(int eid, int cq_head)
+static void __nvmev_admin_set_features(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 
@@ -273,12 +264,12 @@ void nvmev_admin_set_features(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-void nvmev_admin_get_features(int eid, int cq_head)
+static void __nvmev_admin_get_features(int eid, int cq_head)
 {
 
 }
 
-void nvmev_proc_admin(int entry_id)
+static void __nvmev_proc_admin_req(int entry_id)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	int cq_head = queue->cq_head;
@@ -289,33 +280,33 @@ void nvmev_proc_admin(int entry_id)
 
 	switch(sq_entry(entry_id).common.opcode) {
 		case nvme_admin_delete_sq:
-			nvmev_admin_delete_sq(entry_id, cq_head);
+			__nvmev_admin_delete_sq(entry_id, cq_head);
 			break;
 		case nvme_admin_create_sq:
-			nvmev_admin_create_sq(entry_id, cq_head);
+			__nvmev_admin_create_sq(entry_id, cq_head);
 			break;
 		case nvme_admin_get_log_page:
-			nvmev_admin_get_log_page(entry_id, cq_head);
+			__nvmev_admin_get_log_page(entry_id, cq_head);
 			break;
 		case nvme_admin_delete_cq:
-			nvmev_admin_delete_cq(entry_id, cq_head);
+			__nvmev_admin_delete_cq(entry_id, cq_head);
 			break;
 		case nvme_admin_create_cq:
-			nvmev_admin_create_cq(entry_id, cq_head);
+			__nvmev_admin_create_cq(entry_id, cq_head);
 			break;
 		case nvme_admin_identify:
 			if (sq_entry(entry_id).identify.cns == 0x01)
-				nvmev_admin_identify_ctrl(entry_id, cq_head);
+				__nvmev_admin_identify_ctrl(entry_id, cq_head);
 			else
-				nvmev_admin_identify_namespace(entry_id, cq_head);
+				__nvmev_admin_identify_namespace(entry_id, cq_head);
 			break;
 		case nvme_admin_abort_cmd:
 			break;
 		case nvme_admin_set_features:
-			nvmev_admin_set_features(entry_id, cq_head);
+			__nvmev_admin_set_features(entry_id, cq_head);
 			break;
 		case nvme_admin_get_features:
-			nvmev_admin_get_features(entry_id, cq_head);
+			__nvmev_admin_get_features(entry_id, cq_head);
 			break;
 			break;
 		case nvme_admin_async_event:
@@ -343,7 +334,7 @@ void nvmev_proc_admin(int entry_id)
 }
 
 
-void nvmev_proc_sq_admin(int new_db, int old_db)
+void nvmev_proc_admin_sq(int new_db, int old_db)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	int num_proc = new_db - old_db;
@@ -353,7 +344,7 @@ void nvmev_proc_sq_admin(int new_db, int old_db)
 	if (num_proc < 0) num_proc += queue->sq_depth;
 
 	for (seq = 0; seq < num_proc; seq++) {
-		nvmev_proc_admin(curr++);
+		__nvmev_proc_admin_req(curr++);
 
 		if (curr == queue->sq_depth) {
 			curr = 0;
@@ -386,15 +377,15 @@ void nvmev_proc_sq_admin(int new_db, int old_db)
 #else
 		desc = "Intr -> all"
 #endif
-		NVMEV_INFO("Send IPI: %d to %*pbl\n", vector, cpumask_pr_args(target));
+		NVMEV_DEBUG("Send IPI: %d to %*pbl\n", vector, cpumask_pr_args(target));
 		apic->send_IPI_mask(target, vector);
 	} else {
-		NVMEV_INFO("Non-msix interrupt: %d\n", queue->vector);
+		NVMEV_DEBUG("Non-msix interrupt: %d\n", queue->vector);
 		//apic->send_IPI_all(queue->vector);
 		generateInterrupt(queue->vector);
 	}
 }
 
-void nvmev_proc_cq_admin(int new_db, int old_db)
+void nvmev_proc_admin_cq(int new_db, int old_db)
 {
 }

@@ -84,7 +84,6 @@ MODULE_PARM_DESC(io_unit_shift, "Size of each I/O unit (2^)");
 module_param(cpus, charp, 0);
 MODULE_PARM_DESC(cpus, "CPU list for process, completion(int.) threads, Seperated by Comma(,)");
 
-
 static void nvmev_proc_dbs(void)
 {
 	int qid;
@@ -95,12 +94,12 @@ static void nvmev_proc_dbs(void)
 	// Admin Queue
 	new_db = vdev->dbs[0];
 	if (new_db != vdev->old_dbs[0]) {
-		nvmev_proc_sq_admin(new_db, vdev->old_dbs[0]);
+		nvmev_proc_admin_sq(new_db, vdev->old_dbs[0]);
 		vdev->old_dbs[0] = new_db;
 	}
 	new_db = vdev->dbs[1];
 	if (new_db != vdev->old_dbs[1]) {
-		nvmev_proc_cq_admin(new_db, vdev->old_dbs[1]);
+		nvmev_proc_admin_cq(new_db, vdev->old_dbs[1]);
 		vdev->old_dbs[1] = new_db;
 	}
 
@@ -111,7 +110,7 @@ static void nvmev_proc_dbs(void)
 		new_db = vdev->dbs[dbs_idx];
 		old_db = vdev->old_dbs[dbs_idx];
 		if (new_db != old_db) {
-			nvmev_proc_sq_io(qid, new_db, old_db);
+			nvmev_proc_io_sq(qid, new_db, old_db);
 			vdev->old_dbs[dbs_idx] = new_db;
 		}
 	}
@@ -123,7 +122,7 @@ static void nvmev_proc_dbs(void)
 		new_db = vdev->dbs[dbs_idx];
 		old_db = vdev->old_dbs[dbs_idx];
 		if (new_db != old_db) {
-			nvmev_proc_cq_io(qid, new_db, old_db);
+			nvmev_proc_io_cq(qid, new_db, old_db);
 			vdev->old_dbs[dbs_idx] = new_db;
 		}
 	}
@@ -199,7 +198,7 @@ static int nvmev_args_verify(void)
 	return 0;
 }
 
-void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
+static void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
 {
 	vdev->nvmev_reg_proc = kthread_create(nvmev_kthread_proc_reg, NULL, "nvmev_proc_reg");
 	if (vdev->config.cpu_nr_proc_reg != -1)
@@ -208,7 +207,7 @@ void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
 	pr_info("nvmev_proc_reg started on %d\n", vdev->config.cpu_nr_proc_reg);
 }
 
-void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
+static void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
 {
 	if (!IS_ERR_OR_NULL(vdev->nvmev_reg_proc)) {
 		kthread_stop(vdev->nvmev_reg_proc);
@@ -216,7 +215,7 @@ void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
 	}
 }
 
-void print_perf_configs(void)
+static void print_perf_configs(void)
 {
 	unsigned long unit_perf_kb =
 			vdev->config.nr_io_units << (vdev->config.io_unit_shift - 10);

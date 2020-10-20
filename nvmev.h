@@ -52,6 +52,7 @@
 #define NR_MAX_IO_QUEUE 32
 #define NR_MAX_PARALLEL_IO 8192
 
+
 struct nvmev_ns {
 	int nsid;
 };
@@ -77,13 +78,12 @@ struct nvmev_completion_queue {
 	spinlock_t entry_lock;
 	spinlock_t irq_lock;
 
-	bool affinity_settings;
-	const struct cpumask *cpu_mask;
-
 	int queue_size;
 
 	int phase;
-	int cq_head, cq_tail;
+	int cq_head;
+	int cq_tail;
+
 	struct nvme_completion __iomem **cq;
 
 	// struct irq_desc *irq_desc;
@@ -93,17 +93,26 @@ struct nvmev_admin_queue {
 	int irq;
 	int vector;
 
-	bool affinity_settings;
-	const struct cpumask *cpu_mask;
-	struct irq_desc *irq_desc;
-
 	int phase;
-	int sq_depth, cq_depth;
+
+	int sq_depth;
+	int cq_depth;
+
 	int cq_head;
 
 	struct nvme_command __iomem **nvme_sq;
 	struct nvme_completion __iomem **nvme_cq;
 };
+
+#define NR_SQE_PER_PAGE	(PAGE_SIZE / sizeof(struct nvme_command))
+#define NR_CQE_PER_PAGE (PAGE_SIZE / sizeof(struct nvme_completion))
+
+#define SQ_ENTRY_TO_PAGE_NUM(entry_id) (entry_id / NR_SQE_PER_PAGE)
+#define CQ_ENTRY_TO_PAGE_NUM(entry_id) (entry_id / NR_CQE_PER_PAGE)
+
+#define SQ_ENTRY_TO_PAGE_OFFSET(entry_id) (entry_id % NR_SQE_PER_PAGE)
+#define CQ_ENTRY_TO_PAGE_OFFSET(entry_id) (entry_id % NR_CQE_PER_PAGE)
+
 
 struct nvmev_config {
 	unsigned long memmap_start; // byte
@@ -150,14 +159,14 @@ struct nvmev_proc_table {
 
 struct nvmev_proc_info {
 	struct nvmev_proc_table *proc_table;
-	unsigned int proc_free_seq;
-	unsigned int proc_free_last;
-	unsigned int proc_io_seq;
-	unsigned int proc_io_seq_end;
+	unsigned int free_seq;
+	unsigned int free_seq_end;
+	unsigned int io_seq;
+	unsigned int io_seq_end;
 	unsigned long long proc_io_nsecs;
 
-	struct task_struct *nvmev_io_proc;
-	char *thread_name;
+	struct task_struct *nvmev_io_worker;
+	char thread_name[32];
 };
 
 struct nvmev_sq_stat {
@@ -239,14 +248,12 @@ void nvmev_proc_bars(void);
 void generateInterrupt(int vector);
 
 // OPS ADMIN QUEUE
-void nvmev_proc_sq_admin(int new_db, int old_db);
-void nvmev_proc_cq_admin(int new_db, int old_db);
+void nvmev_proc_admin_sq(int new_db, int old_db);
+void nvmev_proc_admin_cq(int new_db, int old_db);
 
 // OPS I/O QUEUE
 void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev);
 void NVMEV_IO_PROC_FINAL(struct nvmev_dev *vdev);
-void nvmev_proc_sq_io(int qid, int new_db, int old_db);
-void nvmev_proc_cq_io(int qid, int new_db, int old_db);
-
-void nvmev_proc_io_cleanup(void);
+void nvmev_proc_io_sq(int qid, int new_db, int old_db);
+void nvmev_proc_io_cq(int qid, int new_db, int old_db);
 #endif /* _LIB_NVMEV_H */
