@@ -66,9 +66,18 @@
 #define NR_MAX_IO_QUEUE 32
 #define NR_MAX_PARALLEL_IO 8192
 
+#define PCI_NUMA_NODE 1
 
 struct nvmev_ns {
 	int nsid;
+};
+
+struct nvmev_sq_stat {
+	unsigned int nr_dispatched;
+	unsigned int nr_dispatch;
+	unsigned int nr_in_flight;
+	unsigned int max_nr_in_flight;
+	unsigned long long total_io;
 };
 
 struct nvmev_submission_queue {
@@ -78,6 +87,8 @@ struct nvmev_submission_queue {
 	bool phys_contig;
 
 	int queue_size;
+
+	struct nvmev_sq_stat stat;
 
 	struct nvme_command __iomem **sq;
 };
@@ -183,14 +194,6 @@ struct nvmev_proc_info {
 	char thread_name[32];
 };
 
-struct nvmev_sq_stat {
-	unsigned int nr_dispatched;
-	unsigned int nr_dispatch;
-	unsigned int nr_in_flight;
-	unsigned int max_nr_in_flight;
-	unsigned long long total_io;
-};
-
 struct nvmev_dev {
 	struct pci_bus *virt_bus;
 	void *virtDev;
@@ -240,8 +243,6 @@ struct nvmev_dev {
 	struct nvmev_ns **ns_arr;
 
 	unsigned long long *unit_stat;
-
-	struct nvmev_sq_stat sq_stats[NR_MAX_IO_QUEUE + 1];
 };
 
 // VDEV Init, Final Function
@@ -257,9 +258,9 @@ void PCI_AERCAP_SETTINGS(struct aer_cap *aercap);
 void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr *exp_cap);
 
 // OPS_PCI
-struct pci_bus *nvmev_create_pci_bus(void);
 void nvmev_proc_bars(void);
 void generateInterrupt(int vector);
+bool NVMEV_PCI_INIT(struct nvmev_dev *dev);
 
 // OPS ADMIN QUEUE
 void nvmev_proc_admin_sq(int new_db, int old_db);

@@ -28,8 +28,6 @@ struct nvmev_dev *VDEV_INIT(void)
 	vdev->aercap = vdev->virtDev + PCI_CFG_SPACE_SIZE;
 	vdev->pcie_exp_cap = vdev->virtDev + PCI_CFG_SPACE_SIZE;
 
-	memset(vdev->sq_stats, 0x00, sizeof(vdev->sq_stats));
-
 	return vdev;
 }
 
@@ -50,6 +48,9 @@ void VDEV_FINALIZE(struct nvmev_dev *vdev)
 
 	if (vdev->virtDev)
 		kfree(vdev->virtDev);
+
+	if (vdev->unit_stat)
+		kfree(vdev->unit_stat);
 
 	if (vdev)
 		kfree(vdev);

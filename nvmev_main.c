@@ -60,16 +60,16 @@ struct nvmev_dev *vdev = NULL;
 unsigned long memmap_start = 0;
 unsigned long memmap_size = 0;
 
-unsigned int read_time = 0;
-unsigned int read_delay = 0;
+unsigned int read_time = 1;
+unsigned int read_delay = 1;
 unsigned int read_trailing = 0;
 
-unsigned int write_time = 0;
-unsigned int write_delay = 0;
+unsigned int write_time = 1;
+unsigned int write_delay = 1;
 unsigned int write_trailing = 0;
 
-unsigned int nr_io_units = 0;
-unsigned int io_unit_shift = 0;
+unsigned int nr_io_units = 8;
+unsigned int io_unit_shift = 12;
 
 unsigned long long completion_lag = 0;
 
@@ -159,7 +159,7 @@ static int nvmev_kthread_proc_reg(void *data)
 	return 0;
 }
 
-static int nvmev_args_verify(void)
+static int __validate_configs(void)
 {
 	unsigned long resv_start_bytes;
 	unsigned long resv_end_bytes;
@@ -229,7 +229,7 @@ static void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
 	}
 }
 
-static void print_perf_configs(void)
+static void __print_perf_configs(void)
 {
 	unsigned long unit_perf_kb =
 			vdev->config.nr_io_units << (vdev->config.io_unit_shift - 10);
@@ -280,21 +280,24 @@ static int proc_file_read(struct seq_file *m, void *data)
 		unsigned int nr_dispatched = 0;
 		unsigned long long total_io = 0;
 		for (i = 1; i < vdev->nr_sq; i++) {
-			seq_printf(m, "%u %u %u %u %u %llu ",
-					__get_nr_entries(i * 2, vdev->sqes[i]->queue_size),
-					vdev->sq_stats[i].nr_in_flight,
-					vdev->sq_stats[i].max_nr_in_flight,
-					vdev->sq_stats[i].nr_dispatch,
-					vdev->sq_stats[i].nr_dispatched,
-					vdev->sq_stats[i].total_io);
+			struct nvmev_submission_queue *sq = vdev->sqes[i];
+			if (!sq) continue;
 
-			nr_in_flight += vdev->sq_stats[i].nr_in_flight;
-			nr_dispatch += vdev->sq_stats[i].nr_dispatch;
-			nr_dispatched  += vdev->sq_stats[i].nr_dispatched;
-			total_io += vdev->sq_stats[i].total_io;
+			seq_printf(m, "%u %u %u %u %u %llu ",
+					__get_nr_entries(i * 2, sq->queue_size),
+					sq->stat.nr_in_flight,
+					sq->stat.max_nr_in_flight,
+					sq->stat.nr_dispatch,
+					sq->stat.nr_dispatched,
+					sq->stat.total_io);
+
+			nr_in_flight += sq->stat.nr_in_flight;
+			nr_dispatch += sq->stat.nr_dispatch;
+			nr_dispatched  += sq->stat.nr_dispatched;
+			total_io += sq->stat.total_io;
 
 			barrier();
-			vdev->sq_stats[i].max_nr_in_flight = 0;
+			sq->stat.max_nr_in_flight = 0;
 		}
 		seq_printf(m, " / %u %u %u %llu", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
 	} else if (strcmp(filename, "debug") == 0) {
@@ -334,10 +337,8 @@ static ssize_t proc_file_write(struct file *file, const char __user *buf, size_t
 
 	}
 
-	memset(vdev->sq_stats, 0x00, sizeof(vdev->sq_stats));
-
 out:
-	print_perf_configs();
+	__print_perf_configs();
 
 	return count;
 }
@@ -362,6 +363,9 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 	NVMEV_INFO("Storage : %lx + %lx\n",
 			vdev->config.storage_start, vdev->config.storage_size);
 
+	vdev->unit_stat = kzalloc(
+			sizeof(*vdev->unit_stat) * vdev->config.nr_io_units, GFP_KERNEL);
+
 	vdev->storage_mapped = memremap(vdev->config.storage_start,
 			vdev->config.storage_size, MEMREMAP_WB);
 	if (vdev->storage_mapped == NULL)
@@ -382,9 +386,6 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 
 void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 {
-	if (vdev->storage_mapped)
-		memunmap(vdev->storage_mapped);
-
 	remove_proc_entry("read_times", vdev->proc_root);
 	remove_proc_entry("write_times", vdev->proc_root);
 	remove_proc_entry("io_units", vdev->proc_root);
@@ -392,13 +393,23 @@ void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 	remove_proc_entry("debug", vdev->proc_root);
 
 	remove_proc_entry("nvmev", NULL);
+
+	if (vdev->storage_mapped)
+		memunmap(vdev->storage_mapped);
+
+	if (vdev->unit_stat)
+		kfree(vdev->unit_stat);
 }
 
-static bool VDEV_SET_ARGS(struct nvmev_config* config)
+static bool __load_configs(struct nvmev_config* config)
 {
 	bool first = true;
 	unsigned int cpu_nr;
 	char *cpu;
+
+	if (__validate_configs() < 0) {
+		return false;
+	}
 
 	config->memmap_start = memmap_start << 30;
 	config->memmap_size = memmap_size << 20;
@@ -429,87 +440,64 @@ static bool VDEV_SET_ARGS(struct nvmev_config* config)
 		first = false;
 	}
 
+	cpumask_clear(&vdev->first_cpu_on_node);
+	cpumask_set_cpu(cpumask_first(cpumask_of_node(PCI_NUMA_NODE)),
+			&vdev->first_cpu_on_node);
+
 	return true;
 }
 
 static int NVMeV_init(void)
 {
-	if (nvmev_args_verify() < 0)
-		goto ret_err;
-
 	vdev = VDEV_INIT();
-	if (!vdev) goto ret_err;
+	if (!vdev) return -EINVAL;
 
-	if (!VDEV_SET_ARGS(&vdev->config)) {
-		goto ret_err_pci_bus;
+	if (!__load_configs(&vdev->config)) {
+		goto ret_err;
 	}
 
-	vdev->unit_stat = kzalloc(
-			sizeof(*vdev->unit_stat) * vdev->config.nr_io_units, GFP_KERNEL);
+	if (!NVMEV_PCI_INIT(vdev)) {
+		goto ret_err;
+	}
 
-	PCI_HEADER_SETTINGS(vdev->pcihdr, vdev->config.memmap_start);
-	PCI_PMCAP_SETTINGS(vdev->pmcap);
-	PCI_MSIXCAP_SETTINGS(vdev->msixcap);
-	PCI_PCIECAP_SETTINGS(vdev->pciecap);
-	PCI_AERCAP_SETTINGS(vdev->aercap);
-	PCI_PCIE_EXTCAP_SETTINGS(vdev->pcie_exp_cap);
-
-	//Create PCI BUS
-	vdev->virt_bus = nvmev_create_pci_bus();
-	if (!vdev->virt_bus)
-		goto ret_err_pci_bus;
-
-	print_perf_configs();
+	__print_perf_configs();
 
 	NVMEV_STORAGE_INIT(vdev);
 
 	NVMEV_IO_PROC_INIT(vdev);
 	NVMEV_REG_PROC_INIT(vdev);
 
-	cpumask_clear(&vdev->first_cpu_on_node);
-	cpumask_set_cpu(cpumask_first(cpumask_of_node(vdev->pdev->dev.numa_node)),
-			&vdev->first_cpu_on_node);
-
-	NVMEV_INFO("NODE: %d, First CPU: %*pbl\n",
-				vdev->pdev->dev.numa_node,
-				cpumask_pr_args(&vdev->first_cpu_on_node));
-
-	NVMEV_INFO("Successfully created Virtual NVMe Deivce\n");
+	NVMEV_INFO("Successfully created Virtual NVMe deivce\n");
 
     return 0;
 
-ret_err_pci_bus:
+ret_err:
 	VDEV_FINALIZE(vdev);
     return -EIO;
-
-ret_err:
-	return -EINVAL;
 }
 
 static void NVMeV_exit(void)
 {
-	int i;
-
-	NVMEV_STORAGE_FINAL(vdev);
 	NVMEV_REG_PROC_FINAL(vdev);
 	NVMEV_IO_PROC_FINAL(vdev);
 
+	NVMEV_STORAGE_FINAL(vdev);
+
 	if (vdev->virt_bus != NULL) {
+		int i;
 		pci_remove_root_bus(vdev->virt_bus);
 
 		for (i = 0; i < vdev->nr_sq; i++) {
-			//iounmap
 			kfree(vdev->sqes[i]);
 		}
 
 		for (i = 0; i < vdev->nr_cq; i++) {
 			kfree(vdev->cqes[i]);
 		}
-
-		VDEV_FINALIZE(vdev);
 	}
+	VDEV_FINALIZE(vdev);
 
-	pr_info("NVMe Virtual Device Close\n");
+	NVMEV_INFO("Virtual NVMe device closed\n");
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

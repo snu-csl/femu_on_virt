@@ -95,7 +95,7 @@ void nvmev_proc_bars()
 		memcpy(&old_bar->nssr, &bar->nssr, sizeof(old_bar->nssr));
 	}
 	if (old_bar->aqa != bar->u_aqa) {
-		//Admin Queue Initial..
+		// Initalize admin queue
 		memcpy(&old_bar->aqa, &bar->aqa, sizeof(old_bar->aqa));
 
 		queue =	kzalloc(sizeof(struct nvmev_admin_queue), GFP_KERNEL);
@@ -107,7 +107,7 @@ void nvmev_proc_bars()
 		queue->sq_depth = bar->aqa.asqs + 1; /* asqs and acqs are 0-based */
 		queue->cq_depth = bar->aqa.acqs + 1;
 
-		printk("%s: irq %d, vector %d\n", __func__, queue->irq, queue->vector);
+		NVMEV_INFO("admin queue: irq %d, vector %d\n", queue->irq, queue->vector);
 
 		vdev->admin_q = queue;
 
@@ -123,11 +123,11 @@ void nvmev_proc_bars()
 		queue = vdev->admin_q;
 
 		num_pages = DIV_ROUND_UP(queue->sq_depth * sizeof(struct nvme_command), PAGE_SIZE);
-		queue->nvme_sq = kzalloc(sizeof(struct nvme_command *) * num_pages, GFP_KERNEL);
-		BUG_ON(!queue->nvme_sq && "Error on setup admin queue [submission]");
+		queue->nvme_sq = kcalloc(num_pages, sizeof(struct nvme_command *), GFP_KERNEL);
+		BUG_ON(!queue->nvme_sq && "Error on setup admin submission queue");
 
 		for (i = 0; i < num_pages; i++) {
-			vdev->admin_q->nvme_sq[i] = page_address(pfn_to_page(vdev->bar->u_asq >> PAGE_SHIFT) + i);
+			queue->nvme_sq[i] = page_address(pfn_to_page(vdev->bar->u_asq >> PAGE_SHIFT) + i);
 		}
 	}
 	if (old_bar->acq != bar->u_acq) {
@@ -136,11 +136,11 @@ void nvmev_proc_bars()
 		queue = vdev->admin_q;
 
 		num_pages = DIV_ROUND_UP(queue->cq_depth * sizeof(struct nvme_completion), PAGE_SIZE);
-		vdev->admin_q->nvme_cq = kzalloc(sizeof(struct nvme_completion*) * num_pages, GFP_KERNEL);
-		BUG_ON(!queue->nvme_cq && "Error on setup admin queue [completion]");
+		queue->nvme_cq = kcalloc(num_pages, sizeof(struct nvme_completion *), GFP_KERNEL);
+		BUG_ON(!queue->nvme_cq && "Error on setup admin completion queue");
 
 		for (i = 0; i < num_pages; i++) {
-			vdev->admin_q->nvme_cq[i] = page_address(pfn_to_page(vdev->bar->u_acq >> PAGE_SHIFT) + i);
+			queue->nvme_cq[i] = page_address(pfn_to_page(vdev->bar->u_acq >> PAGE_SHIFT) + i);
 		}
 	}
 }
@@ -216,19 +216,15 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 static void __populate_old_bars_dbs(struct nvmev_dev* vdev)
 {
 	vdev->old_dbs = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	if (vdev->old_dbs == NULL) {
-		NVMEV_ERROR("Allocating old DBs memory");
-	}
-	vdev->old_bar = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	if (vdev->old_bar == NULL) {
-		NVMEV_ERROR("Allocating old BAR memory");
-	}
-
-	memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
+	BUG_ON(!vdev->old_dbs && "allocating old DBs memory");
 	memcpy(vdev->old_dbs, vdev->dbs, sizeof(*vdev->old_dbs));
+
+	vdev->old_bar = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	BUG_ON(!vdev->old_bar && "allocating old BAR memory");
+	memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
 }
 
-struct pci_bus* nvmev_create_pci_bus()
+static struct pci_bus *__create_pci_bus(void)
 {
     struct pci_bus* nvmev_pci_bus = NULL;
 	struct pci_dev *dev;
@@ -239,13 +235,13 @@ struct pci_bus* nvmev_create_pci_bus()
 
 	memset(&vdev->pci_sd, 0, sizeof(vdev->pci_sd));
 	vdev->pci_sd.domain = NVMEV_PCI_DOMAIN_NUM;
-	vdev->pci_sd.node = 1;
+	vdev->pci_sd.node = PCI_NUMA_NODE;
 
 	// Create the root bus
     nvmev_pci_bus = pci_scan_bus(NVMEV_PCI_BUS_NUM, &vdev->pci_ops, &vdev->pci_sd);
 
 	if (!nvmev_pci_bus){
-		NVMEV_ERROR("Fail to create PCI bus\n");
+		NVMEV_ERROR("Unable to create PCI bus\n");
 		return NULL;
 	}
 
@@ -283,6 +279,21 @@ struct pci_bus* nvmev_create_pci_bus()
 
 	return nvmev_pci_bus;
 };
+
+bool NVMEV_PCI_INIT(struct nvmev_dev *vdev)
+{
+	PCI_HEADER_SETTINGS(vdev->pcihdr, vdev->config.memmap_start);
+	PCI_PMCAP_SETTINGS(vdev->pmcap);
+	PCI_MSIXCAP_SETTINGS(vdev->msixcap);
+	PCI_PCIECAP_SETTINGS(vdev->pciecap);
+	PCI_AERCAP_SETTINGS(vdev->aercap);
+	PCI_PCIE_EXTCAP_SETTINGS(vdev->pcie_exp_cap);
+
+	vdev->virt_bus = __create_pci_bus();
+	if (!vdev->virt_bus) return false;
+
+	return true;
+}
 
 void generateInterrupt(int vector)
 {

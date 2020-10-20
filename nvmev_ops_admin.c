@@ -157,13 +157,12 @@ static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 	ctrl->oncs = 0; //optional command
 	ctrl->acl = 3; //minimum 4 required, 0's based value
 	ctrl->vwc = 0;
-	snprintf(ctrl->sn, 20, "CSL_Virt_NVMe_SN_%02d", 1);
-	snprintf(ctrl->mn, 40, "CSL_Virt_NVMe_MN_%02d", 1);
-	snprintf(ctrl->fr, 8, "CSL_%04d", 1);
+	snprintf(ctrl->sn, sizeof(ctrl->sn), "CSL_Virt_NVMe_SN_%02d", 1);
+	snprintf(ctrl->mn, sizeof(ctrl->mn), "CSL_Virt_NVMe_MN_%02d", 1);
+	snprintf(ctrl->fr, sizeof(ctrl->fr), "CSL_%03d", 1);
 	ctrl->mdts = 5;
 	ctrl->sqes = 0x66;
 	ctrl->cqes = 0x44;
-
 
 	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
 	cq_entry(cq_head).sq_id = 0;
@@ -366,36 +365,40 @@ void nvmev_proc_admin_sq(int new_db, int old_db)
 	}
 
 	if (vdev->msix_enabled) {
+		/* admin queue uses the first (0-th) irq_vector */
 		int vector = readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF;
-		struct cpumask *target, *affinity;
+		struct cpumask *target = &vdev->first_cpu_on_node; /* Signal 0 by default */
+		struct cpumask *affinity;
 		struct msi_desc *msi_desc;
 		const char *desc;
 
 		for_each_msi_entry(msi_desc, (&vdev->pdev->dev)) {
 			if (msi_desc->msi_attrib.entry_nr == 0) {
 				struct irq_desc *irq_desc = irq_to_desc(msi_desc->irq);
-				target = affinity = irq_desc->irq_common_data.affinity;
+				affinity = irq_desc->irq_common_data.affinity;
 				break;
 			}
 		}
 
 #ifdef CONFIG_NUMA
 		if (cpumask_equal(affinity, cpumask_of_node(vdev->pdev->dev.numa_node))) {
-			desc = "every";
+			desc = "broadcast";
 		} else if (cpumask_subset(affinity, cpumask_of_node(vdev->pdev->dev.numa_node))) {
-			desc = "best";
+			desc = "target";
+			target = affinity;
 		} else {
 			desc = "remote";
-			target = &vdev->first_cpu_on_node; /* Signal 0 by default */
+			printk("Remote.. try affinity\n");
+			target = affinity;
 		}
 #else
-		desc = "Intr -> all"
+		desc = "broadcast"
+		target = affinity;
 #endif
 		NVMEV_DEBUG("Send IPI: %d to %*pbl\n", vector, cpumask_pr_args(target));
 		apic->send_IPI_mask(target, vector);
 	} else {
 		NVMEV_DEBUG("Non-msix interrupt: %d\n", queue->vector);
-		//apic->send_IPI_all(queue->vector);
 		generateInterrupt(queue->vector);
 	}
 }
