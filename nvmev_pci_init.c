@@ -13,6 +13,7 @@
  **********************************************************************/
 
 #include "nvmev.h"
+#include "nvmev_hdr.h"
 
 struct nvmev_dev *VDEV_INIT(void)
 {
@@ -49,14 +50,14 @@ void VDEV_FINALIZE(struct nvmev_dev *vdev)
 	if (vdev->virtDev)
 		kfree(vdev->virtDev);
 
-	if (vdev->unit_stat)
-		kfree(vdev->unit_stat);
+	if (vdev->io_unit_stat)
+		kfree(vdev->io_unit_stat);
 
 	if (vdev)
 		kfree(vdev);
 }
 
-void PCI_HEADER_SETTINGS(struct pci_header* pcihdr, unsigned long base_pa)
+void PCI_HEADER_SETTINGS(struct pci_header *pcihdr, unsigned long base_pa)
 {
 	pcihdr->id.did = 0x0101;
 	pcihdr->id.vid = 0x0c51;
@@ -93,7 +94,7 @@ void PCI_HEADER_SETTINGS(struct pci_header* pcihdr, unsigned long base_pa)
 
 }
 
-void PCI_PMCAP_SETTINGS(struct pci_pm_cap* pmcap)
+void PCI_PMCAP_SETTINGS(struct pci_pm_cap *pmcap)
 {
 	pmcap->pid.cid = PCI_CAP_ID_PM;
 	pmcap->pid.next = OFFS_PCI_MSIX_CAP;
@@ -103,7 +104,7 @@ void PCI_PMCAP_SETTINGS(struct pci_pm_cap* pmcap)
 	pmcap->pmcs.ps = PCI_PM_CAP_PME_D0 >> 16;
 }
 
-void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap* msixcap)
+void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap *msixcap)
 {
 	msixcap->mxid.cid = PCI_CAP_ID_MSIX;
 	msixcap->mxid.next = OFFS_PCIE_CAP;
@@ -118,7 +119,7 @@ void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap* msixcap)
 	msixcap->mpba.pbir = 0;
 }
 
-void PCI_PCIECAP_SETTINGS(struct pcie_cap* pciecap)
+void PCI_PCIECAP_SETTINGS(struct pcie_cap *pciecap)
 {
 	pciecap->pxid.cid = PCI_CAP_ID_EXP;
 	pciecap->pxid.next = 0x0;
@@ -138,16 +139,16 @@ void PCI_PCIECAP_SETTINGS(struct pcie_cap* pciecap)
 	pciecap->pxdcap.flrc = 1;
 }
 
-void PCI_AERCAP_SETTINGS(struct aer_cap* aercap)
+void PCI_AERCAP_SETTINGS(struct aer_cap *aercap)
 {
 	aercap->aerid.cid = PCI_EXT_CAP_ID_ERR;
 	aercap->aerid.cver = 1;
 	aercap->aerid.next = PCI_CFG_SPACE_SIZE + 0x50;
 }
 
-void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr* exp_cap)
+void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr *exp_cap)
 {
-	struct pci_exp_hdr* pcie_exp_cap;
+	struct pci_exp_hdr *pcie_exp_cap;
 
 	pcie_exp_cap = exp_cap + 0x50;
 	pcie_exp_cap->id.cid = PCI_EXT_CAP_ID_VC;

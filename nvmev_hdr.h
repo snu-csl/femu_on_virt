@@ -553,4 +553,33 @@ struct nvme_ctrl_regs {
 	//__u32			cmbsz;  /* Controller Memory Buffer Size */
 };
 
+// HEADER Initialize
+void PCI_HEADER_SETTINGS(struct pci_header *pcihdr, unsigned long base_pa);
+void PCI_PMCAP_SETTINGS(struct pci_pm_cap *pmcap);
+void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap *msixcap);
+void PCI_PCIECAP_SETTINGS(struct pcie_cap *pciecap);
+void PCI_AERCAP_SETTINGS(struct aer_cap *aercap);
+void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr *exp_cap);
+
+#define NVMEV_PCI_DOMAIN_NUM 0x0001
+#define NVMEV_PCI_BUS_NUM 0x10
+
+//[PCI_HEADER][PM_CAP][MSIX_CAP][PCIE_CAP]
+#define SZ_PCI_HDR sizeof(struct pci_header) // 0
+#define SZ_PCI_PM_CAP sizeof(struct pci_pm_cap) // 0x40
+#define SZ_PCI_MSIX_CAP sizeof(struct pci_msix_cap) // 0x50
+#define SZ_PCIE_CAP sizeof(struct pcie_cap) // 0x60
+
+#define OFFS_PCI_HDR 0x0
+#define OFFS_PCI_PM_CAP 0x40
+#define OFFS_PCI_MSIX_CAP 0x50
+#define OFFS_PCIE_CAP 0x60
+
+#define SZ_HEADER (0x60 + SZ_PCIE_CAP)
+
+#define PCI_CFG_SPACE_SIZE	256
+#define PCIE_EXPCAP_START 0x50
+
+#define PCI_NUMA_NODE 1
+
 #endif /* _LIB_NVMEV_HDR_H */

@@ -14,7 +14,9 @@
 
 #include <linux/pci.h>
 #include <linux/irq.h>
+
 #include "nvmev.h"
+#include "nvmev_hdr.h"
 
 extern struct nvmev_dev *vdev;
 
@@ -291,6 +293,10 @@ bool NVMEV_PCI_INIT(struct nvmev_dev *vdev)
 
 	vdev->virt_bus = __create_pci_bus();
 	if (!vdev->virt_bus) return false;
+
+	cpumask_clear(&vdev->first_cpu_on_node);
+	cpumask_set_cpu(cpumask_first(cpumask_of_node(PCI_NUMA_NODE)),
+			&vdev->first_cpu_on_node);
 
 	return true;
 }

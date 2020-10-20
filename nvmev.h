@@ -24,7 +24,6 @@
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
 
-#include "nvmev_hdr.h"
 #include "nvme_hdr.h"
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
@@ -43,34 +42,10 @@
 #define NVMEV_DEBUG(string, args...)
 #endif
 
-#define NVMEV_PCI_DOMAIN_NUM 0x0001
-#define NVMEV_PCI_BUS_NUM 0x10
-
-//[PCI_HEADER][PM_CAP][MSIX_CAP][PCIE_CAP]
-#define SZ_PCI_HDR sizeof(struct pci_header) // 0
-#define SZ_PCI_PM_CAP sizeof(struct pci_pm_cap) // 0x40
-#define SZ_PCI_MSIX_CAP sizeof(struct pci_msix_cap) // 0x50
-#define SZ_PCIE_CAP sizeof(struct pcie_cap) // 0x60
-
-#define OFFS_PCI_HDR 0x0
-#define OFFS_PCI_PM_CAP 0x40
-#define OFFS_PCI_MSIX_CAP 0x50
-#define OFFS_PCIE_CAP 0x60
-
-#define SZ_HEADER (0x60 + SZ_PCIE_CAP)
-
-#define PCI_CFG_SPACE_SIZE	256
-#define PCIE_EXPCAP_START 0x50
-
 #define IRQ_NUM 16
 #define NR_MAX_IO_QUEUE 32
 #define NR_MAX_PARALLEL_IO 8192
 
-#define PCI_NUMA_NODE 1
-
-struct nvmev_ns {
-	int nsid;
-};
 
 struct nvmev_sq_stat {
 	unsigned int nr_dispatched;
@@ -110,8 +85,6 @@ struct nvmev_completion_queue {
 	int cq_tail;
 
 	struct nvme_completion __iomem **cq;
-
-	// struct irq_desc *irq_desc;
 };
 
 struct nvmev_admin_queue {
@@ -184,10 +157,12 @@ struct nvmev_proc_table {
 
 struct nvmev_proc_info {
 	struct nvmev_proc_table *proc_table;
-	unsigned int free_seq;
-	unsigned int free_seq_end;
-	unsigned int io_seq;
-	unsigned int io_seq_end;
+
+	unsigned int free_seq;		/* free io req head index */
+	unsigned int free_seq_end;	/* free io req tail index */
+	unsigned int io_seq;		/* io req head index */
+	unsigned int io_seq_end;	/* io req tail index */
+
 	unsigned long long proc_io_nsecs;
 
 	struct task_struct *nvmev_io_worker;
@@ -209,7 +184,7 @@ struct nvmev_dev {
 	struct pci_sysdata pci_sd;
 
 	struct nvmev_config config;
-	struct task_struct *nvmev_reg_proc;
+	struct task_struct *nvmev_manager;
 
 	void *storage_mapped;
 
@@ -240,22 +215,12 @@ struct nvmev_dev {
 	struct proc_dir_entry *proc_io_units;
 	struct proc_dir_entry *proc_stat;
 
-	struct nvmev_ns **ns_arr;
-
-	unsigned long long *unit_stat;
+	unsigned long long *io_unit_stat;
 };
 
 // VDEV Init, Final Function
 struct nvmev_dev *VDEV_INIT(void);
 void VDEV_FINALIZE(struct nvmev_dev *vdev);
-
-// HEADER Initialize
-void PCI_HEADER_SETTINGS(struct pci_header *pcihdr, unsigned long base_pa);
-void PCI_PMCAP_SETTINGS(struct pci_pm_cap *pmcap);
-void PCI_MSIXCAP_SETTINGS(struct pci_msix_cap *msixcap);
-void PCI_PCIECAP_SETTINGS(struct pcie_cap *pciecap);
-void PCI_AERCAP_SETTINGS(struct aer_cap *aercap);
-void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr *exp_cap);
 
 // OPS_PCI
 void nvmev_proc_bars(void);

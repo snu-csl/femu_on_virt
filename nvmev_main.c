@@ -105,7 +105,7 @@ static void nvmev_proc_dbs(void)
 	int new_db;
 	int old_db;
 
-	// Admin Queue
+	// Admin queue
 	new_db = vdev->dbs[0];
 	if (new_db != vdev->old_dbs[0]) {
 		nvmev_proc_admin_sq(new_db, vdev->old_dbs[0]);
@@ -117,7 +117,7 @@ static void nvmev_proc_dbs(void)
 		vdev->old_dbs[1] = new_db;
 	}
 
-	// Submission Queue
+	// Submission queues
 	for (qid = 1; qid <= vdev->nr_sq; qid++) {
 		if (vdev->sqes[qid] == NULL) continue;
 		dbs_idx = qid * 2;
@@ -129,7 +129,7 @@ static void nvmev_proc_dbs(void)
 		}
 	}
 
-	// Completion Queue
+	// Completion queues
 	for (qid = 1; qid <= vdev->nr_cq; qid++) {
 		if (vdev->cqes[qid] == NULL) continue;
 		dbs_idx = qid * 2 + 1;
@@ -142,22 +142,35 @@ static void nvmev_proc_dbs(void)
 	}
 }
 
-static int nvmev_kthread_proc_reg(void *data)
+static int nvmev_kthread_manager(void *data)
 {
 	while (!kthread_should_stop()) {
-		// BAR Register Check
 		nvmev_proc_bars();
-		//Doorbell
 		nvmev_proc_dbs();
 
-		//schedule_timeout();
-		//schedule_timeout(round_jiffies_relative(HZ));
 		cond_resched();
-		//schedule_timeout(nsecs_to_jiffies(1));
 	}
 
 	return 0;
 }
+
+static void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
+{
+	vdev->nvmev_manager = kthread_create(nvmev_kthread_manager, NULL, "nvmev_proc_reg");
+	if (vdev->config.cpu_nr_proc_reg != -1)
+		kthread_bind(vdev->nvmev_manager, vdev->config.cpu_nr_proc_reg);
+	wake_up_process(vdev->nvmev_manager);
+	NVMEV_INFO("nvmev_proc_reg started on %d\n", vdev->config.cpu_nr_proc_reg);
+}
+
+static void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
+{
+	if (!IS_ERR_OR_NULL(vdev->nvmev_manager)) {
+		kthread_stop(vdev->nvmev_manager);
+		vdev->nvmev_manager = NULL;
+	}
+}
+
 
 static int __validate_configs(void)
 {
@@ -210,23 +223,6 @@ static int __validate_configs(void)
 	}
 
 	return 0;
-}
-
-static void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
-{
-	vdev->nvmev_reg_proc = kthread_create(nvmev_kthread_proc_reg, NULL, "nvmev_proc_reg");
-	if (vdev->config.cpu_nr_proc_reg != -1)
-		kthread_bind(vdev->nvmev_reg_proc, vdev->config.cpu_nr_proc_reg);
-	wake_up_process(vdev->nvmev_reg_proc);
-	pr_info("nvmev_proc_reg started on %d\n", vdev->config.cpu_nr_proc_reg);
-}
-
-static void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
-{
-	if (!IS_ERR_OR_NULL(vdev->nvmev_reg_proc)) {
-		kthread_stop(vdev->nvmev_reg_proc);
-		vdev->nvmev_reg_proc = NULL;
-	}
 }
 
 static void __print_perf_configs(void)
@@ -325,9 +321,9 @@ static ssize_t proc_file_write(struct file *file, const char __user *buf, size_t
 		ret = sscanf(input, "%d %d", &cfg->nr_io_units, &cfg->io_unit_shift);
 		if (ret < 1) goto out;
 
-		old_stat = vdev->unit_stat;
-		vdev->unit_stat = kzalloc(
-				sizeof(*vdev->unit_stat) * cfg->nr_io_units, GFP_KERNEL);
+		old_stat = vdev->io_unit_stat;
+		vdev->io_unit_stat = kzalloc(
+				sizeof(*vdev->io_unit_stat) * cfg->nr_io_units, GFP_KERNEL);
 
 		mdelay(100);	/* XXX: Delay the free of old stat so that outstanding
 						 * requests accessing the unit_stat are all returned
@@ -363,8 +359,8 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 	NVMEV_INFO("Storage : %lx + %lx\n",
 			vdev->config.storage_start, vdev->config.storage_size);
 
-	vdev->unit_stat = kzalloc(
-			sizeof(*vdev->unit_stat) * vdev->config.nr_io_units, GFP_KERNEL);
+	vdev->io_unit_stat = kzalloc(
+			sizeof(*vdev->io_unit_stat) * vdev->config.nr_io_units, GFP_KERNEL);
 
 	vdev->storage_mapped = memremap(vdev->config.storage_start,
 			vdev->config.storage_size, MEMREMAP_WB);
@@ -397,11 +393,11 @@ void NVMEV_STORAGE_FINAL(struct nvmev_dev *vdev)
 	if (vdev->storage_mapped)
 		memunmap(vdev->storage_mapped);
 
-	if (vdev->unit_stat)
-		kfree(vdev->unit_stat);
+	if (vdev->io_unit_stat)
+		kfree(vdev->io_unit_stat);
 }
 
-static bool __load_configs(struct nvmev_config* config)
+static bool __load_configs(struct nvmev_config *config)
 {
 	bool first = true;
 	unsigned int cpu_nr;
@@ -439,10 +435,6 @@ static bool __load_configs(struct nvmev_config* config)
 		}
 		first = false;
 	}
-
-	cpumask_clear(&vdev->first_cpu_on_node);
-	cpumask_set_cpu(cpumask_first(cpumask_of_node(PCI_NUMA_NODE)),
-			&vdev->first_cpu_on_node);
 
 	return true;
 }

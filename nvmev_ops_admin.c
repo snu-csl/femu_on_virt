@@ -149,7 +149,7 @@ static void __nvmev_admin_delete_sq(int eid, int cq_head)
 static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
-	struct nvme_id_ctrl* ctrl;
+	struct nvme_id_ctrl *ctrl;
 
 	ctrl = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
 
@@ -157,9 +157,9 @@ static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 	ctrl->oncs = 0; //optional command
 	ctrl->acl = 3; //minimum 4 required, 0's based value
 	ctrl->vwc = 0;
-	snprintf(ctrl->sn, sizeof(ctrl->sn), "CSL_Virt_NVMe_SN_%02d", 1);
-	snprintf(ctrl->mn, sizeof(ctrl->mn), "CSL_Virt_NVMe_MN_%02d", 1);
-	snprintf(ctrl->fr, sizeof(ctrl->fr), "CSL_%03d", 1);
+	snprintf(ctrl->sn, sizeof(ctrl->sn), "CSL_Virt_SN_%02d", 1);
+	snprintf(ctrl->mn, sizeof(ctrl->mn), "CSL_Virt_MN_%02d", 1);
+	snprintf(ctrl->fr, sizeof(ctrl->fr), "CSL_%03d", 2);
 	ctrl->mdts = 5;
 	ctrl->sqes = 0x66;
 	ctrl->cqes = 0x44;
@@ -177,11 +177,10 @@ static void __nvmev_admin_get_log_page(int eid, int cq_head)
 static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
-	struct nvme_id_ns* ns;
+	struct nvme_id_ns *ns;
 
 	ns = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
 	memset(ns, 0x0, PAGE_SIZE);
-	//ns->nsze = (1 * 1024 * 1024 * 1024) / 512;
 
 	ns->lbaf[0].ms = 0;
 	ns->lbaf[0].ds = 9;
@@ -211,7 +210,7 @@ static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 	ns->lbaf[6].ds = 12;
 	ns->lbaf[6].rp = NVME_LBAF_RP_BEST;
 
-	ns->nsze = (vdev->config.storage_size >> ns->lbaf[ns->flbas&0xF].ds);
+	ns->nsze = (vdev->config.storage_size >> ns->lbaf[ns->flbas & 0xF].ds);
 	ns->ncap = ns->nsze;
 	ns->nuse = ns->nsze;
 	ns->nlbaf = 6;

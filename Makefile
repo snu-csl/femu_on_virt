@@ -13,8 +13,9 @@ install:
 .PHONY: clean
 clean:
 	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) clean
-	   rm -f cscope.out
+	   rm -f cscope.out tags
 
 .PHONY: cscope
 cscope:
 		cscope -b -R
+		ctags *.[ch]
