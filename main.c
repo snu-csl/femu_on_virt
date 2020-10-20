@@ -25,6 +25,7 @@
 #include <linux/proc_fs.h>
 #include <linux/delay.h>
 #include <asm/e820.h>
+
 #include "nvmev.h"
 
 /****************************************************************

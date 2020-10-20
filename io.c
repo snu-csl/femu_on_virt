@@ -16,6 +16,7 @@
 #include <linux/jiffies.h>
 #include <linux/ktime.h>
 #include <linux/highmem.h>
+
 #include "nvmev.h"
 
 #undef PERF_DEBUG
@@ -90,7 +91,6 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 	while (remaining) {
 		size_t io_size;
 		void *vaddr;
-		const unsigned long PAGE_OFFSET_MASK = PAGE_SIZE - 1;
 
 		prp_offs++;
 		if (prp_offs == 1) {

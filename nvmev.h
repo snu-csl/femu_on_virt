@@ -24,7 +24,7 @@
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
 
-#include "nvme_hdr.h"
+#include "nvme.h"
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
@@ -42,10 +42,10 @@
 #define NVMEV_DEBUG(string, args...)
 #endif
 
-#define IRQ_NUM 16
 #define NR_MAX_IO_QUEUE 32
 #define NR_MAX_PARALLEL_IO 8192
 
+#define PAGE_OFFSET_MASK (PAGE_SIZE - 1)
 
 struct nvmev_sq_stat {
 	unsigned int nr_dispatched;
@@ -236,4 +236,6 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev);
 void NVMEV_IO_PROC_FINAL(struct nvmev_dev *vdev);
 void nvmev_proc_io_sq(int qid, int new_db, int old_db);
 void nvmev_proc_io_cq(int qid, int new_db, int old_db);
+
+
 #endif /* _LIB_NVMEV_H */

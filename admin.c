@@ -106,7 +106,7 @@ static void __nvmev_admin_create_sq(int eid, int cq_head)
 
 	/* TODO Physically non-contiguous prp list */
 	sq->phys_contig = (cmd->sq_flags & NVME_QUEUE_PHYS_CONTIG) ? true : false;
-	num_pages = (sq->queue_size * sizeof(struct nvme_command)) / PAGE_SIZE;
+	num_pages = DIV_ROUND_UP(sq->queue_size * sizeof(struct nvme_command), PAGE_SIZE);
 	sq->sq = kzalloc(sizeof(struct nvme_command*) * num_pages, GFP_KERNEL);
 
 	for (i = 0; i < num_pages; i++) {
