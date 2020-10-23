@@ -5,14 +5,14 @@ obj-m   := nvmev.o
 nvmev-objs := main.o pci.o admin.o io.o
 
 default:
-		$(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) modules
+		$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
 install:
-	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) modules_install
+	   $(MAKE) -C $(KERNELDIR) M=$(PWD) modules_install
 
 .PHONY: clean
 clean:
-	   $(MAKE) -C $(KERNELDIR) SUBDIRS=$(PWD) clean
+	   $(MAKE) -C $(KERNELDIR) M=$(PWD) clean
 	   rm -f cscope.out tags
 
 .PHONY: cscope

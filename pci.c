@@ -111,6 +111,7 @@ void nvmev_proc_bars()
 
 		NVMEV_INFO("admin queue: irq %d, vector %d\n", queue->irq, queue->vector);
 
+		WARN_ON(vdev->admin_q);
 		vdev->admin_q = queue;
 
 		/*
@@ -123,6 +124,7 @@ void nvmev_proc_bars()
 		memcpy(&old_bar->asq, &bar->asq, sizeof(old_bar->asq));
 
 		queue = vdev->admin_q;
+		WARN_ON(queue->nvme_sq);
 
 		num_pages = DIV_ROUND_UP(queue->sq_depth * sizeof(struct nvme_command), PAGE_SIZE);
 		queue->nvme_sq = kcalloc(num_pages, sizeof(struct nvme_command *), GFP_KERNEL);
@@ -136,6 +138,7 @@ void nvmev_proc_bars()
 		memcpy(&old_bar->acq, &bar->acq, sizeof(old_bar->acq));
 
 		queue = vdev->admin_q;
+		WARN_ON(queue->nvme_cq);
 
 		num_pages = DIV_ROUND_UP(queue->cq_depth * sizeof(struct nvme_completion), PAGE_SIZE);
 		queue->nvme_cq = kcalloc(num_pages, sizeof(struct nvme_completion *), GFP_KERNEL);
@@ -215,17 +218,6 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 	return 0;
 };
 
-static void __populate_old_bars_dbs(struct nvmev_dev* vdev)
-{
-	vdev->old_dbs = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	BUG_ON(!vdev->old_dbs && "allocating old DBs memory");
-	memcpy(vdev->old_dbs, vdev->dbs, sizeof(*vdev->old_dbs));
-
-	vdev->old_bar = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	BUG_ON(!vdev->old_bar && "allocating old BAR memory");
-	memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
-}
-
 static struct pci_bus *__create_pci_bus(void)
 {
     struct pci_bus* nvmev_pci_bus = NULL;
@@ -251,13 +243,7 @@ static struct pci_bus *__create_pci_bus(void)
 		struct resource *res = &dev->resource[0];
 		res->parent = &iomem_resource;
 
-		//vdev->bar = ioremap(pci_resource_start(dev, 0), PAGE_SIZE * 2);
-		vdev->bar = memremap(pci_resource_start(dev, 0), PAGE_SIZE * 2, MEMREMAP_WT);
-		memset(vdev->bar, 0x0, PAGE_SIZE * 2);
-
-		vdev->dbs = ((void *)vdev->bar) + PAGE_SIZE;
 		vdev->pdev = dev;
-
 		/*
 		 * Prevents a crash when the nvme driver assigns an
 		 * initial single MSI vector. Virt has no admin queue
@@ -265,17 +251,27 @@ static struct pci_bus *__create_pci_bus(void)
 		 * BAR
 		 */
 		vdev->pdev->no_msi = 1;
+
+		//vdev->bar = ioremap(pci_resource_start(dev, 0), PAGE_SIZE * 2);
+		vdev->bar = memremap(pci_resource_start(dev, 0), PAGE_SIZE * 2, MEMREMAP_WT);
+		memset(vdev->bar, 0x0, PAGE_SIZE * 2);
+
+		vdev->dbs = ((void *)vdev->bar) + PAGE_SIZE;
+
+		vdev->bar->vs.mjr = 1;
+		vdev->bar->vs.mnr = 0;
+		vdev->bar->cap.mpsmin = 0;
+		vdev->bar->cap.mqes = 1024 - 1; //base value = 0, 0 means depth 1
 	}
 	pci_bus_add_devices(nvmev_pci_bus);
 
-	vdev->pcihdr->cmd.mse = 1;
+	vdev->old_dbs = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	BUG_ON(!vdev->old_dbs && "allocating old DBs memory");
+	memcpy(vdev->old_dbs, vdev->dbs, sizeof(*vdev->old_dbs));
 
-	vdev->bar->vs.mjr = 1;
-	vdev->bar->vs.mnr = 0;
-	vdev->bar->cap.mpsmin = 0;
-	vdev->bar->cap.mqes = 1024 - 1; //base value = 0, 0 means depth 1
-
-	__populate_old_bars_dbs(vdev);
+	vdev->old_bar = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	BUG_ON(!vdev->old_bar && "allocating old BAR memory");
+	memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
 
 	NVMEV_INFO("Successfully created virtual PCI bus\n");
 
@@ -332,8 +328,8 @@ void PCI_HEADER_SETTINGS(struct pci_header *pcihdr, unsigned long base_pa)
 	/*
 	pcihdr->cmd.id = 1;
 	pcihdr->cmd.bme = 1;
-	pcihdr->cmd.mse = 1;
 	*/
+	pcihdr->cmd.mse = 1;
 	pcihdr->sts.cl = 1;
 
 	pcihdr->htype.mfd = 0;

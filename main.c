@@ -256,7 +256,7 @@ static int __get_nr_entries(int dbs_idx, int queue_size)
 	return diff;
 }
 
-static int proc_file_read(struct seq_file *m, void *data)
+static int __proc_file_read(struct seq_file *m, void *data)
 {
 	const char *filename = m->private;
 	struct nvmev_config *cfg = &vdev->config;
@@ -280,7 +280,7 @@ static int proc_file_read(struct seq_file *m, void *data)
 			struct nvmev_submission_queue *sq = vdev->sqes[i];
 			if (!sq) continue;
 
-			seq_printf(m, "%u %u %u %u %u %llu ",
+			seq_printf(m, "%2d: %2u %4u %4u %4u %4u %llu\n", i,
 					__get_nr_entries(i * 2, sq->queue_size),
 					sq->stat.nr_in_flight,
 					sq->stat.max_nr_in_flight,
@@ -296,14 +296,15 @@ static int proc_file_read(struct seq_file *m, void *data)
 			barrier();
 			sq->stat.max_nr_in_flight = 0;
 		}
-		seq_printf(m, " / %u %u %u %llu", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
+		seq_printf(m, "total: %u %u %u %llu\n", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
 	} else if (strcmp(filename, "debug") == 0) {
 		seq_printf(m, "%llu", completion_lag);
 	}
 
 	return 0;
 }
-static ssize_t proc_file_write(struct file *file, const char __user *buf, size_t len, loff_t *offp)
+
+static ssize_t __proc_file_write(struct file *file, const char __user *buf, size_t len, loff_t *offp)
 {
 	ssize_t count = len;
 	const char *filename = file->f_path.dentry->d_name.name;
@@ -340,16 +341,16 @@ out:
 	return count;
 }
 
-static int proc_file_open(struct inode *inode, struct file *file)
+static int __proc_file_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, proc_file_read,
+	return single_open(file, __proc_file_read,
 			(char *)file->f_path.dentry->d_name.name);
 }
 
 static const struct file_operations proc_file_fops = {
 	.owner = THIS_MODULE,
-	.open = proc_file_open,
-	.write = proc_file_write,
+	.open = __proc_file_open,
+	.write = __proc_file_write,
 	.read	= seq_read,
 	.llseek = seq_lseek,
 	.release = single_release,
