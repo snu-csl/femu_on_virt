@@ -391,7 +391,7 @@ void nvmev_proc_admin_sq(int new_db, int old_db)
 			target = affinity;
 		}
 #else
-		desc = "broadcast"
+		desc = "broadcast";
 		target = affinity;
 #endif
 		NVMEV_DEBUG("Send IPI: %d to %*pbl\n", vector, cpumask_pr_args(target));

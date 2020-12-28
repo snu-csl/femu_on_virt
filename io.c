@@ -135,9 +135,8 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 static size_t __cmd_io_size(struct nvme_rw_command *cmd)
 {
 #ifdef CONFIG_NVMEV_DEBUG_VERBOSE
-	NVMEV_DEBUG("%d %d %d lba %llu length %d, %llx %llx\n",
-			sqid, sq_entry, cmd->opcode,
-			cmd->slba, cmd->length, cmd->prp1, cmd->prp2);
+	NVMEV_DEBUG("%d lba %llu length %d, %llx %llx\n",
+			cmd->opcode, cmd->slba, cmd->length, cmd->prp1, cmd->prp2);
 #endif
 	return (cmd->length + 1) << 9;
 }
@@ -500,8 +499,7 @@ static int nvmev_kthread_io(void *data)
 
 				NVMEV_DEBUG("%s: copied %u, %d %d %d\n",
 						pi->thread_name, curr,
-						proc_entry->sqid, proc_entry->cqid, proc_entry->sq_entry,
-				);
+						proc_entry->sqid, proc_entry->cqid, proc_entry->sq_entry);
 			}
 
 			if (proc_entry->nsecs_target <= curr_nsecs + completion_lag) {
