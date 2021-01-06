@@ -23,8 +23,10 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 #include <linux/delay.h>
-#include <asm/e820.h>
+#include <asm/e820/types.h>
+#include <asm/e820/api.h>
 
 #include "nvmev.h"
 
@@ -195,15 +197,15 @@ static int __validate_configs(void)
 	resv_start_bytes = memmap_start << 30;
 	resv_end_bytes = resv_start_bytes + (memmap_size << 20) - 1;
 
-	if (e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RAM) ||
-		e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RESERVED_KERN)) {
+	if (e820__mapped_any(resv_start_bytes, resv_end_bytes, E820_TYPE_RAM) ||
+		e820__mapped_any(resv_start_bytes, resv_end_bytes, E820_TYPE_RESERVED_KERN)) {
 		NVMEV_ERROR("[mem %#010lx-%#010lx] is usable, not reseved region\n",
 		       (unsigned long) resv_start_bytes,
 		       (unsigned long) resv_end_bytes);
 		return -EPERM;
 	}
 
-	if (!e820_any_mapped(resv_start_bytes, resv_end_bytes, E820_RESERVED)) {
+	if (!e820__mapped_any(resv_start_bytes, resv_end_bytes, E820_TYPE_RESERVED)) {
 		NVMEV_ERROR("[mem %#010lx-%#010lx] is not reseved region\n",
 		       (unsigned long) resv_start_bytes,
 		       (unsigned long) resv_end_bytes);
@@ -312,8 +314,9 @@ static ssize_t __proc_file_write(struct file *file, const char __user *buf, size
 	unsigned int ret;
 	unsigned long long *old_stat;
 	struct nvmev_config *cfg = &vdev->config;
+	size_t nr_copied;
 
-	copy_from_user(input, buf, min(len, sizeof(input)));
+	nr_copied = copy_from_user(input, buf, min(len, sizeof(input)));
 
 	if (!strcmp(filename, "read_times")) {
 		ret = sscanf(input, "%u %u %u", &cfg->read_delay, &cfg->read_time, &cfg->read_trailing);
@@ -348,7 +351,6 @@ static int __proc_file_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations proc_file_fops = {
-	.owner = THIS_MODULE,
 	.open = __proc_file_open,
 	.write = __proc_file_write,
 	.read	= seq_read,
