@@ -16,6 +16,7 @@
 #include <linux/jiffies.h>
 #include <linux/ktime.h>
 #include <linux/highmem.h>
+#include <linux/sched/clock.h>
 
 #include "nvmev.h"
 
@@ -379,45 +380,6 @@ void nvmev_proc_io_cq(int cqid, int new_db, int old_db)
 	if (new_db == -1) cq->cq_tail = cq->queue_size - 1;
 }
 
-static void __signal_completion(int cqid)
-{
-	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
-
-	if (vdev->msix_enabled) {
-		struct cpumask *target = &vdev->first_cpu_on_node; /* Signal 0 by default */
-		int irq_vector = readl(vdev->msix_table + (PCI_MSIX_ENTRY_SIZE * cq->irq_vector) + PCI_MSIX_ENTRY_DATA) & 0xFF;
-		struct msi_desc *msi_desc;
-		struct irq_desc *irq_desc;
-
-		for_each_msi_entry(msi_desc, (&vdev->pdev->dev)) {
-			if (msi_desc->msi_attrib.entry_nr == cq->irq_vector) {
-				irq_desc = irq_to_desc(msi_desc->irq);
-				break;
-			}
-		}
-
-#ifdef CONFIG_NUMA
-		if (!cpumask_subset(irq_desc->irq_common_data.affinity,
-						cpumask_of_node(vdev->pdev->dev.numa_node))) {
-			NVMEV_DEBUG("Remote\n");
-		} else {
-			if (cpumask_equal(irq_desc->irq_common_data.affinity,
-						cpumask_of_node(vdev->pdev->dev.numa_node))) {
-				NVMEV_DEBUG("broadcast %d\n", irq_vector);
-			} else {
-				NVMEV_DEBUG("Target %d\n", irq_vector);
-				target = irq_desc->irq_common_data.affinity;
-			}
-		}
-#else
-		target = irq_desc->irq_common_data.affinity;
-#endif
-		apic->send_IPI_mask(target, irq_vector);
-	} else {
-		generateInterrupt(cq->irq_vector);
-	}
-}
-
 static void __fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id)
 {
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
@@ -544,7 +506,7 @@ static int nvmev_kthread_io(void *data)
 					prev_clock = local_clock();
 #endif
 					cq->interrupt_ready = false;
-					__signal_completion(qidx);
+					nvmev_signal_irq(cq->irq_vector);
 
 #ifdef PERF_DEBUG
 					intr_clock[qidx] += (local_clock() - prev_clock);

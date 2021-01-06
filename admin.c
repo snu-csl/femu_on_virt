@@ -152,6 +152,7 @@ static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 	struct nvme_id_ctrl *ctrl;
 
 	ctrl = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
+	memset(ctrl, 0x00, sizeof(*ctrl));
 
 	ctrl->nn = 1;
 	ctrl->oncs = 0; //optional command
@@ -227,7 +228,7 @@ static void __nvmev_admin_set_features(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 
-	NVMEV_INFO("%s: %x\n", __func__, sq_entry(eid).features.fid);
+	NVMEV_DEBUG("%s: %x\n", __func__, sq_entry(eid).features.fid);
 
 	switch(sq_entry(eid).features.fid) {
 		case NVME_FEAT_ARBITRATION:
@@ -363,43 +364,7 @@ void nvmev_proc_admin_sq(int new_db, int old_db)
 		}
 	}
 
-	if (vdev->msix_enabled) {
-		/* admin queue uses the first (0-th) irq_vector */
-		int vector = readl(vdev->msix_table + PCI_MSIX_ENTRY_DATA) & 0xFF;
-		struct cpumask *target = &vdev->first_cpu_on_node; /* Signal 0 by default */
-		struct cpumask *affinity;
-		struct msi_desc *msi_desc;
-		const char *desc;
-
-		for_each_msi_entry(msi_desc, (&vdev->pdev->dev)) {
-			if (msi_desc->msi_attrib.entry_nr == 0) {
-				struct irq_desc *irq_desc = irq_to_desc(msi_desc->irq);
-				affinity = irq_desc->irq_common_data.affinity;
-				break;
-			}
-		}
-
-#ifdef CONFIG_NUMA
-		if (cpumask_equal(affinity, cpumask_of_node(vdev->pdev->dev.numa_node))) {
-			desc = "broadcast";
-		} else if (cpumask_subset(affinity, cpumask_of_node(vdev->pdev->dev.numa_node))) {
-			desc = "target";
-			target = affinity;
-		} else {
-			desc = "remote";
-			printk("Remote.. try affinity\n");
-			target = affinity;
-		}
-#else
-		desc = "broadcast";
-		target = affinity;
-#endif
-		NVMEV_DEBUG("Send IPI: %d to %*pbl\n", vector, cpumask_pr_args(target));
-		apic->send_IPI_mask(target, vector);
-	} else {
-		NVMEV_DEBUG("Non-msix interrupt: %d\n", queue->vector);
-		generateInterrupt(queue->vector);
-	}
+	nvmev_signal_irq(0);
 }
 
 void nvmev_proc_admin_cq(int new_db, int old_db)

@@ -37,7 +37,7 @@
 
 #ifdef CONFIG_NVMEV_DEBUG_VERBOSE
 #define NVMEV_DEBUG(string, args...) \
-	printk(KERN_DEBUG "%s: " string, NVMEV_DRV_NAME, ##args)
+	printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
 #else
 #define NVMEV_DEBUG(string, args...)
 #endif
@@ -88,9 +88,6 @@ struct nvmev_completion_queue {
 };
 
 struct nvmev_admin_queue {
-	int irq;
-	int vector;
-
 	int phase;
 
 	int sq_depth;
@@ -169,6 +166,8 @@ struct nvmev_proc_info {
 	char thread_name[32];
 };
 
+#include <linux/irq_sim.h>
+
 struct nvmev_dev {
 	struct pci_bus *virt_bus;
 	void *virtDev;
@@ -207,8 +206,6 @@ struct nvmev_dev {
 	struct nvmev_submission_queue *sqes[NR_MAX_IO_QUEUE + 1];
 	struct nvmev_completion_queue *cqes[NR_MAX_IO_QUEUE + 1];
 
-	cpumask_t first_cpu_on_node;
-
 	struct proc_dir_entry *proc_root;
 	struct proc_dir_entry *proc_read_times;
 	struct proc_dir_entry *proc_write_times;
@@ -216,6 +213,8 @@ struct nvmev_dev {
 	struct proc_dir_entry *proc_stat;
 
 	unsigned long long *io_unit_stat;
+
+	struct irq_sim isim;
 };
 
 // VDEV Init, Final Function
@@ -224,8 +223,8 @@ void VDEV_FINALIZE(struct nvmev_dev *vdev);
 
 // OPS_PCI
 void nvmev_proc_bars(void);
-void generateInterrupt(int vector);
 bool NVMEV_PCI_INIT(struct nvmev_dev *dev);
+void nvmev_signal_irq(int msi_index);
 
 // OPS ADMIN QUEUE
 void nvmev_proc_admin_sq(int new_db, int old_db);
