@@ -33,26 +33,34 @@
 /****************************************************************
  * Memory Layout
  ****************************************************************
- * memmap_start
- * v
- * -----------------------------------------------------------
- * |<----1MiB---->|<----------- Storage Area --------------->|
- * -----------------------------------------------------------
+ * virtDev
+ *  - PCI header
+ *    -> BAR at 1MiB area
+ *  - PCI capability descriptors
  *
- * 1MiB Area [BAR] :
- *		PCI Headers...
- *		MSI-x entries (16 bytes * 64KiB = 1MiB T.T)
- * Storage Area : Storage area : memremap
+ * +--- memmap_start
+ * |
+ * v
+ * +--------------+------------------------------------------+
+ * | <---1MiB---> | <---------- Storage Area --------------> |
+ * +--------------+------------------------------------------+
+ *
+ * 1MiB area for metadata
+ *  - BAR : 1 page
+ *	- DBS : 1 page
+ *	- MSI-x table: 16 bytes/entry * 32
+ *
+ * Storage area
  *
  ****************************************************************/
 
 /****************************************************************
  * Argument
  ****************************************************************
- * 1. Memmap Start (size in GiB)
- * 2. Memmap Size (size in MiB)
- * 3. Read Latency (export to sysfs, nano seconds)
- * 4. Write Latency (export to sysfs, nano seconds)
+ * 1. Memmap start (size in GiB)
+ * 2. Memmap size (size in MiB)
+ * 3. Read latency (export to sysfs, nano seconds)
+ * 4. Write latency (export to sysfs, nano seconds)
  * 5. Read BW
  * 6. Write BW
  * 7. CPU Mask
@@ -163,7 +171,7 @@ static void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
 	if (vdev->config.cpu_nr_proc_reg != -1)
 		kthread_bind(vdev->nvmev_manager, vdev->config.cpu_nr_proc_reg);
 	wake_up_process(vdev->nvmev_manager);
-	NVMEV_INFO("nvmev_proc_reg started on %d\n", vdev->config.cpu_nr_proc_reg);
+	NVMEV_INFO("nvmev_proc_reg started on cpu %d\n", vdev->config.cpu_nr_proc_reg);
 }
 
 static void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
@@ -427,7 +435,6 @@ static bool __load_configs(struct nvmev_config *config)
 
 	config->nr_io_cpu = 0;
 	config->cpu_nr_proc_reg = -1;
-	config->cpu_nr_proc_io = kcalloc(sizeof(unsigned int), 32, GFP_KERNEL);
 
 	while ((cpu = strsep(&cpus, ",")) != NULL) {
 		cpu_nr = (unsigned int)simple_strtol(cpu, NULL, 10);

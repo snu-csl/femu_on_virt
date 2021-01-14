@@ -128,7 +128,7 @@ struct nvmev_config {
 
 	unsigned int cpu_nr_proc_reg;
 	unsigned int nr_io_cpu;
-	unsigned int *cpu_nr_proc_io;
+	unsigned int cpu_nr_proc_io[32];
 };
 
 struct nvmev_proc_table {

@@ -346,8 +346,8 @@ void nvmev_proc_io_sq(int sqid, int new_db, int old_db)
 	int seq;
 	int sq_entry = old_db;
 
-	if (unlikely(num_proc < 0)) num_proc += sq->queue_size;
 	if (unlikely(!sq)) return;
+	if (unlikely(num_proc < 0)) num_proc += sq->queue_size;
 
 	for (seq = 0; seq < num_proc; seq++) {
 		size_t io_size = __nvmev_proc_io(sqid, sq_entry);
@@ -558,7 +558,7 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev)
 		kthread_bind(pi->nvmev_io_worker, vdev->config.cpu_nr_proc_io[proc_idx]);
 		wake_up_process(pi->nvmev_io_worker);
 
-		NVMEV_INFO("%s started at cpu %d\n",
+		NVMEV_INFO("%s started on cpu %d\n",
 				pi->thread_name, vdev->config.cpu_nr_proc_io[proc_idx]);
 	}
 }
