@@ -23,35 +23,18 @@ extern struct nvmev_dev *vdev;
 void nvmev_signal_irq(int msi_index)
 {
 	struct msi_desc *msi_desc, *tmp;
-	unsigned int vector;
-	unsigned int target;
 
 	for_each_msi_entry_safe(msi_desc, tmp, (&vdev->pdev->dev)) {
 		if (msi_desc->msi_attrib.entry_nr == msi_index) {
 			struct irq_data *irqd = irq_get_irq_data(msi_desc->irq);
 			struct irq_cfg *irqc = irqd_cfg(irqd);
-			vector = irqc->vector;
-			target = irqc->dest_apicid;
 
-			if (apic->irq_dest_mode == 0) { /* physical */
-				NVMEV_DEBUG("IPI P: %d: %d(%d) %d\n", msi_index, msi_desc->irq, vector, target);
-				apic->send_IPI(target, vector);
-			} else { /* logical */
-				struct cpumask mask;
-				int dest = 0;
+			unsigned int target = irqc->dest_apicid;
+			unsigned int dest_apicid = apic->calc_dest_apicid(target);;
 
-				cpumask_clear(&mask);
-				while (target) {
-					if (target & 0x1) {
-						cpumask_set_cpu(dest, &mask);
-					}
-					target >>= 1;
-					dest++;
-				}
-				NVMEV_DEBUG("IPI L: %d: %d(%d) %*pbl\n", msi_index, msi_desc->irq, vector, cpumask_pr_args(&mask));
-				apic->send_IPI_mask(&mask, vector);
-			}
-
+			NVMEV_DEBUG("vector %d, target %d, dest_apicid %d\n",
+					irqc->vector, target, dest_apicid);
+			apic->send_IPI(dest_apicid, irqc->vector);
 			return;
 		}
 	}
@@ -253,30 +236,30 @@ static struct pci_bus *__create_pci_bus(void)
 
 		vdev->pdev = dev;
 
-		//vdev->bar = ioremap(pci_resource_start(dev, 0), PAGE_SIZE * 2);
 		vdev->bar = memremap(pci_resource_start(dev, 0), PAGE_SIZE * 2, MEMREMAP_WT);
 		memset(vdev->bar, 0x0, PAGE_SIZE * 2);
-
-		vdev->pdev->no_msi = 0;
-		vdev->msix_table = ioremap(pci_resource_start(vdev->pdev, 0) + PAGE_SIZE * 2,
-								NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
 
 		vdev->dbs = ((void *)vdev->bar) + PAGE_SIZE;
 
 		vdev->bar->vs.mjr = 1;
 		vdev->bar->vs.mnr = 0;
 		vdev->bar->cap.mpsmin = 0;
-		vdev->bar->cap.mqes = 1024 - 1; //base value = 0, 0 means depth 1
+		vdev->bar->cap.mqes = 1024 - 1; // 0-based value
+
+		vdev->old_dbs = kzalloc(PAGE_SIZE, GFP_KERNEL);
+		BUG_ON(!vdev->old_dbs && "allocating old DBs memory");
+		memcpy(vdev->old_dbs, vdev->dbs, sizeof(*vdev->old_dbs));
+
+		vdev->old_bar = kzalloc(PAGE_SIZE, GFP_KERNEL);
+		BUG_ON(!vdev->old_bar && "allocating old BAR memory");
+		memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
+
+		vdev->msix_table = ioremap(pci_resource_start(vdev->pdev, 0) + PAGE_SIZE * 2,
+								NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
+		memset(vdev->msix_table, 0x00, NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
 	}
+
 	pci_bus_add_devices(nvmev_pci_bus);
-
-	vdev->old_dbs = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	BUG_ON(!vdev->old_dbs && "allocating old DBs memory");
-	memcpy(vdev->old_dbs, vdev->dbs, sizeof(*vdev->old_dbs));
-
-	vdev->old_bar = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	BUG_ON(!vdev->old_bar && "allocating old BAR memory");
-	memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
 
 	NVMEV_INFO("Successfully created virtual PCI bus\n");
 
@@ -310,7 +293,6 @@ void VDEV_FINALIZE(struct nvmev_dev *vdev)
 
 	if (vdev->bar)
 		memunmap(vdev->bar);
-		//iounmap(vdev->bar);
 
 	if (vdev->old_bar)
 		kfree(vdev->old_bar);
