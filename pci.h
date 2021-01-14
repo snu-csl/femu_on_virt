@@ -582,6 +582,4 @@ void PCI_PCIE_EXTCAP_SETTINGS(struct pci_exp_hdr *exp_cap);
 
 #define PCI_NUMA_NODE 1
 
-#define IRQ_NUM 16
-
 #endif /* _LIB_NVMEV_HDR_H */

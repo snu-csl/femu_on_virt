@@ -26,12 +26,6 @@ void nvmev_signal_irq(int msi_index)
 	unsigned int vector;
 	unsigned int target;
 
-	if (unlikely(!vdev->msix_enabled)) {
-		printk("INT: %d\n", irq_sim_irqnum(&vdev->isim, 0));
-		irq_sim_fire(&vdev->isim, 0);
-		return;
-	}
-
 	for_each_msi_entry_safe(msi_desc, tmp, (&vdev->pdev->dev)) {
 		if (msi_desc->msi_attrib.entry_nr == msi_index) {
 			struct irq_data *irqd = irq_get_irq_data(msi_desc->irq);
@@ -114,12 +108,6 @@ void nvmev_proc_bars()
 
 		WARN_ON(vdev->admin_q);
 		vdev->admin_q = queue;
-
-		/*
-		 * MSI is re-enabled so that MSI interrupt vectors
-		 * can be allocated by the nvme driver
-		 */
-		vdev->pdev->no_msi = 0;
 	}
 	if (old_bar->asq != bar->u_asq) {
 		memcpy(&old_bar->asq, &bar->asq, sizeof(old_bar->asq));
@@ -220,12 +208,8 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 		else if (target == 2) {
 			mask = 0xC000;
 
-			//MSIX enabled? -> admin queue irq setup
 			if ((val & mask) == mask) {
 				vdev->msix_enabled = true;
-				vdev->msix_table =
-						ioremap(pci_resource_start(vdev->pdev, 0) + 0x2000,
-								NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
 
 				NVMEV_INFO("msi-x enabled\n");
 			}
@@ -268,17 +252,14 @@ static struct pci_bus *__create_pci_bus(void)
 		res->parent = &iomem_resource;
 
 		vdev->pdev = dev;
-		/*
-		 * Prevents a crash when the nvme driver assigns an
-		 * initial single MSI vector. Virt has no admin queue
-		 * at this point and will crash when reading the MSI
-		 * BAR
-		 */
-		vdev->pdev->no_msi = 1;
 
 		//vdev->bar = ioremap(pci_resource_start(dev, 0), PAGE_SIZE * 2);
 		vdev->bar = memremap(pci_resource_start(dev, 0), PAGE_SIZE * 2, MEMREMAP_WT);
 		memset(vdev->bar, 0x0, PAGE_SIZE * 2);
+
+		vdev->pdev->no_msi = 0;
+		vdev->msix_table = ioremap(pci_resource_start(vdev->pdev, 0) + PAGE_SIZE * 2,
+								NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
 
 		vdev->dbs = ((void *)vdev->bar) + PAGE_SIZE;
 
@@ -317,16 +298,14 @@ struct nvmev_dev *VDEV_INIT(void)
 	vdev->aercap = vdev->virtDev + PCI_CFG_SPACE_SIZE;
 	vdev->pcie_exp_cap = vdev->virtDev + PCI_CFG_SPACE_SIZE;
 
-	irq_sim_init(&vdev->isim, 1);
+	vdev->msix_enabled = true;
 
 	return vdev;
 }
 
 void VDEV_FINALIZE(struct nvmev_dev *vdev)
 {
-	irq_sim_fini(&vdev->isim);
-
-	if (vdev->msix_enabled)
+	if (vdev->msix_table)
 		iounmap(vdev->msix_table);
 
 	if (vdev->bar)
@@ -381,8 +360,8 @@ void PCI_HEADER_SETTINGS(struct pci_header *pcihdr, unsigned long base_pa)
 
 	pcihdr->cap = OFFS_PCI_PM_CAP;
 
-	pcihdr->intr.ipin = 1;
-	pcihdr->intr.iline = irq_sim_irqnum(&vdev->isim, 0);
+	pcihdr->intr.ipin = 0;
+	pcihdr->intr.iline = 0;
 }
 
 void PCI_PMCAP_SETTINGS(struct pci_pm_cap *pmcap)
