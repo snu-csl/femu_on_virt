@@ -189,7 +189,7 @@ int nvmev_pci_write(struct pci_bus *bus, unsigned int devfn, int where, int size
 			if ((val & mask) == mask) {
 				vdev->msix_enabled = true;
 
-				NVMEV_INFO("msi-x enabled\n");
+				NVMEV_DEBUG("msi-x enabled\n");
 			}
 		}
 		else if (target == 4) mask = 0x0;
@@ -215,8 +215,7 @@ static struct pci_bus *__create_pci_bus(void)
 
 	memset(&vdev->pci_sd, 0, sizeof(vdev->pci_sd));
 	vdev->pci_sd.domain = NVMEV_PCI_DOMAIN_NUM;
-	//vdev->pci_sd.node = PCI_NUMA_NODE;
-	vdev->pci_sd.node = cpu_to_node(vdev->config.cpu_nr_proc_reg);
+	vdev->pci_sd.node = cpu_to_node(vdev->config.cpu_nr_proc_reg); // PCI_NUMA_NODE
 
     nvmev_pci_bus = pci_scan_bus(NVMEV_PCI_BUS_NUM, &vdev->pci_ops, &vdev->pci_sd);
 
@@ -257,7 +256,7 @@ static struct pci_bus *__create_pci_bus(void)
 
 	pci_bus_add_devices(nvmev_pci_bus);
 
-	NVMEV_INFO("Successfully created virtual PCI bus\n");
+	NVMEV_INFO("Successfully created virtual PCI bus (node %d)\n", vdev->pci_sd.node);
 
 	return nvmev_pci_bus;
 };

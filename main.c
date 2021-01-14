@@ -171,7 +171,8 @@ static void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
 	if (vdev->config.cpu_nr_proc_reg != -1)
 		kthread_bind(vdev->nvmev_manager, vdev->config.cpu_nr_proc_reg);
 	wake_up_process(vdev->nvmev_manager);
-	NVMEV_INFO("nvmev_proc_reg started on cpu %d\n", vdev->config.cpu_nr_proc_reg);
+	NVMEV_INFO("nvmev_proc_reg started on cpu %d (node %d)\n",
+			vdev->config.cpu_nr_proc_reg, cpu_to_node(vdev->config.cpu_nr_proc_reg));
 }
 
 static void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
