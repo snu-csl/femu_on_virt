@@ -153,8 +153,11 @@ static void nvmev_proc_dbs(void)
 	}
 }
 
-static int nvmev_kthread_manager(void *data)
+static int nvmev_dispatcher(void *data)
 {
+	NVMEV_INFO("nvmev_dispatcher started on cpu %d (node %d)\n",
+			vdev->config.cpu_nr_dispatcher, cpu_to_node(vdev->config.cpu_nr_dispatcher));
+
 	while (!kthread_should_stop()) {
 		nvmev_proc_bars();
 		nvmev_proc_dbs();
@@ -165,14 +168,12 @@ static int nvmev_kthread_manager(void *data)
 	return 0;
 }
 
-static void NVMEV_REG_PROC_INIT(struct nvmev_dev *vdev)
+static void NVMEV_DISPATCHER_INIT(struct nvmev_dev *vdev)
 {
-	vdev->nvmev_manager = kthread_create(nvmev_kthread_manager, NULL, "nvmev_proc_reg");
-	if (vdev->config.cpu_nr_proc_reg != -1)
-		kthread_bind(vdev->nvmev_manager, vdev->config.cpu_nr_proc_reg);
+	vdev->nvmev_manager = kthread_create(nvmev_dispatcher, NULL, "nvmev_dispatcher");
+	if (vdev->config.cpu_nr_dispatcher != -1)
+		kthread_bind(vdev->nvmev_manager, vdev->config.cpu_nr_dispatcher);
 	wake_up_process(vdev->nvmev_manager);
-	NVMEV_INFO("nvmev_proc_reg started on cpu %d (node %d)\n",
-			vdev->config.cpu_nr_proc_reg, cpu_to_node(vdev->config.cpu_nr_proc_reg));
 }
 
 static void NVMEV_REG_PROC_FINAL(struct nvmev_dev *vdev)
@@ -435,12 +436,12 @@ static bool __load_configs(struct nvmev_config *config)
 	config->io_unit_shift = io_unit_shift;
 
 	config->nr_io_cpu = 0;
-	config->cpu_nr_proc_reg = -1;
+	config->cpu_nr_dispatcher = -1;
 
 	while ((cpu = strsep(&cpus, ",")) != NULL) {
 		cpu_nr = (unsigned int)simple_strtol(cpu, NULL, 10);
 		if (first) {
-			config->cpu_nr_proc_reg = cpu_nr;
+			config->cpu_nr_dispatcher = cpu_nr;
 		} else {
 			config->cpu_nr_proc_io[config->nr_io_cpu] = cpu_nr;
 			config->nr_io_cpu++;
@@ -469,7 +470,7 @@ static int NVMeV_init(void)
 	NVMEV_STORAGE_INIT(vdev);
 
 	NVMEV_IO_PROC_INIT(vdev);
-	NVMEV_REG_PROC_INIT(vdev);
+	NVMEV_DISPATCHER_INIT(vdev);
 
 	NVMEV_INFO("Successfully created Virtual NVMe deivce\n");
 

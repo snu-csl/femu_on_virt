@@ -126,7 +126,7 @@ struct nvmev_config {
 	unsigned int nr_io_units;
 	unsigned int io_unit_shift;	// 2^
 
-	unsigned int cpu_nr_proc_reg;
+	unsigned int cpu_nr_dispatcher;
 	unsigned int nr_io_cpu;
 	unsigned int cpu_nr_proc_io[32];
 };

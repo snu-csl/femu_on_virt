@@ -215,7 +215,7 @@ static struct pci_bus *__create_pci_bus(void)
 
 	memset(&vdev->pci_sd, 0, sizeof(vdev->pci_sd));
 	vdev->pci_sd.domain = NVMEV_PCI_DOMAIN_NUM;
-	vdev->pci_sd.node = cpu_to_node(vdev->config.cpu_nr_proc_reg); // PCI_NUMA_NODE
+	vdev->pci_sd.node = cpu_to_node(vdev->config.cpu_nr_dispatcher); // PCI_NUMA_NODE
 
     nvmev_pci_bus = pci_scan_bus(NVMEV_PCI_BUS_NUM, &vdev->pci_ops, &vdev->pci_sd);
 

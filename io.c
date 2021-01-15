@@ -33,7 +33,7 @@ extern struct nvmev_dev *vdev;
 
 static inline unsigned long long __get_wallclock(void)
 {
-	return cpu_clock(vdev->config.cpu_nr_proc_reg);
+	return cpu_clock(vdev->config.cpu_nr_dispatcher);
 }
 
 /* Return the time to complete */
@@ -430,6 +430,9 @@ static int nvmev_kthread_io(void *data)
 	unsigned long long prev_clock;
 #endif
 
+	NVMEV_INFO("%s started on cpu %d (node %d)\n",
+			pi->thread_name, smp_processor_id(), cpu_to_node(smp_processor_id()));
+
 	while (!kthread_should_stop()) {
 		unsigned long long curr_nsecs_wall = __get_wallclock();
 		unsigned long long curr_nsecs_local = local_clock();
@@ -558,10 +561,6 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev)
 
 		kthread_bind(pi->nvmev_io_worker, vdev->config.cpu_nr_proc_io[proc_idx]);
 		wake_up_process(pi->nvmev_io_worker);
-
-		NVMEV_INFO("%s started on cpu %d (node %d)\n",
-				pi->thread_name, vdev->config.cpu_nr_proc_io[proc_idx],
-				cpu_to_node(vdev->config.cpu_nr_proc_io[proc_idx]));
 	}
 }
 

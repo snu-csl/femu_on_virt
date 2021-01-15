@@ -50,6 +50,7 @@ static void __nvmev_admin_create_cq(int eid, int cq_head)
 
 	/* TODO Physically non-contiguous prp list */
 	cq->phys_contig = cmd->cq_flags & NVME_QUEUE_PHYS_CONTIG ? true : false;
+	WARN_ON(!cq->phys_contig);
 
 	num_pages = DIV_ROUND_UP(cq->queue_size * sizeof(struct nvme_completion), PAGE_SIZE);
 	cq->cq = kzalloc(sizeof(struct nvme_completion*) * num_pages, GFP_KERNEL);
@@ -106,6 +107,8 @@ static void __nvmev_admin_create_sq(int eid, int cq_head)
 
 	/* TODO Physically non-contiguous prp list */
 	sq->phys_contig = (cmd->sq_flags & NVME_QUEUE_PHYS_CONTIG) ? true : false;
+	WARN_ON(!sq->phys_contig);
+
 	num_pages = DIV_ROUND_UP(sq->queue_size * sizeof(struct nvme_command), PAGE_SIZE);
 	sq->sq = kzalloc(sizeof(struct nvme_command*) * num_pages, GFP_KERNEL);
 
@@ -243,17 +246,11 @@ static void __nvmev_admin_set_features(int eid, int cq_head)
 
             // # of sq in 0-base
             num_queue = (sq_entry(eid).features.dword11 & 0xFFFF) + 1;
-            if (num_queue > NR_MAX_IO_QUEUE) {
-                vdev->nr_sq = NR_MAX_IO_QUEUE;
-            } else
-                vdev->nr_sq = num_queue;
+			vdev->nr_sq = min(num_queue, NR_MAX_IO_QUEUE);
 
             // # of cq in 0-base
             num_queue = ((sq_entry(eid).features.dword11 >> 16) & 0xFFFF) + 1;
-            if (num_queue > NR_MAX_IO_QUEUE) {
-                vdev->nr_cq = NR_MAX_IO_QUEUE;
-            } else
-                vdev->nr_cq = num_queue;
+			vdev->nr_cq = min(num_queue, NR_MAX_IO_QUEUE);
 
             cq_entry(cq_head).result = ((vdev->nr_cq - 1) << 16 | (vdev->nr_sq - 1));
 			break;
