@@ -231,7 +231,7 @@ static struct pci_bus *__create_pci_bus(void)
 
 		vdev->pdev = dev;
 
-		vdev->bar = memremap(pci_resource_start(dev, 0), PAGE_SIZE * 2, MEMREMAP_WT);
+		vdev->bar = ioremap(pci_resource_start(dev, 0), PAGE_SIZE * 2);
 		memset(vdev->bar, 0x0, PAGE_SIZE * 2);
 
 		vdev->dbs = ((void *)vdev->bar) + PAGE_SIZE;
@@ -287,10 +287,13 @@ void VDEV_FINALIZE(struct nvmev_dev *vdev)
 		iounmap(vdev->msix_table);
 
 	if (vdev->bar)
-		memunmap(vdev->bar);
+		iounmap(vdev->bar);
 
 	if (vdev->old_bar)
 		kfree(vdev->old_bar);
+
+	if (vdev->old_dbs)
+		kfree(vdev->old_dbs);
 
 	if (vdev->admin_q)
 		kfree(vdev->admin_q);
