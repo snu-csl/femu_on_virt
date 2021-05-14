@@ -20,6 +20,16 @@
 
 extern struct nvmev_dev *vdev;
 
+/* TODO: Improve the itration */
+static int convert_apicid_to_cpu(int apic_id)
+{
+	int i;
+	for_each_possible_cpu(i) {
+		if (per_cpu(x86_cpu_to_apicid, i) == apic_id) return i;
+	}
+	return -1;
+}
+
 void nvmev_signal_irq(int msi_index)
 {
 	struct msi_desc *msi_desc, *tmp;
@@ -30,11 +40,11 @@ void nvmev_signal_irq(int msi_index)
 			struct irq_cfg *irqc = irqd_cfg(irqd);
 
 			unsigned int target = irqc->dest_apicid;
-			unsigned int dest_apicid = apic->calc_dest_apicid(target);;
+			unsigned int target_cpu = convert_apicid_to_cpu(target);
 
-			NVMEV_DEBUG("vector %d, target %d, dest_apicid %d\n",
-					irqc->vector, target, dest_apicid);
-			apic->send_IPI(dest_apicid, irqc->vector);
+			NVMEV_DEBUG("vector %d, dest_apicid %d, target_cpu %d\n",
+					irqc->vector, target, target_cpu);
+			apic->send_IPI(target_cpu, irqc->vector);
 			return;
 		}
 	}
