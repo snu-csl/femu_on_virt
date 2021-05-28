@@ -360,12 +360,12 @@ static int __proc_file_open(struct inode *inode, struct file *file)
 			(char *)file->f_path.dentry->d_name.name);
 }
 
-static const struct file_operations proc_file_fops = {
-	.open = __proc_file_open,
-	.write = __proc_file_write,
-	.read	= seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops proc_file_fops = {
+	.proc_open = __proc_file_open,
+	.proc_write = __proc_file_write,
+	.proc_read	= seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)

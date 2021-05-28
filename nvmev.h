@@ -166,8 +166,6 @@ struct nvmev_proc_info {
 	char thread_name[32];
 };
 
-#include <linux/irq_sim.h>
-
 struct nvmev_dev {
 	struct pci_bus *virt_bus;
 	void *virtDev;
@@ -213,8 +211,6 @@ struct nvmev_dev {
 	struct proc_dir_entry *proc_stat;
 
 	unsigned long long *io_unit_stat;
-
-	struct irq_sim isim;
 };
 
 // VDEV Init, Final Function
