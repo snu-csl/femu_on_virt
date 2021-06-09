@@ -241,7 +241,7 @@ static struct pci_bus *__create_pci_bus(void)
 
 		vdev->pdev = dev;
 
-		vdev->bar = ioremap(pci_resource_start(dev, 0), PAGE_SIZE * 2);
+		vdev->bar = memremap(pci_resource_start(dev, 0), PAGE_SIZE * 2, MEMREMAP_WT);
 		memset(vdev->bar, 0x0, PAGE_SIZE * 2);
 
 		vdev->dbs = ((void *)vdev->bar) + PAGE_SIZE;
@@ -259,8 +259,9 @@ static struct pci_bus *__create_pci_bus(void)
 		BUG_ON(!vdev->old_bar && "allocating old BAR memory");
 		memcpy(vdev->old_bar, vdev->bar, sizeof(*vdev->old_bar));
 
-		vdev->msix_table = ioremap(pci_resource_start(vdev->pdev, 0) + PAGE_SIZE * 2,
-								NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
+		vdev->msix_table =
+			memremap(pci_resource_start(vdev->pdev, 0) + PAGE_SIZE * 2,
+					NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE, MEMREMAP_WT);
 		memset(vdev->msix_table, 0x00, NR_MAX_IO_QUEUE * PCI_MSIX_ENTRY_SIZE);
 	}
 
@@ -294,10 +295,10 @@ struct nvmev_dev *VDEV_INIT(void)
 void VDEV_FINALIZE(struct nvmev_dev *vdev)
 {
 	if (vdev->msix_table)
-		iounmap(vdev->msix_table);
+		memunmap(vdev->msix_table);
 
 	if (vdev->bar)
-		iounmap(vdev->bar);
+		memunmap(vdev->bar);
 
 	if (vdev->old_bar)
 		kfree(vdev->old_bar);
