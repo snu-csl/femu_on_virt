@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (c) 2020
+ * Copyright (c) 2020-2021
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -14,6 +14,9 @@
 
 #include <linux/pci.h>
 #include <linux/irq.h>
+
+#include <linux/percpu-defs.h>
+#include <linux/sched/clock.h>
 
 #include "nvmev.h"
 #include "pci.h"

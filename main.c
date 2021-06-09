@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (c) 2020
+ * Copyright (c) 2020-2021
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -12,11 +12,6 @@
  *
  **********************************************************************/
 
-#include <linux/pci.h>
-#include <linux/pci_regs.h>
-#include <linux/pci_ids.h>
-#include <linux/io.h>
-#include <linux/ioport.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
 #include <linux/types.h>

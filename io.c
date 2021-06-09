@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (c) 2020
+ * Copyright (c) 2020-2021
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -13,7 +13,6 @@
  * *********************************************************************/
 
 #include <linux/kthread.h>
-#include <linux/jiffies.h>
 #include <linux/ktime.h>
 #include <linux/highmem.h>
 #include <linux/sched/clock.h>
@@ -171,36 +170,38 @@ static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long lon
 	pi->proc_table[entry].prev = -1;
 	pi->proc_table[entry].next = -1;
 
+	mb();
+
 	// (END) -> (START) order, nsecs target ascending order
 	if (pi->io_seq == -1) {
 		pi->io_seq = entry;
 		pi->io_seq_end = entry;
 	} else {
-		unsigned int curr_entry = pi->io_seq_end;
+		unsigned int curr = pi->io_seq_end;
 
-		while (curr_entry != -1) {
-			if (pi->proc_table[curr_entry].nsecs_target <= pi->proc_io_nsecs)
+		while (curr != -1) {
+			if (pi->proc_table[curr].nsecs_target <= pi->proc_io_nsecs)
 				break;
 
-			if (pi->proc_table[curr_entry].nsecs_target <= nsecs_target)
+			if (pi->proc_table[curr].nsecs_target <= nsecs_target)
 				break;
 
-			curr_entry = pi->proc_table[curr_entry].prev;
+			curr = pi->proc_table[curr].prev;
 		}
 
-		if (curr_entry == -1) {
+		if (curr == -1) { /* Head inserted */
 			pi->proc_table[entry].next = pi->io_seq;
 			pi->io_seq = entry;
-		} else if (pi->proc_table[curr_entry].next == -1) {
-			pi->proc_table[entry].prev = curr_entry;
+		} else if (pi->proc_table[curr].next == -1) { /* Tail */
+			pi->proc_table[entry].prev = curr;
 			pi->io_seq_end = entry;
-			pi->proc_table[curr_entry].next = entry;
+			pi->proc_table[curr].next = entry;
 		} else {
-			pi->proc_table[entry].prev = curr_entry;
-			pi->proc_table[entry].next = pi->proc_table[curr_entry].next;
+			pi->proc_table[entry].prev = curr;
+			pi->proc_table[entry].next = pi->proc_table[curr].next;
 
 			pi->proc_table[pi->proc_table[entry].next].prev = entry;
-			pi->proc_table[curr_entry].next = entry;
+			pi->proc_table[curr].next = entry;
 		}
 	}
 }
@@ -438,62 +439,60 @@ static int nvmev_kthread_io(void *data)
 		unsigned long long curr_nsecs_local = local_clock();
 		long long delta = curr_nsecs_wall - curr_nsecs_local;
 
-		unsigned int curr = pi->io_seq;
-		struct nvmev_proc_table *proc_entry;
+		volatile unsigned int curr = pi->io_seq;
 		int qidx;
 
 		while (curr != -1) {
+			struct nvmev_proc_table *pe = &pi->proc_table[curr];
 			unsigned long long curr_nsecs = local_clock() + delta;
 			pi->proc_io_nsecs = curr_nsecs;
 
-			proc_entry = &pi->proc_table[curr];
-
-			if (proc_entry->is_completed == true) {
-				curr = proc_entry->next;
+			if (pe->is_completed == true) {
+				curr = pe->next;
 				continue;
 			}
 
-			if (proc_entry->is_copied == false) {
+			if (pe->is_copied == false) {
 #ifdef PERF_DEBUG
 				unsigned long long memcpy_time;
-				proc_entry->nsecs_copy_start = local_clock() + delta;
+				pe->nsecs_copy_start = local_clock() + delta;
 #endif
-				__do_perform_io(proc_entry->sqid, proc_entry->sq_entry);
+				__do_perform_io(pe->sqid, pe->sq_entry);
 
 #ifdef PERF_DEBUG
-				proc_entry->nsecs_copy_done = local_clock() + delta;
-				memcpy_time = proc_entry->nsecs_copy_done - proc_entry->nsecs_copy_start;
+				pe->nsecs_copy_done = local_clock() + delta;
+				memcpy_time = pe->nsecs_copy_done - pe->nsecs_copy_start;
 #endif
-				proc_entry->is_copied = true;
+				pe->is_copied = true;
 
 				NVMEV_DEBUG("%s: copied %u, %d %d %d\n",
 						pi->thread_name, curr,
-						proc_entry->sqid, proc_entry->cqid, proc_entry->sq_entry);
+						pe->sqid, pe->cqid, pe->sq_entry);
 			}
 
-			if (proc_entry->nsecs_target <= curr_nsecs + completion_lag) {
-				__update_lag(proc_entry->nsecs_target, curr_nsecs);
+			if (pe->nsecs_target <= curr_nsecs + completion_lag) {
+				__update_lag(pe->nsecs_target, curr_nsecs);
 
-				__fill_cq_result(proc_entry->sqid, proc_entry->cqid,
-						proc_entry->sq_entry, proc_entry->command_id);
+				__fill_cq_result(pe->sqid, pe->cqid,
+						pe->sq_entry, pe->command_id);
 
 				NVMEV_DEBUG("%s: completed %u, %d %d %d\n",
 						pi->thread_name, curr,
-						proc_entry->sqid, proc_entry->cqid, proc_entry->sq_entry);
+						pe->sqid, pe->cqid, pe->sq_entry);
 
 #ifdef PERF_DEBUG
-				proc_entry->nsecs_cq_filled = local_clock() + delta;
+				pe->nsecs_cq_filled = local_clock() + delta;
 				NVMEV_DEBUG("%llu %llu %llu %llu %llu %llu\n",
-						proc_entry->nsecs_start,
-						proc_entry->nsecs_enqueue - proc_entry->nsecs_start,
-						proc_entry->nsecs_copy_start - proc_entry->nsecs_start,
-						proc_entry->nsecs_copy_done - proc_entry->nsecs_start,
-						proc_entry->nsecs_cq_filled - proc_entry->nsecs_start,
-						proc_entry->nsecs_target - proc_entry->nsecs_start);
+						pe->nsecs_start,
+						pe->nsecs_enqueue - pe->nsecs_start,
+						pe->nsecs_copy_start - pe->nsecs_start,
+						pe->nsecs_copy_done - pe->nsecs_start,
+						pe->nsecs_cq_filled - pe->nsecs_start,
+						pe->nsecs_target - pe->nsecs_start);
 #endif
-				proc_entry->is_completed = true;
+				pe->is_completed = true;
 
-				curr = proc_entry->next;
+				curr = pe->next;
 			} else {
 				break;
 			}

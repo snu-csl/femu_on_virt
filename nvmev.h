@@ -1,5 +1,5 @@
 /**********************************************************************
- * Copyright (c) 2020
+ * Copyright (c) 2020-2021
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,13 +16,8 @@
 #define _LIB_NVMEV_H
 
 #include <linux/pci.h>
-#include <asm/apic.h>
-#include <linux/irqnr.h>
 #include <linux/msi.h>
-#include <linux/irq.h>
-#include <uapi/linux/irqnr.h>
-#include <linux/proc_fs.h>
-#include <linux/uaccess.h>
+#include <asm/apic.h>
 
 #include "nvme.h"
 
