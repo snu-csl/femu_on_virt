@@ -98,7 +98,7 @@ module_param(write_trailing, uint, 0644);
 MODULE_PARM_DESC(write_trailing, "Write trailing in nanoseconds");
 module_param(nr_io_units, uint, 0444);
 MODULE_PARM_DESC(nr_io_units, "Number of I/O units that operate in parallel");
-module_param(io_unit_shift, uint, 0644);
+module_param(io_unit_shift, uint, 0444);
 MODULE_PARM_DESC(io_unit_shift, "Size of each I/O unit (2^)");
 module_param(cpus, charp, 0444);
 MODULE_PARM_DESC(cpus, "CPU list for process, completion(int.) threads, Seperated by Comma(,)");
@@ -305,6 +305,7 @@ static int __proc_file_read(struct seq_file *m, void *data)
 		}
 		seq_printf(m, "total: %u %u %u %llu\n", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
 	} else if (strcmp(filename, "debug") == 0) {
+		/* Left for later use */
 	}
 
 	return 0;
@@ -338,8 +339,16 @@ static ssize_t __proc_file_write(struct file *file, const char __user *buf, size
 						 * requests accessing the unit_stat are all returned
 						 */
 		kfree(old_stat);
-	} else if (!strcmp(filename, "debug") == 0) {
+	} else if (!strcmp(filename, "stat")) {
+		int i;
+		for (i = 0; i < vdev->nr_sq; i++) {
+			struct nvmev_submission_queue *sq = vdev->sqes[i];
+			if (!sq) continue;
 
+			memset(&sq->stat, 0x00, sizeof(sq->stat));
+		}
+	} else if (!strcmp(filename, "debug") == 0) {
+		/* Left for later use */
 	}
 
 out:

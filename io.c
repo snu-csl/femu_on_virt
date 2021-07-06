@@ -157,8 +157,9 @@ static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long lon
 	if (++proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
 	vdev->proc_turn = proc_turn;
 	pi->free_seq = pi->proc_table[entry].next;
+	BUG_ON(pi->free_seq >= NR_MAX_PARALLEL_IO);
 
-	NVMEV_DEBUG("New entry %s/%u[%d], sq %d cq %d, entry %d %llu + %llu\n",
+	NVMEV_DEBUG("%s/%u[%d], sq %d cq %d, entry %d %llu + %llu\n",
 			pi->thread_name, entry, sq_entry(sq_entry).rw.opcode,
 			sqid, cqid, sq_entry, nsecs_start, nsecs_target - nsecs_start);
 
@@ -175,7 +176,7 @@ static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long lon
 	pi->proc_table[entry].prev = -1;
 	pi->proc_table[entry].next = -1;
 
-	mb();
+	mb();	/* IO kthread shall see the updated pe at once */
 
 	// (END) -> (START) order, nsecs target ascending order
 	if (pi->io_seq == -1) {
@@ -195,13 +196,14 @@ static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long lon
 		}
 
 		if (curr == -1) { /* Head inserted */
+			pi->proc_table[pi->io_seq].prev = entry;
 			pi->proc_table[entry].next = pi->io_seq;
 			pi->io_seq = entry;
 		} else if (pi->proc_table[curr].next == -1) { /* Tail */
 			pi->proc_table[entry].prev = curr;
 			pi->io_seq_end = entry;
 			pi->proc_table[curr].next = entry;
-		} else {
+		} else { /* In between */
 			pi->proc_table[entry].prev = curr;
 			pi->proc_table[entry].next = pi->proc_table[curr].next;
 
@@ -242,9 +244,12 @@ static void __reclaim_completed_reqs(void)
 			}
 		}
 
-		if (first_entry != -1 && last_entry != -1) {
+		if (last_entry != -1) {
 			pe = &pi->proc_table[last_entry];
 			pi->io_seq = pe->next;
+			if (pe->next != -1) {
+				pi->proc_table[pe->next].prev = -1;
+			}
 			pe->next = -1;
 
 			pe = &pi->proc_table[first_entry];
@@ -466,7 +471,7 @@ static int nvmev_kthread_io(void *data)
 
 #ifdef PERF_DEBUG
 				pe->nsecs_cq_filled = local_clock() + delta;
-				NVMEV_DEBUG("%llu %llu %llu %llu %llu %llu\n",
+				trace_printk("%llu %llu %llu %llu %llu %llu\n",
 						pe->nsecs_start,
 						pe->nsecs_enqueue - pe->nsecs_start,
 						pe->nsecs_copy_start - pe->nsecs_start,
@@ -474,6 +479,7 @@ static int nvmev_kthread_io(void *data)
 						pe->nsecs_cq_filled - pe->nsecs_start,
 						pe->nsecs_target - pe->nsecs_start);
 #endif
+				mb(); /* Reclaimer shall see after here */
 				pe->is_completed = true;
 
 				curr = pe->next;
