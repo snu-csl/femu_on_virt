@@ -77,8 +77,6 @@ unsigned int write_trailing = 0;
 unsigned int nr_io_units = 8;
 unsigned int io_unit_shift = 12;
 
-unsigned long long completion_lag = 0;
-
 char *cpus;
 unsigned int debug = 0;
 
@@ -307,7 +305,6 @@ static int __proc_file_read(struct seq_file *m, void *data)
 		}
 		seq_printf(m, "total: %u %u %u %llu\n", nr_in_flight, nr_dispatch, nr_dispatched, total_io);
 	} else if (strcmp(filename, "debug") == 0) {
-		seq_printf(m, "%llu", completion_lag);
 	}
 
 	return 0;

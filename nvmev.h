@@ -38,7 +38,7 @@
 #endif
 
 #define NR_MAX_IO_QUEUE 32
-#define NR_MAX_PARALLEL_IO 8192
+#define NR_MAX_PARALLEL_IO 16384
 
 #define PAGE_OFFSET_MASK (PAGE_SIZE - 1)
 

@@ -148,9 +148,14 @@ static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long lon
 	struct nvmev_proc_info *pi = &vdev->proc_info[proc_turn];
 	unsigned int entry = pi->free_seq;
 
+	if (pi->proc_table[entry].next >= NR_MAX_PARALLEL_IO) {
+		WARN_ON_ONCE("IO queue is almost full");
+		pi->free_seq = entry;
+		return;
+	}
+
 	if (++proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
 	vdev->proc_turn = proc_turn;
-
 	pi->free_seq = pi->proc_table[entry].next;
 
 	NVMEV_DEBUG("New entry %s/%u[%d], sq %d cq %d, entry %d %llu + %llu\n",
@@ -249,7 +254,6 @@ static void __reclaim_completed_reqs(void)
 			pe->next = first_entry;
 
 			pi->free_seq_end = last_entry;
-
 			NVMEV_DEBUG("Reclaimed %u -- %u, %d\n", first_entry, last_entry, nr_reclaimed);
 		}
 	}
@@ -402,24 +406,6 @@ static void __fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int comm
 	spin_unlock(&cq->entry_lock);
 }
 
-extern unsigned long long completion_lag;
-static unsigned long long __lag_cumul = 0;
-static unsigned int __lag_cnt = 0;
-
-static void __update_lag(unsigned long long target, unsigned long long now)
-{
-	__lag_cumul += (now - target);
-	if (++__lag_cnt >= 10000) {
-		unsigned long lag_current = __lag_cumul / __lag_cnt;
-
-		NVMEV_DEBUG("Update completion lag %llu --> %lu\n", completion_lag, lag_current);
-
-		completion_lag = (completion_lag + 3 * lag_current) >> 2;
-		__lag_cumul = 0;
-		__lag_cnt = 0;
-	}
-}
-
 static int nvmev_kthread_io(void *data)
 {
 	struct nvmev_proc_info *pi = (struct nvmev_proc_info *)data;
@@ -470,9 +456,7 @@ static int nvmev_kthread_io(void *data)
 						pe->sqid, pe->cqid, pe->sq_entry);
 			}
 
-			if (pe->nsecs_target <= curr_nsecs + completion_lag) {
-				__update_lag(pe->nsecs_target, curr_nsecs);
-
+			if (pe->nsecs_target <= curr_nsecs) {
 				__fill_cq_result(pe->sqid, pe->cqid,
 						pe->sq_entry, pe->command_id);
 
