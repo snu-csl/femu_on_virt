@@ -80,29 +80,31 @@ unsigned int io_unit_shift = 12;
 unsigned long long completion_lag = 0;
 
 char *cpus;
+unsigned int debug = 0;
 
-module_param(memmap_start, ulong, 0);
+module_param(memmap_start, ulong, 0444);
 MODULE_PARM_DESC(memmap_start, "Memmap start in GiB");
-module_param(memmap_size, ulong, 0);
+module_param(memmap_size, ulong, 0444);
 MODULE_PARM_DESC(memmap_size, "Memmap size in MiB");
-module_param(read_time, uint, 0);
+module_param(read_time, uint, 0644);
 MODULE_PARM_DESC(read_time, "Read time in nanoseconds");
-module_param(read_delay, uint, 0);
+module_param(read_delay, uint, 0644);
 MODULE_PARM_DESC(read_delay, "Read delay in nanoseconds");
-module_param(read_trailing, uint, 0);
+module_param(read_trailing, uint, 0644);
 MODULE_PARM_DESC(read_trailing, "Read trailing in nanoseconds");
-module_param(write_time, uint, 0);
+module_param(write_time, uint, 0644);
 MODULE_PARM_DESC(write_time, "Write time in nanoseconds");
-module_param(write_delay, uint, 0);
+module_param(write_delay, uint, 0644);
 MODULE_PARM_DESC(write_delay, "Write delay in nanoseconds");
-module_param(write_trailing, uint, 0);
+module_param(write_trailing, uint, 0644);
 MODULE_PARM_DESC(write_trailing, "Write trailing in nanoseconds");
-module_param(nr_io_units, uint, 0);
+module_param(nr_io_units, uint, 0444);
 MODULE_PARM_DESC(nr_io_units, "Number of I/O units that operate in parallel");
-module_param(io_unit_shift, uint, 0);
+module_param(io_unit_shift, uint, 0644);
 MODULE_PARM_DESC(io_unit_shift, "Size of each I/O unit (2^)");
-module_param(cpus, charp, 0);
+module_param(cpus, charp, 0444);
 MODULE_PARM_DESC(cpus, "CPU list for process, completion(int.) threads, Seperated by Comma(,)");
+module_param(debug, uint, 0644);
 
 static void nvmev_proc_dbs(void)
 {
