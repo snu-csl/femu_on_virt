@@ -20,6 +20,9 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/delay.h>
+#include <linux/uaccess.h>
+#include <linux/version.h>
+
 #include <asm/e820/types.h>
 #include <asm/e820/api.h>
 
@@ -363,6 +366,7 @@ static int __proc_file_open(struct inode *inode, struct file *file)
 			(char *)file->f_path.dentry->d_name.name);
 }
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,0,0)
 static const struct proc_ops proc_file_fops = {
 	.proc_open = __proc_file_open,
 	.proc_write = __proc_file_write,
@@ -370,6 +374,15 @@ static const struct proc_ops proc_file_fops = {
 	.proc_lseek = seq_lseek,
 	.proc_release = single_release,
 };
+#else
+static const struct file_operations proc_file_fops = {
+	.open = __proc_file_open,
+	.write = __proc_file_write,
+	.read	= seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+#endif
 
 void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 {
