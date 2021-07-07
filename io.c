@@ -264,14 +264,18 @@ static void __reclaim_completed_reqs(void)
 	}
 }
 
-static void __nvmev_proc_flush(int sqid, int sq_entry)
+static unsigned long long __nvmev_proc_flush(int sqid, int sq_entry)
 {
-#ifdef CONFIG_NVMEV_DEBUG_VERBOSE
-	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	unsigned long long latest = 0;
+	int i;
 
-	NVMEV_DEBUG("qid %d entry %d sq %p\n", sqid, sq_entry, sq);
-#endif
-	return;
+	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
+
+	for (i = 0; i < vdev->config.nr_io_units; i++) {
+		latest = max(latest, vdev->io_unit_stat[i]);
+	}
+
+	return latest;
 }
 
 static size_t __nvmev_proc_io(int sqid, int sq_entry)
@@ -301,8 +305,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 					cmd->rw.slba, io_len, nsecs_start);
 		break;
 	case nvme_cmd_flush:
-		__nvmev_proc_flush(sqid, sq_entry);
-		nsecs_target = nsecs_start;
+		nsecs_target = __nvmev_proc_flush(sqid, sq_entry);
 		break;
 	case nvme_cmd_write_uncor:
 	case nvme_cmd_compare:
