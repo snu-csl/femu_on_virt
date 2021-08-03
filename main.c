@@ -286,7 +286,7 @@ static int __proc_file_read(struct seq_file *m, void *data)
 		unsigned int nr_dispatch = 0;
 		unsigned int nr_dispatched = 0;
 		unsigned long long total_io = 0;
-		for (i = 1; i < vdev->nr_sq; i++) {
+		for (i = 1; i <= vdev->nr_sq; i++) {
 			struct nvmev_submission_queue *sq = vdev->sqes[i];
 			if (!sq) continue;
 
@@ -344,7 +344,7 @@ static ssize_t __proc_file_write(struct file *file, const char __user *buf, size
 		kfree(old_stat);
 	} else if (!strcmp(filename, "stat")) {
 		int i;
-		for (i = 0; i < vdev->nr_sq; i++) {
+		for (i = 1; i <= vdev->nr_sq; i++) {
 			struct nvmev_submission_queue *sq = vdev->sqes[i];
 			if (!sq) continue;
 
