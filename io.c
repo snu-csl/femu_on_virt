@@ -60,14 +60,15 @@ static unsigned long long __schedule_io_units(int opcode, unsigned long lba, uns
 	latest = max(nsecs_start, vdev->io_unit_stat[io_unit]) + delay;
 
 	do {
+		latest += latency;
 		vdev->io_unit_stat[io_unit] = latest;
+
 		if (nr_io_units-- > 0) {
 			vdev->io_unit_stat[io_unit] += trailing;
 		}
 
 		length -= min(length, io_unit_size);
 		if (++io_unit >= vdev->config.nr_io_units) io_unit = 0;
-		latest += latency;
 	} while (length > 0);
 
 	return latest;
