@@ -176,6 +176,12 @@ static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 
 static void __nvmev_admin_get_log_page(int eid, int cq_head)
 {
+	struct nvmev_admin_queue *queue = vdev->admin_q;
+
+	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
+	cq_entry(cq_head).sq_id = 0;
+	cq_entry(cq_head).sq_head = eid;
+	cq_entry(cq_head).status = queue->phase | NVME_SC_INVALID_FIELD << 1;
 }
 
 static void __nvmev_admin_identify_namespace(int eid, int cq_head)
@@ -332,6 +338,8 @@ static void __nvmev_proc_admin_req(int entry_id)
 		case nvme_admin_security_send:
 		case nvme_admin_security_recv:
 		default:
+			NVMEV_ERROR("Unhandled admin requests: %d",
+					sq_entry(entry_id).common.opcode);
 			break;
 	}
 
