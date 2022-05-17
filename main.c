@@ -488,7 +488,7 @@ static int NVMeV_init(void)
 	NVMEV_IO_PROC_INIT(vdev);
 	NVMEV_DISPATCHER_INIT(vdev);
 
-	NVMEV_INFO("Successfully created Virtual NVMe deivce\n");
+	NVMEV_INFO("Successfully created Virtual NVMe deivce with FEMU-based FTL\n");
 
     return 0;
 

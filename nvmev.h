@@ -20,6 +20,7 @@
 #include <asm/apic.h>
 
 #include "nvme.h"
+#include "ftl.h"
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
