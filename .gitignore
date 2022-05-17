@@ -2,9 +2,13 @@ Module.symvers
 modules.order
 *.ko
 *.o
+*.mod
 *.mod.o
 *.mod.c
 .*.cmd
+*.sh
+*.ur-safe
+.cache.mk
 .tmp_versions/
 tags
 cscope.out
