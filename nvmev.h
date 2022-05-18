@@ -29,6 +29,8 @@
 	printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
 #define NVMEV_ERROR(string, args...) \
 	printk(KERN_ERR "%s: " string, NVMEV_DRV_NAME, ##args)
+#define NVMEV_ASSERT(x) \
+	if (!(x)) printk(KERN_ERR "%s: FEMU ASSERT at line %d, (%s)\n", NVMEV_DRV_NAME, __LINE__, #x)
 
 #ifdef CONFIG_NVMEV_DEBUG_VERBOSE
 #define NVMEV_DEBUG(string, args...) \
