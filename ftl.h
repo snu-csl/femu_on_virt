@@ -2,6 +2,7 @@
 #define _NVMEVIRT_FTL_H
 
 #include <linux/types.h>
+#include "queue.h"
 
 #define INVALID_PPA     (~(0ULL))
 #define INVALID_LPN     (~(0ULL))
@@ -176,7 +177,7 @@ typedef struct line {
     int id;  /* line id, the same as corresponding block id */
     int ipc; /* invalid page count in this line */
     int vpc; /* valid page count in this line */
-    // QTAILQ_ENTRY(line) entry; /* in either {free,victim,full} list */
+    QTAILQ_ENTRY(line) entry; /* in either {free,victim,full} list */
     /* position in the priority queue for victim lines */
     size_t                  pos;
 } line;
@@ -194,11 +195,11 @@ struct write_pointer {
 struct line_mgmt {
     struct line *lines;
 
-    // /* free line list, we only need to maintain a list of blk numbers */
-    // QTAILQ_HEAD(free_line_list, line) free_line_list;
+    /* free line list, we only need to maintain a list of blk numbers */
+    QTAILQ_HEAD(free_line_list, line) free_line_list;
     // pqueue_t *victim_line_pq;
     // //QTAILQ_HEAD(victim_line_list, line) victim_line_list;
-    // QTAILQ_HEAD(full_line_list, line) full_line_list;
+    QTAILQ_HEAD(full_line_list, line) full_line_list;
 
     int tt_lines;
     int free_line_cnt;

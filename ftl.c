@@ -20,9 +20,7 @@ static inline struct ppa get_maptbl_ent(struct ssd *ssd, uint64_t lpn)
 
 static inline void set_maptbl_ent(struct ssd *ssd, uint64_t lpn, struct ppa *ppa)
 {
-    if(!(lpn < ssd->sp.tt_pgs)) {
-        NVMEV_ERROR("lpn is not smaller than tt_pages");
-    }
+    NVMEV_ASSERT(lpn < ssd->sp.tt_pgs);
     ssd->maptbl[lpn] = *ppa;
 }
 
@@ -40,9 +38,7 @@ static uint64_t ppa2pgidx(struct ssd *ssd, struct ppa *ppa)
             ppa->g.blk * spp->pgs_per_blk + \
             ppa->g.pg;
 
-    if (!(pgidx < spp->tt_pgs)) {
-        NVMEV_ERROR("pgidx < spp->tt_pgs");
-    }
+    NVMEV_ASSERT(pgidx < spp->tt_pgs);
 
     return pgidx;
 }
@@ -77,15 +73,15 @@ static inline void set_rmap_ent(struct ssd *ssd, uint64_t lpn, struct ppa *ppa)
 //     ((struct line *)a)->vpc = pri;
 // }
 
-// static inline size_t victim_line_get_pos(void *a)
-// {
-//     return ((struct line *)a)->pos;
-// }
+static inline size_t victim_line_get_pos(void *a)
+{
+    return ((struct line *)a)->pos;
+}
 
-// static inline void victim_line_set_pos(void *a, size_t pos)
-// {
-//     ((struct line *)a)->pos = pos;
-// }
+static inline void victim_line_set_pos(void *a, size_t pos)
+{
+    ((struct line *)a)->pos = pos;
+}
 
 static void ssd_init_lines(struct ssd *ssd)
 {
@@ -95,17 +91,14 @@ static void ssd_init_lines(struct ssd *ssd)
     int i;
 
     lm->tt_lines = spp->blks_per_pl;
-    if (!(lm->tt_lines == spp->tt_lines)) {
-        NVMEV_ERROR("tt_lines config doesn't match");
-    }
-
+    NVMEV_ASSERT(lm->tt_lines == spp->tt_lines);
     lm->lines = vmalloc(sizeof(struct line) * lm->tt_lines);
 
-    // QTAILQ_INIT(&lm->free_line_list);
+    QTAILQ_INIT(&lm->free_line_list);
     // lm->victim_line_pq = pqueue_init(spp->tt_lines, victim_line_cmp_pri,
     //         victim_line_get_pri, victim_line_set_pri,
     //         victim_line_get_pos, victim_line_set_pos);
-    // QTAILQ_INIT(&lm->full_line_list);
+    QTAILQ_INIT(&lm->full_line_list);
 
     lm->free_line_cnt = 0;
     for (i = 0; i < lm->tt_lines; i++) {
@@ -115,7 +108,7 @@ static void ssd_init_lines(struct ssd *ssd)
         line->vpc = 0;
         line->pos = 0;
         /* initialize all the lines as free lines */
-        // QTAILQ_INSERT_TAIL(&lm->free_line_list, line, entry);
+        QTAILQ_INSERT_TAIL(&lm->free_line_list, line, entry);
         lm->free_line_cnt++;
     }
 
@@ -130,8 +123,8 @@ static void ssd_init_write_pointer(struct ssd *ssd)
     struct line_mgmt *lm = &ssd->lm;
     struct line *curline = NULL;
 
-    // curline = QTAILQ_FIRST(&lm->free_line_list);
-    // QTAILQ_REMOVE(&lm->free_line_list, curline, entry);
+    curline = QTAILQ_FIRST(&lm->free_line_list);
+    QTAILQ_REMOVE(&lm->free_line_list, curline, entry);
     lm->free_line_cnt--;
 
     /* wpp->curline is always our next-to-write super-block */
@@ -145,9 +138,7 @@ static void ssd_init_write_pointer(struct ssd *ssd)
 
 static inline void check_addr(int a, int max)
 {
-    if (!(a >= 0 && a < max)) {
-        NVMEV_ERROR("a >= 0 && a < max");
-    }
+    NVMEV_ASSERT(a >= 0 && a < max);
 }
 
 static struct line *get_next_free_line(struct ssd *ssd)
@@ -155,13 +146,13 @@ static struct line *get_next_free_line(struct ssd *ssd)
     struct line_mgmt *lm = &ssd->lm;
     struct line *curline = NULL;
 
-    // curline = QTAILQ_FIRST(&lm->free_line_list);
-    // if (!curline) {
-    //     ftl_err("No free lines left in [%s] !!!!\n", ssd->ssdname);
-    //     return NULL;
-    // }
+    curline = QTAILQ_FIRST(&lm->free_line_list);
+    if (!curline) {
+        NVMEV_ERROR("No free lines left in VIRT !!!!\n");
+        return NULL;
+    }
 
-    // QTAILQ_REMOVE(&lm->free_line_list, curline, entry);
+    QTAILQ_REMOVE(&lm->free_line_list, curline, entry);
     lm->free_line_cnt--;
     return curline;
 }
@@ -187,44 +178,46 @@ static void ssd_advance_write_pointer(struct ssd *ssd)
             /* go to next page in the block */
             check_addr(wpp->pg, spp->pgs_per_blk);
             wpp->pg++;
-            // if (wpp->pg == spp->pgs_per_blk) {
-            //     wpp->pg = 0;
-            //     /* move current line to {victim,full} line list */
-            //     if (wpp->curline->vpc == spp->pgs_per_line) {
-            //         /* all pgs are still valid, move to full line list */
-            //         ftl_assert(wpp->curline->ipc == 0);
-            //         QTAILQ_INSERT_TAIL(&lm->full_line_list, wpp->curline, entry);
-            //         lm->full_line_cnt++;
-            //     } else {
-            //         ftl_assert(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->pgs_per_line);
-            //         /* there must be some invalid pages in this line */
-            //         ftl_assert(wpp->curline->ipc > 0);
-            //         pqueue_insert(lm->victim_line_pq, wpp->curline);
-            //         lm->victim_line_cnt++;
-            //     }
-            //     /* current line is used up, pick another empty line */
-            //     check_addr(wpp->blk, spp->blks_per_pl);
-            //     wpp->curline = NULL;
-            //     wpp->curline = get_next_free_line(ssd);
-            //     if (!wpp->curline) {
-            //         /* TODO */
-            //         // abort();
-            //         printk("curline is NULL -> normal");
-            //     }
-            //     wpp->blk = wpp->curline->id;
-            //     check_addr(wpp->blk, spp->blks_per_pl);
-            //     /* make sure we are starting from page 0 in the super block */
-            //     ftl_assert(wpp->pg == 0, __LINE__);
-            //     ftl_assert(wpp->lun == 0, __LINE__);
-            //     ftl_assert(wpp->ch == 0, __LINE__);
-            //     /* TODO: assume # of pl_per_lun is 1, fix later */
-            //     ftl_assert(wpp->pl == 0, __LINE__);
-            // }
+            if (wpp->pg == spp->pgs_per_blk) {
+                wpp->pg = 0;
+                /* move current line to {victim,full} line list */
+                if (wpp->curline->vpc == spp->pgs_per_line) {
+                    /* all pgs are still valid, move to full line list */
+                    NVMEV_ASSERT(wpp->curline->ipc == 0);
+                    QTAILQ_INSERT_TAIL(&lm->full_line_list, wpp->curline, entry);
+                    lm->full_line_cnt++;
+                    printk("[JH_LOG] wpp: move line to full_line_list\n");
+                } else {
+                    NVMEV_ERROR("[JH_LOG] wpp: line is moved to victim list\n");
+                    NVMEV_ASSERT(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->pgs_per_line);
+                    /* there must be some invalid pages in this line */
+                    NVMEV_ASSERT(wpp->curline->ipc > 0);
+                    // pqueue_insert(lm->victim_line_pq, wpp->curline);
+                    lm->victim_line_cnt++;
+                }
+                /* current line is used up, pick another empty line */
+                check_addr(wpp->blk, spp->blks_per_pl);
+                wpp->curline = NULL;
+                wpp->curline = get_next_free_line(ssd);
+                if (!wpp->curline) {
+                    /* TODO */
+                    NVMEV_ERROR("curline is NULL!");
+                }
+                printk("[JH_LOG] wpp: got new clean line %d\n", wpp->curline->id);
+                wpp->blk = wpp->curline->id;
+                check_addr(wpp->blk, spp->blks_per_pl);
+                /* make sure we are starting from page 0 in the super block */
+                NVMEV_ASSERT(wpp->pg == 0);
+                NVMEV_ASSERT(wpp->lun == 0);
+                NVMEV_ASSERT(wpp->ch == 0);
+                /* TODO: assume # of pl_per_lun is 1, fix later */
+                NVMEV_ASSERT(wpp->pl == 0);
+            }
         }
     }
 
-    printk("[JH_LOG] advanced wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n", 
-        wpp->ch, wpp->lun, wpp->pg, wpp->blk, wpp->pg);
+    printk("[JH_LOG] advanced wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d (curline %d)\n", 
+        wpp->ch, wpp->lun, wpp->pg, wpp->blk, wpp->pg, wpp->curline->id);
 }
 
 static struct ppa get_new_page(struct ssd *ssd)
@@ -300,6 +293,9 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->gc_thres_pcent_high = 0.95;
     spp->gc_thres_lines_high = (int)((1 - spp->gc_thres_pcent_high) * spp->tt_lines);
     spp->enable_gc_delay = 1;
+
+
+    check_params(spp);
 }
 
 static void ssd_init_nand_page(struct nand_page *pg, struct ssdparams *spp)
@@ -601,14 +597,14 @@ uint64_t ssd_write(struct nvme_command *cmd)
             /* update old page information first */
             mark_page_invalid(&ssd, &ppa);
             set_rmap_ent(&ssd, INVALID_LPN, &ppa);
-            printk("[JH_LOG] ssd_write: %lld is invalid\n", ppa2pgidx(&ssd, &ppa));
+            printk("[JH_LOG] ssd_write: %lld is invalid, ", ppa2pgidx(&ssd, &ppa));
         }
 
         /* new write */
         ppa = get_new_page(&ssd);
         /* update maptbl */
         set_maptbl_ent(&ssd, lpn, &ppa);
-        printk("[JH_LOG] ssd_write: got new ppa %lld\n", ppa2pgidx(&ssd, &ppa));
+        printk("[JH_LOG] ssd_write: got new ppa %lld, ", ppa2pgidx(&ssd, &ppa));
         /* update rmap */
         set_rmap_ent(&ssd, lpn, &ppa);
 
