@@ -2,7 +2,7 @@ KERNELDIR := /lib/modules/$(shell uname -r)/build
 PWD     := $(shell pwd)
 
 obj-m   := nvmev.o
-nvmev-objs := main.o pci.o admin.o io.o
+nvmev-objs := main.o pci.o admin.o io.o ftl.o
 
 default:
 		$(MAKE) -C $(KERNELDIR) M=$(PWD) modules

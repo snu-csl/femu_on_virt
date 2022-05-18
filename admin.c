@@ -13,7 +13,7 @@
  **********************************************************************/
 
 #include "nvmev.h"
-
+#include "ftl.h"
 #define sq_entry(entry_id) \
 	queue->nvme_sq[SQ_ENTRY_TO_PAGE_NUM(entry_id)][SQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
 #define cq_entry(entry_id) \

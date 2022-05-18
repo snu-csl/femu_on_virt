@@ -27,6 +27,7 @@
 #include <asm/e820/api.h>
 
 #include "nvmev.h"
+#include "ftl.h"
 
 /****************************************************************
  * Memory Layout
@@ -489,6 +490,9 @@ static int NVMeV_init(void)
 	NVMEV_DISPATCHER_INIT(vdev);
 
 	NVMEV_INFO("Successfully created Virtual NVMe deivce with FEMU-based FTL\n");
+
+
+	ssd_init();
 
     return 0;
 

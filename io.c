@@ -18,6 +18,7 @@
 #include <linux/sched/clock.h>
 
 #include "nvmev.h"
+#include "ftl.h"
 
 #undef PERF_DEBUG
 

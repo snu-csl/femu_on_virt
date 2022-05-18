@@ -1,8 +1,27 @@
-#include "nvme.h"
+#ifndef _NVMEVIRT_FTL_H
+#define _NVMEVIRT_FTL_H
+
+#include <linux/types.h>
 
 #define INVALID_PPA     (~(0ULL))
 #define INVALID_LPN     (~(0ULL))
 #define UNMAPPED_PPA    (~(0ULL))
+
+/*
+    Default malloc size
+    Channel = 40 * 8 = 320
+    LUN     = 40 * 8 = 320
+    Plane   = 16 * 1 = 16
+    Block   = 32 * 256 = 8192
+    Page    = 16 * 256 = 4096
+    Sector  = 4 * 8 = 32
+
+    Line    = 40 * 256 = 10240
+    maptbl  = 8 * 4194304 = 33554432
+    rmap    = 8 * 4194304 = 33554432
+*/
+
+
 
 enum {
     NAND_READ =  0,
@@ -174,11 +193,13 @@ struct write_pointer {
 
 struct line_mgmt {
     struct line *lines;
-    /* free line list, we only need to maintain a list of blk numbers */
+
+    // /* free line list, we only need to maintain a list of blk numbers */
     // QTAILQ_HEAD(free_line_list, line) free_line_list;
     // pqueue_t *victim_line_pq;
-    //QTAILQ_HEAD(victim_line_list, line) victim_line_list;
+    // //QTAILQ_HEAD(victim_line_list, line) victim_line_list;
     // QTAILQ_HEAD(full_line_list, line) full_line_list;
+
     int tt_lines;
     int free_line_cnt;
     int victim_line_cnt;
@@ -191,18 +212,20 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
-// struct ssd {
-//     char *ssdname;
-//     struct ssdparams sp;
-//     struct ssd_channel *ch;
-//     struct ppa *maptbl; /* page level mapping table */
-//     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
-//     struct write_pointer wp;
-//     struct line_mgmt lm;
+struct ssd {
+    struct ssdparams sp;
+    struct ssd_channel *ch;
+    struct ppa *maptbl; /* page level mapping table */
+    uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
+    struct write_pointer wp;
+    struct line_mgmt lm;
 
-//     /* lockless ring for communication with NVMe IO thread */
-//     struct rte_ring **to_ftl;
-//     struct rte_ring **to_poller;
-//     bool *dataplane_started_ptr;
-//     QemuThread ftl_thread;
-// };
+    // /* lockless ring for communication with NVMe IO thread */
+    // struct rte_ring **to_ftl;
+    // struct rte_ring **to_poller;
+    // bool *dataplane_started_ptr;
+    // QemuThread ftl_thread;
+};
+
+void ssd_init(void);
+#endif
