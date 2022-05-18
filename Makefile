@@ -14,6 +14,7 @@ install:
 clean:
 	   $(MAKE) -C $(KERNELDIR) M=$(PWD) clean
 	   rm -f cscope.out tags
+	   rm -f io.o.ur-safe .cache.mk
 
 .PHONY: cscope
 cscope:
