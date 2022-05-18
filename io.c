@@ -85,6 +85,7 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 	u64 paddr;
 	u64 *paddr_list = NULL;
 	size_t mem_offs = 0;
+	struct nvme_command *cmd = &sq_entry(sq_entry);
 
 	offset = sq_entry(sq_entry).rw.slba << 9;
 	length = (sq_entry(sq_entry).rw.length + 1) << 9;
@@ -130,6 +131,11 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 
 	if (paddr_list != NULL)
 		kunmap_atomic(paddr_list);
+
+	if (cmd->common.opcode == nvme_cmd_write) {
+		printk("call ssd_write");
+		ssd_write(cmd);
+	}
 
 	return length;
 }

@@ -1,12 +1,7 @@
-#include "ftl.h"
 #include "nvmev.h"
+#include "ftl.h"
 
 struct ssd ssd;
-
-static inline void ftl_assert(bool true, int num_line) {
-    if (!true)
-        printk("assert happend at line %d", num_line);
-}
 
 static inline bool should_gc(struct ssd *ssd)
 {
@@ -124,7 +119,7 @@ static void ssd_init_lines(struct ssd *ssd)
         lm->free_line_cnt++;
     }
 
-    // ftl_assert(lm->free_line_cnt == lm->tt_lines);
+    NVMEV_ASSERT(lm->free_line_cnt == lm->tt_lines);
     lm->victim_line_cnt = 0;
     lm->full_line_cnt = 0;
 }
@@ -242,7 +237,7 @@ static struct ppa get_new_page(struct ssd *ssd)
     ppa.g.pg = wpp->pg;
     ppa.g.blk = wpp->blk;
     ppa.g.pl = wpp->pl;
-    ftl_assert(ppa.g.pl == 0, __LINE__);
+    NVMEV_ASSERT(ppa.g.pl == 0);
 
     return ppa;
 }
@@ -420,4 +415,216 @@ void ssd_init(void)
 
     // qemu_thread_create(&ssd->ftl_thread, "FEMU-FTL-Thread", ftl_thread, n,
     //                    QEMU_THREAD_JOINABLE);
+}
+
+static inline bool valid_ppa(struct ssd *ssd, struct ppa *ppa)
+{
+    struct ssdparams *spp = &ssd->sp;
+    int ch = ppa->g.ch;
+    int lun = ppa->g.lun;
+    int pl = ppa->g.pl;
+    int blk = ppa->g.blk;
+    int pg = ppa->g.pg;
+    int sec = ppa->g.sec;
+
+    if (ch >= 0 && ch < spp->nchs && lun >= 0 && lun < spp->luns_per_ch && pl >=
+        0 && pl < spp->pls_per_lun && blk >= 0 && blk < spp->blks_per_pl && pg
+        >= 0 && pg < spp->pgs_per_blk && sec >= 0 && sec < spp->secs_per_pg)
+        return true;
+
+    return false;
+}
+
+static inline bool valid_lpn(struct ssd *ssd, uint64_t lpn)
+{
+    return (lpn < ssd->sp.tt_pgs);
+}
+
+static inline bool mapped_ppa(struct ppa *ppa)
+{
+    return !(ppa->ppa == UNMAPPED_PPA);
+}
+
+static inline struct ssd_channel *get_ch(struct ssd *ssd, struct ppa *ppa)
+{
+    return &(ssd->ch[ppa->g.ch]);
+}
+
+static inline struct nand_lun *get_lun(struct ssd *ssd, struct ppa *ppa)
+{
+    struct ssd_channel *ch = get_ch(ssd, ppa);
+    return &(ch->lun[ppa->g.lun]);
+}
+
+static inline struct nand_plane *get_pl(struct ssd *ssd, struct ppa *ppa)
+{
+    struct nand_lun *lun = get_lun(ssd, ppa);
+    return &(lun->pl[ppa->g.pl]);
+}
+
+static inline struct nand_block *get_blk(struct ssd *ssd, struct ppa *ppa)
+{
+    struct nand_plane *pl = get_pl(ssd, ppa);
+    return &(pl->blk[ppa->g.blk]);
+}
+
+static inline struct line *get_line(struct ssd *ssd, struct ppa *ppa)
+{
+    return &(ssd->lm.lines[ppa->g.blk]);
+}
+
+static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
+{
+    struct nand_block *blk = get_blk(ssd, ppa);
+    return &(blk->pg[ppa->g.pg]);
+}
+
+/* update SSD status about one page from PG_VALID -> PG_VALID */
+static void mark_page_invalid(struct ssd *ssd, struct ppa *ppa)
+{
+    struct line_mgmt *lm = &ssd->lm;
+    struct ssdparams *spp = &ssd->sp;
+    struct nand_block *blk = NULL;
+    struct nand_page *pg = NULL;
+    bool was_full_line = false;
+    struct line *line;
+
+    /* update corresponding page status */
+    pg = get_pg(ssd, ppa);
+    NVMEV_ASSERT(pg->status == PG_VALID);
+    pg->status = PG_INVALID;
+
+    /* update corresponding block status */
+    blk = get_blk(ssd, ppa);
+    NVMEV_ASSERT(blk->ipc >= 0 && blk->ipc < spp->pgs_per_blk);
+    blk->ipc++;
+    NVMEV_ASSERT(blk->vpc > 0 && blk->vpc <= spp->pgs_per_blk);
+    blk->vpc--;
+
+    /* update corresponding line status */
+    line = get_line(ssd, ppa);
+    NVMEV_ASSERT(line->ipc >= 0 && line->ipc < spp->pgs_per_line);
+    if (line->vpc == spp->pgs_per_line) {
+        NVMEV_ASSERT(line->ipc == 0);
+        was_full_line = true;
+    }
+    line->ipc++;
+    NVMEV_ASSERT(line->vpc > 0 && line->vpc <= spp->pgs_per_line);
+    // /* Adjust the position of the victime line in the pq under over-writes */
+    // if (line->pos) {
+    //     /* Note that line->vpc will be updated by this call */
+    //     pqueue_change_priority(lm->victim_line_pq, line->vpc - 1, line);
+    // } else {
+    //     line->vpc--;
+    // }
+
+    // if (was_full_line) {
+    //     /* move line: "full" -> "victim" */
+    //     QTAILQ_REMOVE(&lm->full_line_list, line, entry);
+    //     lm->full_line_cnt--;
+    //     pqueue_insert(lm->victim_line_pq, line);
+    //     lm->victim_line_cnt++;
+    // }
+}
+
+static void mark_page_valid(struct ssd *ssd, struct ppa *ppa)
+{
+    struct nand_block *blk = NULL;
+    struct nand_page *pg = NULL;
+    struct line *line;
+
+    /* update page status */
+    pg = get_pg(ssd, ppa);
+    NVMEV_ASSERT(pg->status == PG_FREE);
+    pg->status = PG_VALID;
+
+    /* update corresponding block status */
+    blk = get_blk(ssd, ppa);
+    NVMEV_ASSERT(blk->vpc >= 0 && blk->vpc < ssd->sp.pgs_per_blk);
+    blk->vpc++;
+
+    /* update corresponding line status */
+    line = get_line(ssd, ppa);
+    NVMEV_ASSERT(line->vpc >= 0 && line->vpc < ssd->sp.pgs_per_line);
+    line->vpc++;
+}
+
+static void mark_block_free(struct ssd *ssd, struct ppa *ppa)
+{
+    struct ssdparams *spp = &ssd->sp;
+    struct nand_block *blk = get_blk(ssd, ppa);
+    struct nand_page *pg = NULL;
+    int i;
+
+    for (i = 0; i < spp->pgs_per_blk; i++) {
+        /* reset page status */
+        pg = &blk->pg[i];
+        NVMEV_ASSERT(pg->nsecs == spp->secs_per_pg);
+        pg->status = PG_FREE;
+    }
+
+    /* reset block status */
+    NVMEV_ASSERT(blk->npgs == spp->pgs_per_blk);
+    blk->ipc = 0;
+    blk->vpc = 0;
+    blk->erase_cnt++;
+}
+
+uint64_t ssd_write(struct nvme_command *cmd)
+{
+    uint64_t lba = cmd->rw.slba;
+    struct ssdparams *spp = &(ssd.sp);
+    int len = (cmd->rw.length + 1);
+    uint64_t start_lpn = lba / spp->secs_per_pg;
+    uint64_t end_lpn = (lba + len - 1) / spp->secs_per_pg;
+    struct ppa ppa;
+    uint64_t lpn;
+    uint64_t curlat = 0, maxlat = 0;
+    int r;
+
+    printk("[JH_LOG] ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, len, end_lpn);
+    if (end_lpn >= spp->tt_pgs) {
+        NVMEV_ERROR("start_lpn=%lld,tt_pgs=%d\n", start_lpn, ssd.sp.tt_pgs);
+    }
+
+    while (should_gc_high(&ssd)) {
+        /* perform GC here until !should_gc(ssd) */
+        // r = do_gc(ssd, true);
+        // if (r == -1)
+        //     break;
+        printk("should_gc_high passed");
+    }
+
+    for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
+        ppa = get_maptbl_ent(&ssd, lpn); // 현재 LPN에 대해 전에 이미 쓰인 PPA가 있는지 확인
+        if (mapped_ppa(&ppa)) {
+            /* update old page information first */
+            mark_page_invalid(&ssd, &ppa);
+            set_rmap_ent(&ssd, INVALID_LPN, &ppa);
+            printk("[JH_LOG] ssd_write: %lld is invalid\n", ppa2pgidx(&ssd, &ppa));
+        }
+
+        /* new write */
+        ppa = get_new_page(&ssd);
+        /* update maptbl */
+        set_maptbl_ent(&ssd, lpn, &ppa);
+        printk("[JH_LOG] ssd_write: got new ppa %lld\n", ppa2pgidx(&ssd, &ppa));
+        /* update rmap */
+        set_rmap_ent(&ssd, lpn, &ppa);
+
+        mark_page_valid(&ssd, &ppa);
+
+        /* need to advance the write pointer here */
+        ssd_advance_write_pointer(&ssd);
+
+        // struct nand_cmd swr;
+        // swr.type = USER_IO;
+        // swr.cmd = NAND_WRITE;
+        // swr.stime = req->stime;
+        // /* get latency statistics */
+        // curlat = ssd_advance_status(ssd, &ppa, &swr);
+        // maxlat = (curlat > maxlat) ? curlat : maxlat;
+    }
+
+    return maxlat;
 }
