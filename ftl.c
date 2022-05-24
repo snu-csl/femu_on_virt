@@ -741,11 +741,11 @@ uint64_t ssd_write(struct nvme_command *cmd)
     }
 
     while (should_gc_high(&ssd)) {
+		NVMEV_INFO("should_gc_high passed");
         /* perform GC here until !should_gc(ssd) */
-        // r = do_gc(ssd, true);
-        // if (r == -1)
-        //     break;
-        printk("should_gc_high passed");
+        r = do_gc(&ssd, true);
+        if (r == -1)
+			break;
     }
 
     for (lpn = start_lpn; lpn <= end_lpn; lpn++) {

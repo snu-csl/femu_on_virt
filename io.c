@@ -134,7 +134,7 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 
 	if (cmd->common.opcode == nvme_cmd_write) {
 		NVMEV_JH("call ssd_write");
-		// ssd_write(cmd);
+		ssd_write(cmd);
 	}
 
 	return length;
