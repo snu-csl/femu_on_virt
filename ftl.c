@@ -58,20 +58,20 @@ static inline void set_rmap_ent(struct ssd *ssd, uint64_t lpn, struct ppa *ppa)
     ssd->rmap[pgidx] = lpn;
 }
 
-// static inline int victim_line_cmp_pri(pqueue_pri_t next, pqueue_pri_t curr)
-// {
-//     return (next > curr);
-// }
+static inline int victim_line_cmp_pri(pqueue_pri_t next, pqueue_pri_t curr)
+{
+    return (next > curr);
+}
 
-// static inline pqueue_pri_t victim_line_get_pri(void *a)
-// {
-//     return ((struct line *)a)->vpc;
-// }
+static inline pqueue_pri_t victim_line_get_pri(void *a)
+{
+    return ((struct line *)a)->vpc;
+}
 
-// static inline void victim_line_set_pri(void *a, pqueue_pri_t pri)
-// {
-//     ((struct line *)a)->vpc = pri;
-// }
+static inline void victim_line_set_pri(void *a, pqueue_pri_t pri)
+{
+    ((struct line *)a)->vpc = pri;
+}
 
 static inline size_t victim_line_get_pos(void *a)
 {
@@ -95,9 +95,9 @@ static void ssd_init_lines(struct ssd *ssd)
     lm->lines = vmalloc(sizeof(struct line) * lm->tt_lines);
 
     QTAILQ_INIT(&lm->free_line_list);
-    // lm->victim_line_pq = pqueue_init(spp->tt_lines, victim_line_cmp_pri,
-    //         victim_line_get_pri, victim_line_set_pri,
-    //         victim_line_get_pos, victim_line_set_pos);
+    lm->victim_line_pq = pqueue_init(spp->tt_lines, victim_line_cmp_pri,
+            victim_line_get_pri, victim_line_set_pri,
+            victim_line_get_pos, victim_line_set_pos);
     QTAILQ_INIT(&lm->full_line_list);
 
     lm->free_line_cnt = 0;
@@ -192,7 +192,7 @@ static void ssd_advance_write_pointer(struct ssd *ssd)
                     NVMEV_ASSERT(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->pgs_per_line);
                     /* there must be some invalid pages in this line */
                     NVMEV_ASSERT(wpp->curline->ipc > 0);
-                    // pqueue_insert(lm->victim_line_pq, wpp->curline);
+                    pqueue_insert(lm->victim_line_pq, wpp->curline);
                     lm->victim_line_cnt++;
                 }
                 /* current line is used up, pick another empty line */
@@ -506,21 +506,21 @@ static void mark_page_invalid(struct ssd *ssd, struct ppa *ppa)
     }
     line->ipc++;
     NVMEV_ASSERT(line->vpc > 0 && line->vpc <= spp->pgs_per_line);
-    // /* Adjust the position of the victime line in the pq under over-writes */
-    // if (line->pos) {
-    //     /* Note that line->vpc will be updated by this call */
-    //     pqueue_change_priority(lm->victim_line_pq, line->vpc - 1, line);
-    // } else {
-    //     line->vpc--;
-    // }
+    /* Adjust the position of the victime line in the pq under over-writes */
+    if (line->pos) {
+        /* Note that line->vpc will be updated by this call */
+        pqueue_change_priority(lm->victim_line_pq, line->vpc - 1, line);
+    } else {
+        line->vpc--;
+    }
 
-    // if (was_full_line) {
-    //     /* move line: "full" -> "victim" */
-    //     QTAILQ_REMOVE(&lm->full_line_list, line, entry);
-    //     lm->full_line_cnt--;
-    //     pqueue_insert(lm->victim_line_pq, line);
-    //     lm->victim_line_cnt++;
-    // }
+    if (was_full_line) {
+        /* move line: "full" -> "victim" */
+        QTAILQ_REMOVE(&lm->full_line_list, line, entry);
+        lm->full_line_cnt--;
+        pqueue_insert(lm->victim_line_pq, line);
+        lm->victim_line_cnt++;
+    }
 }
 
 static void mark_page_valid(struct ssd *ssd, struct ppa *ppa)
@@ -565,6 +565,161 @@ static void mark_block_free(struct ssd *ssd, struct ppa *ppa)
     blk->vpc = 0;
     blk->erase_cnt++;
 }
+
+static void gc_read_page(struct ssd *ssd, struct ppa *ppa)
+{
+    /* advance ssd status, we don't care about how long it takes */
+    if (ssd->sp.enable_gc_delay) {
+        struct nand_cmd gcr;
+        gcr.type = GC_IO;
+        gcr.cmd = NAND_READ;
+        gcr.stime = 0;
+        // ssd_advance_status(ssd, ppa, &gcr);
+    }
+}
+
+/* move valid page data (already in DRAM) from victim line to a new page */
+static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
+{
+    struct ppa new_ppa;
+    struct nand_lun *new_lun;
+    uint64_t lpn = get_rmap_ent(ssd, old_ppa);
+
+    NVMEV_ASSERT(valid_lpn(ssd, lpn));
+    new_ppa = get_new_page(ssd);
+    /* update maptbl */
+    set_maptbl_ent(ssd, lpn, &new_ppa);
+    /* update rmap */
+    set_rmap_ent(ssd, lpn, &new_ppa);
+
+    mark_page_valid(ssd, &new_ppa);
+
+    /* need to advance the write pointer here */
+    ssd_advance_write_pointer(ssd);
+
+    if (ssd->sp.enable_gc_delay) {
+        struct nand_cmd gcw;
+        gcw.type = GC_IO;
+        gcw.cmd = NAND_WRITE;
+        gcw.stime = 0;
+        // ssd_advance_status(ssd, &new_ppa, &gcw);
+    }
+
+    /* advance per-ch gc_endtime as well */
+#if 0
+    new_ch = get_ch(ssd, &new_ppa);
+    new_ch->gc_endtime = new_ch->next_ch_avail_time;
+#endif
+
+    new_lun = get_lun(ssd, &new_ppa);
+    new_lun->gc_endtime = new_lun->next_lun_avail_time;
+
+    return 0;
+}
+
+static struct line *select_victim_line(struct ssd *ssd, bool force)
+{
+    struct line_mgmt *lm = &ssd->lm;
+    struct line *victim_line = NULL;
+
+    victim_line = pqueue_peek(lm->victim_line_pq);
+    if (!victim_line) {
+        return NULL;
+    }
+
+    if (!force && victim_line->ipc < ssd->sp.pgs_per_line / 8) {
+        return NULL;
+    }
+
+    pqueue_pop(lm->victim_line_pq);
+    victim_line->pos = 0;
+    lm->victim_line_cnt--;
+
+    /* victim_line is a danggling node now */
+    return victim_line;
+}
+
+/* here ppa identifies the block we want to clean */
+static void clean_one_block(struct ssd *ssd, struct ppa *ppa)
+{
+    struct ssdparams *spp = &ssd->sp;
+    struct nand_page *pg_iter = NULL;
+    int cnt = 0;
+    int pg;
+
+    for (pg = 0; pg < spp->pgs_per_blk; pg++) {
+        ppa->g.pg = pg;
+        pg_iter = get_pg(ssd, ppa);
+        /* there shouldn't be any free page in victim blocks */
+        NVMEV_ASSERT(pg_iter->status != PG_FREE);
+        if (pg_iter->status == PG_VALID) {
+            gc_read_page(ssd, ppa);
+            /* delay the maptbl update until "write" happens */
+            gc_write_page(ssd, ppa);
+            cnt++;
+        }
+    }
+
+    NVMEV_ASSERT(get_blk(ssd, ppa)->vpc == cnt);
+}
+
+static void mark_line_free(struct ssd *ssd, struct ppa *ppa)
+{
+    struct line_mgmt *lm = &ssd->lm;
+    struct line *line = get_line(ssd, ppa);
+    line->ipc = 0;
+    line->vpc = 0;
+    /* move this line to free line list */
+    QTAILQ_INSERT_TAIL(&lm->free_line_list, line, entry);
+    lm->free_line_cnt++;
+}
+
+static int do_gc(struct ssd *ssd, bool force)
+{
+    struct line *victim_line = NULL;
+    struct ssdparams *spp = &ssd->sp;
+    struct nand_lun *lunp;
+    struct ppa ppa;
+    int ch, lun;
+
+    victim_line = select_victim_line(ssd, force);
+    if (!victim_line) {
+        return -1;
+    }
+
+    ppa.g.blk = victim_line->id;
+    NVMEV_DEBUG("GC-ing line:%d,ipc=%d,victim=%d,full=%d,free=%d\n", ppa.g.blk,
+              victim_line->ipc, ssd->lm.victim_line_cnt, ssd->lm.full_line_cnt,
+              ssd->lm.free_line_cnt);
+
+    /* copy back valid data */
+    for (ch = 0; ch < spp->nchs; ch++) {
+        for (lun = 0; lun < spp->luns_per_ch; lun++) {
+            ppa.g.ch = ch;
+            ppa.g.lun = lun;
+            ppa.g.pl = 0;
+            lunp = get_lun(ssd, &ppa);
+            clean_one_block(ssd, &ppa);
+            mark_block_free(ssd, &ppa);
+
+            if (spp->enable_gc_delay) {
+                struct nand_cmd gce;
+                gce.type = GC_IO;
+                gce.cmd = NAND_ERASE;
+                gce.stime = 0;
+                // ssd_advance_status(ssd, &ppa, &gce);
+            }
+
+            lunp->gc_endtime = lunp->next_lun_avail_time;
+        }
+    }
+
+    /* update line status */
+    mark_line_free(ssd, &ppa);
+
+    return 0;
+}
+
 
 uint64_t ssd_write(struct nvme_command *cmd)
 {

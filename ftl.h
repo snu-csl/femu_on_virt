@@ -3,6 +3,7 @@
 
 #include <linux/types.h>
 #include "queue.h"
+#include "pqueue.h"
 
 #define INVALID_PPA     (~(0ULL))
 #define INVALID_LPN     (~(0ULL))
@@ -197,7 +198,7 @@ struct line_mgmt {
 
     /* free line list, we only need to maintain a list of blk numbers */
     QTAILQ_HEAD(free_line_list, line) free_line_list;
-    // pqueue_t *victim_line_pq;
+    pqueue_t *victim_line_pq;
     // //QTAILQ_HEAD(victim_line_list, line) victim_line_list;
     QTAILQ_HEAD(full_line_list, line) full_line_list;
 
