@@ -39,6 +39,13 @@
 #define NVMEV_DEBUG(string, args...)
 #endif
 
+#ifdef CONFIG_NVMEV_DEBUG_JAEHOON
+#define NVMEV_JH(string, args...) \
+	printk(KERN_INFO "%s: [JH_LOG]" string, NVMEV_DRV_NAME, ##args)
+#else
+#define NVMEV_JH(string, args...)
+#endif
+
 #define NR_MAX_IO_QUEUE 72
 #define NR_MAX_PARALLEL_IO 16384
 

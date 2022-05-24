@@ -133,8 +133,8 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 		kunmap_atomic(paddr_list);
 
 	if (cmd->common.opcode == nvme_cmd_write) {
-		printk("call ssd_write");
-		ssd_write(cmd);
+		NVMEV_JH("call ssd_write");
+		// ssd_write(cmd);
 	}
 
 	return length;

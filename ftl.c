@@ -3,6 +3,8 @@
 
 struct ssd ssd;
 
+#define CONFIG_NVMEV_DEBUG_JAEHOON
+
 static inline bool should_gc(struct ssd *ssd)
 {
     return (ssd->lm.free_line_cnt <= ssd->sp.gc_thres_lines);
@@ -29,7 +31,7 @@ static uint64_t ppa2pgidx(struct ssd *ssd, struct ppa *ppa)
     struct ssdparams *spp = &ssd->sp;
     uint64_t pgidx;
 
-    printk("[JH_LOG] ppa2pgidx: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n",
+    NVMEV_JH("ppa2pgidx: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n",
         ppa->g.ch, ppa->g.lun, ppa->g.pl, ppa->g.blk, ppa->g.pg);
 
     pgidx = ppa->g.ch  * spp->pgs_per_ch  + \
@@ -163,7 +165,7 @@ static void ssd_advance_write_pointer(struct ssd *ssd)
     struct write_pointer *wpp = &ssd->wp;
     struct line_mgmt *lm = &ssd->lm;
 
-    printk("[JH_LOG] current wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n", 
+    NVMEV_JH("current wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n", 
         wpp->ch, wpp->lun, wpp->pl, wpp->blk, wpp->pg);
 
     check_addr(wpp->ch, spp->nchs);
@@ -186,9 +188,9 @@ static void ssd_advance_write_pointer(struct ssd *ssd)
                     NVMEV_ASSERT(wpp->curline->ipc == 0);
                     QTAILQ_INSERT_TAIL(&lm->full_line_list, wpp->curline, entry);
                     lm->full_line_cnt++;
-                    printk("[JH_LOG] wpp: move line to full_line_list\n");
+                    NVMEV_JH("wpp: move line to full_line_list\n");
                 } else {
-                    NVMEV_ERROR("[JH_LOG] wpp: line is moved to victim list\n");
+                    NVMEV_JH("wpp: line is moved to victim list\n");
                     NVMEV_ASSERT(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->pgs_per_line);
                     /* there must be some invalid pages in this line */
                     NVMEV_ASSERT(wpp->curline->ipc > 0);
@@ -203,7 +205,7 @@ static void ssd_advance_write_pointer(struct ssd *ssd)
                     /* TODO */
                     NVMEV_ERROR("curline is NULL!");
                 }
-                printk("[JH_LOG] wpp: got new clean line %d\n", wpp->curline->id);
+                NVMEV_JH("wpp: got new clean line %d\n", wpp->curline->id);
                 wpp->blk = wpp->curline->id;
                 check_addr(wpp->blk, spp->blks_per_pl);
                 /* make sure we are starting from page 0 in the super block */
@@ -216,7 +218,7 @@ static void ssd_advance_write_pointer(struct ssd *ssd)
         }
     }
 
-    printk("[JH_LOG] advanced wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d (curline %d)\n", 
+    NVMEV_JH("advanced wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d (curline %d)\n", 
         wpp->ch, wpp->lun, wpp->pg, wpp->blk, wpp->pg, wpp->curline->id);
 }
 
@@ -394,19 +396,19 @@ void ssd_init(void)
     }
 
     /* initialize maptbl */
-    printk("initialize maptbl");
+    printk("initialize maptbl\n");
     ssd_init_maptbl(&ssd); // mapping table
 
     /* initialize rmap */
-    printk("initialize rmap");
+    printk("initialize rmap\n");
     ssd_init_rmap(&ssd); // reverse mapping table (?)
 
     /* initialize all the lines */
-    printk("initialize lines");
+    printk("initialize lines\n");
     ssd_init_lines(&ssd);
 
     /* initialize write pointer, this is how we allocate new pages for writes */
-    printk("initialize write pointer");
+    printk("initialize write pointer\n");
     ssd_init_write_pointer(&ssd);
 
     // qemu_thread_create(&ssd->ftl_thread, "FEMU-FTL-Thread", ftl_thread, n,
@@ -733,7 +735,7 @@ uint64_t ssd_write(struct nvme_command *cmd)
     uint64_t curlat = 0, maxlat = 0;
     int r;
 
-    printk("[JH_LOG] ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, len, end_lpn);
+    NVMEV_JH("ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, len, end_lpn);
     if (end_lpn >= spp->tt_pgs) {
         NVMEV_ERROR("start_lpn=%lld,tt_pgs=%d\n", start_lpn, ssd.sp.tt_pgs);
     }
@@ -752,14 +754,14 @@ uint64_t ssd_write(struct nvme_command *cmd)
             /* update old page information first */
             mark_page_invalid(&ssd, &ppa);
             set_rmap_ent(&ssd, INVALID_LPN, &ppa);
-            printk("[JH_LOG] ssd_write: %lld is invalid, ", ppa2pgidx(&ssd, &ppa));
+            NVMEV_JH("ssd_write: %lld is invalid, ", ppa2pgidx(&ssd, &ppa));
         }
 
         /* new write */
         ppa = get_new_page(&ssd);
         /* update maptbl */
         set_maptbl_ent(&ssd, lpn, &ppa);
-        printk("[JH_LOG] ssd_write: got new ppa %lld, ", ppa2pgidx(&ssd, &ppa));
+        NVMEV_JH("ssd_write: got new ppa %lld, ", ppa2pgidx(&ssd, &ppa));
         /* update rmap */
         set_rmap_ent(&ssd, lpn, &ppa);
 

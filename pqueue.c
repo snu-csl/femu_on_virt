@@ -39,6 +39,7 @@ pqueue_t *pqueue_init(size_t n, pqueue_cmp_pri_f cmppri, pqueue_get_pri_f getpri
         return NULL;
 
     /* Need to allocate n+1 elements since element 0 isn't used. */
+    NVMEV_JH("[JH_LOG] {alloc} n=%ld, size=%ld\n", n, (n + 1) * sizeof(void *));
     if (!(q->d = kmalloc((n + 1) * sizeof(void *), GFP_KERNEL))) {
         kfree(q);
         return NULL;
