@@ -5,9 +5,9 @@ struct ssd ssd;
 
 #define CONFIG_NVMEV_DEBUG_JAEHOON
 
-static inline bool should_gc(struct ssd *ssd)
+bool should_gc(void)
 {
-    return (ssd->lm.free_line_cnt <= ssd->sp.gc_thres_lines);
+    return (ssd.lm.free_line_cnt <= ssd.sp.gc_thres_lines);
 }
 
 static inline bool should_gc_high(struct ssd *ssd)
@@ -751,23 +751,23 @@ static void mark_line_free(struct ssd *ssd, struct ppa *ppa)
     lm->free_line_cnt++;
 }
 
-static int do_gc(struct ssd *ssd, bool force)
-{
+int do_gc(bool force)
+{   
     struct line *victim_line = NULL;
-    struct ssdparams *spp = &ssd->sp;
+    struct ssdparams *spp = &(ssd.sp);
     struct nand_lun *lunp;
     struct ppa ppa;
     int ch, lun;
 
-    victim_line = select_victim_line(ssd, force);
+    victim_line = select_victim_line(&ssd, force);
     if (!victim_line) {
         return -1;
     }
 
     ppa.g.blk = victim_line->id;
     NVMEV_DEBUG("GC-ing line:%d,ipc=%d,victim=%d,full=%d,free=%d\n", ppa.g.blk,
-              victim_line->ipc, ssd->lm.victim_line_cnt, ssd->lm.full_line_cnt,
-              ssd->lm.free_line_cnt);
+              victim_line->ipc, ssd.lm.victim_line_cnt, ssd.lm.full_line_cnt,
+              ssd.lm.free_line_cnt);
 
     /* copy back valid data */
     for (ch = 0; ch < spp->nchs; ch++) {
@@ -775,9 +775,9 @@ static int do_gc(struct ssd *ssd, bool force)
             ppa.g.ch = ch;
             ppa.g.lun = lun;
             ppa.g.pl = 0;
-            lunp = get_lun(ssd, &ppa);
-            clean_one_block(ssd, &ppa);
-            mark_block_free(ssd, &ppa);
+            lunp = get_lun(&ssd, &ppa);
+            clean_one_block(&ssd, &ppa);
+            mark_block_free(&ssd, &ppa);
 
             if (spp->enable_gc_delay) {
                 struct nand_cmd gce;
@@ -792,7 +792,7 @@ static int do_gc(struct ssd *ssd, bool force)
     }
 
     /* update line status */
-    mark_line_free(ssd, &ppa);
+    mark_line_free(&ssd, &ppa);
 
     return 0;
 }
@@ -818,7 +818,7 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
     while (should_gc_high(&ssd)) {
 		NVMEV_INFO("should_gc_high passed");
         /* perform GC here until !should_gc(ssd) */
-        r = do_gc(&ssd, true);
+        r = do_gc(true);
         if (r == -1)
 			break;
     }

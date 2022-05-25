@@ -501,6 +501,11 @@ static int nvmev_kthread_io(void *data)
 				pe->is_completed = true;
 
 				curr = pe->next;
+
+				/* clean one line if needed (in the background) */
+				if (should_gc()) {
+					do_gc(false);
+				}
 			} else {
 				break;
 			}
