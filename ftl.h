@@ -230,5 +230,5 @@ struct ssd {
 };
 
 void ssd_init(void);
-uint64_t ssd_write(struct nvme_command *cmd);
+uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
 #endif

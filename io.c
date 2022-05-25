@@ -75,8 +75,11 @@ static unsigned long long __schedule_io_units(int opcode, unsigned long lba, uns
 	return latest;
 }
 
-static unsigned int __do_perform_io(int sqid, int sq_entry)
+static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
 {
+	int sqid = pe->sqid;
+	int sq_entry = pe->sq_entry;
+	unsigned long long nsecs_start = pe->nsecs_start;
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	size_t offset;
 	size_t length, remaining;
@@ -86,6 +89,7 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 	u64 *paddr_list = NULL;
 	size_t mem_offs = 0;
 	struct nvme_command *cmd = &sq_entry(sq_entry);
+	uint64_t max_lat = 0;
 
 	offset = sq_entry(sq_entry).rw.slba << 9;
 	length = (sq_entry(sq_entry).rw.length + 1) << 9;
@@ -134,8 +138,10 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 
 	if (cmd->common.opcode == nvme_cmd_write) {
 		NVMEV_JH("call ssd_write");
-		ssd_write(cmd);
+		max_lat = ssd_write(cmd, nsecs_start);
 	}
+
+	pe->nsecs_target = nsecs_start + max_lat;
 
 	return length;
 }
@@ -308,9 +314,10 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	switch(cmd->common.opcode) {
 	case nvme_cmd_write:
 	case nvme_cmd_read:
-		io_len = __cmd_io_size(&cmd->rw);
-		nsecs_target = __schedule_io_units(cmd->common.opcode,
-					cmd->rw.slba, io_len, nsecs_start);
+		nsecs_target = 0;
+		// io_len = __cmd_io_size(&cmd->rw);
+		// nsecs_target = __schedule_io_units(cmd->common.opcode,
+		// 			cmd->rw.slba, io_len, nsecs_start);
 		break;
 	case nvme_cmd_flush:
 		nsecs_target = __nvmev_proc_flush(sqid, sq_entry);
@@ -459,7 +466,7 @@ static int nvmev_kthread_io(void *data)
 				unsigned long long memcpy_time;
 				pe->nsecs_copy_start = local_clock() + delta;
 #endif
-				__do_perform_io(pe->sqid, pe->sq_entry);
+				__do_perform_io(pe);
 
 #ifdef PERF_DEBUG
 				pe->nsecs_copy_done = local_clock() + delta;

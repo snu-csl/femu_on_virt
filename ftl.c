@@ -477,6 +477,81 @@ static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
     return &(blk->pg[ppa->g.pg]);
 }
 
+static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd)
+{
+    
+    int c = ncmd->cmd;
+    uint64_t cmd_stime = ncmd->stime;
+    uint64_t nand_stime;
+    struct ssdparams *spp = &ssd->sp;
+    struct nand_lun *lun = get_lun(ssd, ppa);
+    uint64_t lat = 0;
+
+    printk("Enter stime: %lld, %lld\n", ncmd->stime, cmd_stime);
+    switch (c) {
+    case NAND_READ:
+        /* read: perform NAND cmd first */
+        nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
+                     lun->next_lun_avail_time;
+        lun->next_lun_avail_time = nand_stime + spp->pg_rd_lat;
+        lat = lun->next_lun_avail_time - cmd_stime;
+#if 0
+        lun->next_lun_avail_time = nand_stime + spp->pg_rd_lat;
+
+        /* read: then data transfer through channel */
+        chnl_stime = (ch->next_ch_avail_time < lun->next_lun_avail_time) ? \
+            lun->next_lun_avail_time : ch->next_ch_avail_time;
+        ch->next_ch_avail_time = chnl_stime + spp->ch_xfer_lat;
+
+        lat = ch->next_ch_avail_time - cmd_stime;
+#endif
+        break;
+
+    case NAND_WRITE:
+        /* write: transfer data through channel first */
+        nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
+                     lun->next_lun_avail_time;
+        printk("nand_stime=%lld(next_lun_avail: %lld, cmd_stime: %lld)\n", nand_stime, 
+                lun->next_lun_avail_time, cmd_stime);
+        if (ncmd->type == USER_IO) {
+            lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
+            printk("fixed next_lun_avail %lld, %d\n", lun->next_lun_avail_time, spp->pg_wr_lat);
+        } else {
+            lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
+        }
+        lat = lun->next_lun_avail_time - cmd_stime;
+        printk("cmd latency %lld\n", lat);
+
+#if 0
+        chnl_stime = (ch->next_ch_avail_time < cmd_stime) ? cmd_stime : \
+                     ch->next_ch_avail_time;
+        ch->next_ch_avail_time = chnl_stime + spp->ch_xfer_lat;
+
+        /* write: then do NAND program */
+        nand_stime = (lun->next_lun_avail_time < ch->next_ch_avail_time) ? \
+            ch->next_ch_avail_time : lun->next_lun_avail_time;
+        lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
+
+        lat = lun->next_lun_avail_time - cmd_stime;
+#endif
+        break;
+
+    case NAND_ERASE:
+        /* erase: only need to advance NAND status */
+        nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
+                     lun->next_lun_avail_time;
+        lun->next_lun_avail_time = nand_stime + spp->blk_er_lat;
+
+        lat = lun->next_lun_avail_time - cmd_stime;
+        break;
+
+    default:
+        NVMEV_ERROR("Unsupported NAND command: 0x%x\n", c);
+    }
+
+    return lat;
+}
+
 /* update SSD status about one page from PG_VALID -> PG_VALID */
 static void mark_page_invalid(struct ssd *ssd, struct ppa *ppa)
 {
@@ -723,7 +798,7 @@ static int do_gc(struct ssd *ssd, bool force)
 }
 
 
-uint64_t ssd_write(struct nvme_command *cmd)
+uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
 {
     uint64_t lba = cmd->rw.slba;
     struct ssdparams *spp = &(ssd.sp);
@@ -770,13 +845,13 @@ uint64_t ssd_write(struct nvme_command *cmd)
         /* need to advance the write pointer here */
         ssd_advance_write_pointer(&ssd);
 
-        // struct nand_cmd swr;
-        // swr.type = USER_IO;
-        // swr.cmd = NAND_WRITE;
-        // swr.stime = req->stime;
-        // /* get latency statistics */
-        // curlat = ssd_advance_status(ssd, &ppa, &swr);
-        // maxlat = (curlat > maxlat) ? curlat : maxlat;
+        struct nand_cmd swr;
+        swr.type = USER_IO;
+        swr.cmd = NAND_WRITE;
+        swr.stime = nsecs_start;
+        /* get latency statistics */
+        curlat = ssd_advance_status(&ssd, &ppa, &swr);
+        maxlat = (curlat > maxlat) ? curlat : maxlat;
     }
 
     return maxlat;
