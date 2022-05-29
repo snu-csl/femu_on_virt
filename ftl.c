@@ -487,7 +487,7 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
     struct nand_lun *lun = get_lun(ssd, ppa);
     uint64_t lat = 0;
 
-    printk("Enter stime: %lld, %lld\n", ncmd->stime, cmd_stime);
+    //printk("Enter stime: %lld, %lld\n", ncmd->stime, cmd_stime);
     switch (c) {
     case NAND_READ:
         /* read: perform NAND cmd first */
@@ -511,16 +511,16 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
         /* write: transfer data through channel first */
         nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                      lun->next_lun_avail_time;
-        printk("nand_stime=%lld(next_lun_avail: %lld, cmd_stime: %lld)\n", nand_stime, 
-                lun->next_lun_avail_time, cmd_stime);
+        //printk("nand_stime=%lld(next_lun_avail: %lld, cmd_stime: %lld)\n", nand_stime, 
+        //        lun->next_lun_avail_time, cmd_stime);
         if (ncmd->type == USER_IO) {
             lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
-            printk("fixed next_lun_avail %lld, %d\n", lun->next_lun_avail_time, spp->pg_wr_lat);
+            //printk("fixed next_lun_avail %lld, %d\n", lun->next_lun_avail_time, spp->pg_wr_lat);
         } else {
             lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
         }
         lat = lun->next_lun_avail_time - cmd_stime;
-        printk("cmd latency %lld\n", lat);
+        //printk("cmd latency %lld\n", lat);
 
 #if 0
         chnl_stime = (ch->next_ch_avail_time < cmd_stime) ? cmd_stime : \
