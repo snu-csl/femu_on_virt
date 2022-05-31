@@ -429,6 +429,20 @@ static void __fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int comm
 	spin_unlock(&cq->entry_lock);
 }
 
+static void __check_gc_and_run(int sqid, int sq_entry)
+{
+	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	struct nvme_command *cmd = &sq_entry(sq_entry);
+
+	/* clean one line if needed (in the background) */
+	if (cmd->common.opcode == nvme_cmd_write) {
+		if (should_gc()) {
+			NVMEV_INFO("NEED GC!\n");
+			do_gc(false); // 782336
+		}
+	}
+}
+
 static int nvmev_kthread_io(void *data)
 {
 	struct nvmev_proc_info *pi = (struct nvmev_proc_info *)data;
@@ -483,6 +497,8 @@ static int nvmev_kthread_io(void *data)
 				__fill_cq_result(pe->sqid, pe->cqid,
 						pe->sq_entry, pe->command_id);
 
+				__check_gc_and_run(pe->sqid, pe->sq_entry);
+
 				NVMEV_DEBUG("%s: completed %u, %d %d %d\n",
 						pi->thread_name, curr,
 						pe->sqid, pe->cqid, pe->sq_entry);
@@ -502,10 +518,6 @@ static int nvmev_kthread_io(void *data)
 
 				curr = pe->next;
 
-				/* clean one line if needed (in the background) */
-				if (should_gc()) {
-					do_gc(false);
-				}
 			} else {
 				break;
 			}
