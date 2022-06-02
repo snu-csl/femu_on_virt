@@ -511,16 +511,12 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
         /* write: transfer data through channel first */
         nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                      lun->next_lun_avail_time;
-        //printk("nand_stime=%lld(next_lun_avail: %lld, cmd_stime: %lld)\n", nand_stime, 
-        //        lun->next_lun_avail_time, cmd_stime);
         if (ncmd->type == USER_IO) {
             lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
-            //printk("fixed next_lun_avail %lld, %d\n", lun->next_lun_avail_time, spp->pg_wr_lat);
         } else {
             lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
         }
         lat = lun->next_lun_avail_time - cmd_stime;
-        //printk("cmd latency %lld\n", lat);
 
 #if 0
         chnl_stime = (ch->next_ch_avail_time < cmd_stime) ? cmd_stime : \
@@ -784,7 +780,7 @@ int do_gc(bool force)
                 gce.type = GC_IO;
                 gce.cmd = NAND_ERASE;
                 gce.stime = 0;
-                // ssd_advance_status(ssd, &ppa, &gce);
+                ssd_advance_status(ssd, &ppa, &gce);
             }
 
             lunp->gc_endtime = lunp->next_lun_avail_time;
