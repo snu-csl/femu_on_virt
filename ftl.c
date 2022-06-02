@@ -780,7 +780,7 @@ int do_gc(bool force)
                 gce.type = GC_IO;
                 gce.cmd = NAND_ERASE;
                 gce.stime = 0;
-                ssd_advance_status(ssd, &ppa, &gce);
+                ssd_advance_status(&ssd, &ppa, &gce);
             }
 
             lunp->gc_endtime = lunp->next_lun_avail_time;
