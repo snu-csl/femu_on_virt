@@ -383,7 +383,6 @@ static void ssd_init_rmap(struct ssd *ssd)
 
 void ssd_init(void)
 {
-
     struct ssdparams *spp = &(ssd.sp);
     int i;
 
@@ -396,23 +395,20 @@ void ssd_init(void)
     }
 
     /* initialize maptbl */
-    printk("initialize maptbl\n");
+    NVMEV_INFO("initialize maptbl\n");
     ssd_init_maptbl(&ssd); // mapping table
 
     /* initialize rmap */
-    printk("initialize rmap\n");
+    NVMEV_INFO("initialize rmap\n");
     ssd_init_rmap(&ssd); // reverse mapping table (?)
 
     /* initialize all the lines */
-    printk("initialize lines\n");
+    NVMEV_INFO("initialize lines\n");
     ssd_init_lines(&ssd);
 
     /* initialize write pointer, this is how we allocate new pages for writes */
-    printk("initialize write pointer\n");
+    NVMEV_INFO("initialize write pointer\n");
     ssd_init_write_pointer(&ssd);
-
-    // qemu_thread_create(&ssd->ftl_thread, "FEMU-FTL-Thread", ftl_thread, n,
-    //                    QEMU_THREAD_JOINABLE);
 }
 
 static inline bool valid_ppa(struct ssd *ssd, struct ppa *ppa)
@@ -793,6 +789,44 @@ int do_gc(bool force)
     return 0;
 }
 
+uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
+{
+    struct ssdparams *spp = &(ssd.sp);
+    uint64_t lba = cmd->rw.slba;
+    int nsecs = (cmd->rw.length + 1);
+    struct ppa ppa;
+    uint64_t start_lpn = lba / spp->secs_per_pg;
+    uint64_t end_lpn = (lba + nsecs - 1) / spp->secs_per_pg;
+    uint64_t lpn;
+    uint64_t sublat, maxlat = 0;
+
+    NVMEV_INFO("ssd_read: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nsecs, end_lpn);
+    if (end_lpn >= spp->tt_pgs) {
+        NVMEV_ERROR("ssd_read: lpn passed FTL range(start_lpn=%lld,tt_pgs=%d)\n", start_lpn, ssd.sp.tt_pgs);
+        return 0;
+    }
+
+    /* normal IO read path */
+    for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
+        ppa = get_maptbl_ent(&ssd, lpn);
+        if (!mapped_ppa(&ppa) || !valid_ppa(&ssd, &ppa))
+        {
+            // printf("%s,lpn(%" PRId64 ") not mapped to valid ppa\n", ssd->ssdname, lpn);
+            // printf("Invalid ppa,ch:%d,lun:%d,blk:%d,pl:%d,pg:%d,sec:%d\n",
+            // ppa.g.ch, ppa.g.lun, ppa.g.blk, ppa.g.pl, ppa.g.pg, ppa.g.sec);
+            continue;
+        }
+
+        struct nand_cmd srd;
+        srd.type = USER_IO;
+        srd.cmd = NAND_READ;
+        srd.stime = nsecs_start;
+        sublat = ssd_advance_status(&ssd, &ppa, &srd);
+        maxlat = (sublat > maxlat) ? sublat : maxlat;
+    }
+
+    return maxlat;
+}
 
 uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
 {
@@ -808,7 +842,8 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
 
     NVMEV_JH("ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, len, end_lpn);
     if (end_lpn >= spp->tt_pgs) {
-        NVMEV_ERROR("start_lpn=%lld,tt_pgs=%d\n", start_lpn, ssd.sp.tt_pgs);
+        NVMEV_ERROR("ssd_write: lpn passed FTL range(start_lpn=%lld,tt_pgs=%d)\n", start_lpn, ssd.sp.tt_pgs);
+        return 0;
     }
 
     while (should_gc_high(&ssd)) {

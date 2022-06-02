@@ -137,8 +137,9 @@ static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
 		kunmap_atomic(paddr_list);
 
 	if (cmd->common.opcode == nvme_cmd_write) {
-		NVMEV_JH("call ssd_write");
 		max_lat = ssd_write(cmd, nsecs_start);
+	} else if (cmd->common.opcode == nvme_cmd_read) {
+		max_lat = ssd_read(cmd, nsecs_start);
 	}
 
 	pe->nsecs_target = nsecs_start + max_lat;
