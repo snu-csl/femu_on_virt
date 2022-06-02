@@ -6,6 +6,7 @@ nvmev-objs := main.o pci.o admin.o io.o ftl.o pqueue.o
 
 default:
 		$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+		ctags -R
 
 install:
 	   $(MAKE) -C $(KERNELDIR) M=$(PWD) modules_install
