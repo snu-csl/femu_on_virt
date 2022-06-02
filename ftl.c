@@ -800,7 +800,7 @@ uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
     uint64_t lpn;
     uint64_t sublat, maxlat = 0;
 
-    NVMEV_INFO("ssd_read: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nsecs, end_lpn);
+    NVMEV_JH("ssd_read: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nsecs, end_lpn);
     if (end_lpn >= spp->tt_pgs) {
         NVMEV_ERROR("ssd_read: lpn passed FTL range(start_lpn=%lld,tt_pgs=%d)\n", start_lpn, ssd.sp.tt_pgs);
         return 0;
