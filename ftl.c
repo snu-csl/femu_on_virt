@@ -488,7 +488,8 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
 {
     
     int c = ncmd->cmd;
-    uint64_t cmd_stime = ncmd->stime;
+    uint64_t cmd_stime = (ncmd->stime == 0) ? \
+        __get_ioclock() : ncmd->stime;
     uint64_t nand_stime;
     struct ssdparams *spp = &ssd->sp;
     struct nand_lun *lun = get_lun(ssd, ppa);
