@@ -1,9 +1,15 @@
+#include <linux/ktime.h>
+#include <linux/sched/clock.h>
+
 #include "nvmev.h"
 #include "ftl.h"
 
 struct ssd ssd;
 
-#define CONFIG_NVMEV_DEBUG_JAEHOON
+static inline unsigned long long __get_ioclock(void)
+{
+	return cpu_clock(ssd.cpu_nr_dispatcher);
+}
 
 bool should_gc(void)
 {
@@ -381,12 +387,17 @@ static void ssd_init_rmap(struct ssd *ssd)
     }
 }
 
-void ssd_init(void)
+void ssd_init(unsigned int cpu_nr_dispatcher)
 {
     struct ssdparams *spp = &(ssd.sp);
     int i;
 
+    /* Set CPU number for clock */
+    ssd.cpu_nr_dispatcher = cpu_nr_dispatcher;
+
     ssd_init_params(spp);
+
+    NVMEV_INFO("Init FTL with %d pages, CPU %d\n", spp->tt_pgs, cpu_nr_dispatcher);
 
     /* initialize ssd internal layout architecture */
     ssd.ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320

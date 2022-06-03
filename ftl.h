@@ -221,6 +221,7 @@ struct ssd {
     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
     struct write_pointer wp;
     struct line_mgmt lm;
+    unsigned int cpu_nr_dispatcher;
 
     // /* lockless ring for communication with NVMe IO thread */
     // struct rte_ring **to_ftl;
@@ -229,7 +230,7 @@ struct ssd {
     // QemuThread ftl_thread;
 };
 
-void ssd_init(void);
+void ssd_init(unsigned int cpu_nr_dispatcher);
 uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start);
 uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
 bool should_gc(void);

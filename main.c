@@ -486,7 +486,7 @@ static int NVMeV_init(void)
 
 	NVMEV_STORAGE_INIT(vdev);
 
-	ssd_init();
+	ssd_init(vdev->config.cpu_nr_dispatcher);
 
 	NVMEV_IO_PROC_INIT(vdev);
 	NVMEV_DISPATCHER_INIT(vdev);
