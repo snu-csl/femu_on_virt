@@ -643,7 +643,7 @@ static void gc_read_page(struct ssd *ssd, struct ppa *ppa)
         gcr.type = GC_IO;
         gcr.cmd = NAND_READ;
         gcr.stime = 0;
-        // ssd_advance_status(ssd, ppa, &gcr);
+        ssd_advance_status(ssd, ppa, &gcr);
     }
 }
 
@@ -671,7 +671,7 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
         gcw.type = GC_IO;
         gcw.cmd = NAND_WRITE;
         gcw.stime = 0;
-        // ssd_advance_status(ssd, &new_ppa, &gcw);
+        ssd_advance_status(ssd, &new_ppa, &gcw);
     }
 
     /* advance per-ch gc_endtime as well */
