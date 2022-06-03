@@ -235,4 +235,5 @@ uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start);
 uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
 bool should_gc(void);
 int do_gc(bool force);
+void adjust_ftl_latency(int target, int lat);
 #endif

@@ -392,7 +392,7 @@ void ssd_init(unsigned int cpu_nr_dispatcher)
     struct ssdparams *spp = &(ssd.sp);
     int i;
 
-    /* Set CPU number for clock */
+    /* Set CPU number to use same cpuclock as io.c */
     ssd.cpu_nr_dispatcher = cpu_nr_dispatcher;
 
     ssd_init_params(spp);
@@ -898,4 +898,30 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
     }
 
     return maxlat;
+}
+
+void adjust_ftl_latency(int target, int lat)
+{
+    struct ssdparams *spp = &(ssd.sp);
+
+    printk("Before latency: %d %d %d, change to %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat, lat);
+    switch (target) {
+        case NAND_READ:
+            spp->pg_rd_lat = lat;
+            break;
+
+        case NAND_WRITE:
+            spp->pg_wr_lat = lat;
+            break;
+
+        case NAND_ERASE:
+            spp->blk_er_lat = lat;
+            break;
+
+        default:
+            NVMEV_ERROR("Unsupported NAND command\n");
+    }
+
+    printk("After latency: %d %d %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat);
+    
 }
