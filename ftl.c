@@ -254,7 +254,7 @@ static void check_params(struct ssdparams *spp)
     //ftl_assert(is_power_of_2(spp->nchs));
 }
 
-static void ssd_init_params(struct ssdparams *spp)
+static void ssd_init_params(struct ssdparams *spp, int nchs)
 {
     spp->secsz = 512;
     spp->secs_per_pg = 8;
@@ -262,7 +262,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->blks_per_pl = 256; /* 16GB */
     spp->pls_per_lun = 1;
     spp->luns_per_ch = 8;
-    spp->nchs = 8;
+    spp->nchs = nchs;
 
     spp->pg_rd_lat = NAND_READ_LATENCY;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
@@ -387,17 +387,19 @@ static void ssd_init_rmap(struct ssd *ssd)
     }
 }
 
-void ssd_init(unsigned int cpu_nr_dispatcher)
+void ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size)
 {
     struct ssdparams *spp = &(ssd.sp);
     int i;
+    int size_in_gb = memmap_size >> 30; // SSD capacity in GB
+    int nchs = size_in_gb >> 1;
 
     /* Set CPU number to use same cpuclock as io.c */
     ssd.cpu_nr_dispatcher = cpu_nr_dispatcher;
 
-    ssd_init_params(spp);
+    ssd_init_params(spp, nchs);
 
-    NVMEV_INFO("Init FTL with %d pages, CPU %d\n", spp->tt_pgs, cpu_nr_dispatcher);
+    NVMEV_INFO("Init FTL with %d channels(%d pages), CPU %d, Storage Capacity: %ld\n", spp->nchs, spp->tt_pgs, cpu_nr_dispatcher, memmap_size);
 
     /* initialize ssd internal layout architecture */
     ssd.ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320

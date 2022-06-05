@@ -230,7 +230,7 @@ struct ssd {
     // QemuThread ftl_thread;
 };
 
-void ssd_init(unsigned int cpu_nr_dispatcher);
+void ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
 uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start);
 uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
 bool should_gc(void);

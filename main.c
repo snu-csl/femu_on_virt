@@ -480,6 +480,8 @@ static int NVMeV_init(void)
 		goto ret_err;
 	}
 
+	ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.memmap_size);
+
 	if (!NVMEV_PCI_INIT(vdev)) {
 		goto ret_err;
 	}
@@ -487,8 +489,6 @@ static int NVMeV_init(void)
 	__print_perf_configs();
 
 	NVMEV_STORAGE_INIT(vdev);
-
-	ssd_init(vdev->config.cpu_nr_dispatcher);
 
 	NVMEV_IO_PROC_INIT(vdev);
 	NVMEV_DISPATCHER_INIT(vdev);
