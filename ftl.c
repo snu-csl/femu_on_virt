@@ -302,6 +302,8 @@ static void ssd_init_params(struct ssdparams *spp, int nchs)
     spp->gc_thres_lines_high = (int)((1 - spp->gc_thres_pcent_high) * spp->tt_lines);
     spp->enable_gc_delay = 1;
 
+    spp->op_area_pcent = 0.00;
+    spp->pba_pcent = (int)((1 + spp->op_area_pcent) * 100);
 
     check_params(spp);
 }
@@ -387,19 +389,23 @@ static void ssd_init_rmap(struct ssd *ssd)
     }
 }
 
-void ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size)
+unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size)
 {
     struct ssdparams *spp = &(ssd.sp);
     int i;
     int size_in_gb = memmap_size >> 30; // SSD capacity in GB
     int nchs = size_in_gb >> 1;
+    unsigned long logical_space;
 
     /* Set CPU number to use same cpuclock as io.c */
     ssd.cpu_nr_dispatcher = cpu_nr_dispatcher;
 
     ssd_init_params(spp, nchs);
 
-    NVMEV_INFO("Init FTL with %d channels(%d pages), CPU %d, Storage Capacity: %ld\n", spp->nchs, spp->tt_pgs, cpu_nr_dispatcher, memmap_size);
+    logical_space = (unsigned long)((memmap_size * 100) / spp->pba_pcent);
+
+    NVMEV_INFO("Init FTL with %d channels(%d pages), CPU %d\n", spp->nchs, spp->tt_pgs, cpu_nr_dispatcher);
+    NVMEV_INFO("FTL physical space: %ld, logical space: %ld (physical/logical * 100 = %d)\n", memmap_size, logical_space, spp->pba_pcent);
 
     /* initialize ssd internal layout architecture */
     ssd.ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320
@@ -422,6 +428,8 @@ void ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size)
     /* initialize write pointer, this is how we allocate new pages for writes */
     NVMEV_INFO("initialize write pointer\n");
     ssd_init_write_pointer(&ssd);
+
+    return logical_space;
 }
 
 static inline bool valid_ppa(struct ssd *ssd, struct ppa *ppa)

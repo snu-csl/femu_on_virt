@@ -147,6 +147,8 @@ struct ssdparams {
     int gc_thres_lines_high;
     bool enable_gc_delay;
 
+    double op_area_pcent;
+
     /* below are all calculated values */
     int secs_per_blk; /* # of sectors per block */
     int secs_per_pl;  /* # of sectors per plane */
@@ -172,6 +174,8 @@ struct ssdparams {
     int tt_pls;       /* total # of planes in the SSD */
 
     int tt_luns;      /* total # of LUNs in the SSD */
+
+    int pba_pcent;    /* (physical space / logical space) * 100*/    
 };
 
 typedef struct line {
@@ -230,7 +234,7 @@ struct ssd {
     // QemuThread ftl_thread;
 };
 
-void ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
+unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
 uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start);
 uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
 bool should_gc(void);
