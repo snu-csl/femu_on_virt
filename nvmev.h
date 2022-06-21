@@ -26,18 +26,11 @@
 #define SUPPORT_ZNS 1
 #define SUPPORT_MULTI_IO_WORKER_BY_SQ	0 // will be added
 
-#define NR_NAMESPACE	1 //multi namespace is not supported
- 
 #if SUPPORT_ZNS == 0
-#define NS_CSI_0 NVME_CSI_NVM
-#define NS_CSI_1 NVME_CSI_NVM  // not used in NR_NAMESPACE == 1
+#define NS_CSI NVME_CSI_NVM
 #else
-#define NS_CSI_0 NVME_CSI_ZNS
-// WA : # of ZNS Namspace should not be more 1
-#define NS_CSI_1 NVME_CSI_NVM  // not used in NR_NAMESPACE == 1
+#define NS_CSI NVME_CSI_ZNS
 #endif 
-
-#define NS_CSI(ns) ((ns == 0) ? (NS_CSI_0) : (NS_CSI_1))
 
 #define NVMEV_DRV_NAME "NVMeVirt"
 
@@ -147,9 +140,6 @@ struct nvmev_config {
 	unsigned long storage_start; //byte
 	unsigned long storage_size;	// byte
 
-	unsigned long ns_start[NR_NAMESPACE]; // byte
-	unsigned long ns_size[NR_NAMESPACE];  // byte
-
 	unsigned int read_delay;	// ns
 	unsigned int read_time;		// ns
 	unsigned int read_trailing;	// ns
@@ -232,7 +222,6 @@ struct nvmev_dev {
 	struct task_struct *nvmev_manager;
 
 	void *storage_mapped;
-	void * ns_mapped[NR_NAMESPACE];
 
 	struct nvmev_proc_info *proc_info;
 	unsigned int proc_turn;

@@ -122,7 +122,7 @@ __u64 __prp_transfer_data(__u64 prp1, __u64 prp2, void * buffer, __u64 length, _
 void ZNS_INIT(void)
 {
 	__u64 zslba = 0;
-	__u32 i,  nr_zns_ns = 0;
+	__u32 i = 0;
 
 	NVMEV_ZNS_DEBUG("%s \n", __FUNCTION__);
 	zone_descs = (struct zone_descriptor *) kmalloc(sizeof(struct zone_descriptor) * NR_MAX_ZONE, GFP_ATOMIC);
@@ -150,20 +150,6 @@ void ZNS_INIT(void)
 
 	res_infos[ZRWA_ZONE].total_cnt = NR_MAX_OPEN_ZONE;
 	res_infos[ZRWA_ZONE].acquired_cnt = 0;
-
-	// Find ZNS Namespace
-	// WA, Namespace for zns is only one. not support multi zns namespace..
-	nr_zns_ns = 0;
-	for (i = 0; i < NR_NAMESPACE; i++) {
-
-		if (NS_CSI(i) == NVME_CSI_ZNS) {
-			zns_nsid = i;
-			nr_zns_ns++;
-		}
-	}
-
-	if (nr_zns_ns > 1)
-		NVMEV_ERROR("Not Support Multi ZNS Namespace");
 }
 
 void zns_exit(void)
@@ -184,7 +170,7 @@ void zns_proc_io_cmd(struct nvmev_proc_table *pe)
 
 	void* cmd = &(sq->sq[SQ_ENTRY_TO_PAGE_NUM(sq_entry)][SQ_ENTRY_TO_PAGE_OFFSET(sq_entry)]);
 
-	ASSERT(NS_CSI(cmd->nsid - 1) == NVME_CSI_ZNS);
+	ASSERT(NS_CSI == NVME_CSI_ZNS);
 	
 	switch (op) {
 		case nvme_cmd_write:

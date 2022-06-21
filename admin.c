@@ -167,7 +167,7 @@ static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 	ctrl = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
 	memset(ctrl, 0x00, sizeof(*ctrl));
 
-	ctrl->nn = NR_NAMESPACE;
+	ctrl->nn = 1;
 	ctrl->oncs = 0; //optional command
 	ctrl->acl = 3; //minimum 4 required, 0's based value
 	ctrl->vwc = 0;
@@ -204,12 +204,9 @@ static void __nvmev_admin_get_log_page(int eid, int cq_head)
 static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
-	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	struct nvme_id_ns *ns;
-	
-	size_t nsid = cmd->nsid - 1;
 
-	NVMEV_DEBUG("[%s] ns %d\n", __FUNCTION__, cmd->nsid);
+	NVMEV_DEBUG("[%s] \n", __FUNCTION__);
 
 	ns = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
 	memset(ns, 0x0, PAGE_SIZE);
@@ -242,7 +239,7 @@ static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 	ns->lbaf[6].ds = 12;
 	ns->lbaf[6].rp = NVME_LBAF_RP_BEST;
 
-	ns->nsze = (vdev->config.ns_size[nsid] >> ns->lbaf[ns->flbas].ds);
+	ns->nsze = (vdev->config.storage_size >> ns->lbaf[ns->flbas].ds);
 	ns->ncap = ns->nsze;
 	ns->nuse = ns->nsze;
 	ns->nlbaf = 6;
@@ -260,20 +257,11 @@ static void __nvmev_admin_identify_namespaces(int eid, int cq_head)
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	unsigned int *ns;
-	int i;
 
 	NVMEV_DEBUG("[%s] ns %d\n", __FUNCTION__, cmd->nsid);
 
 	ns = prp_address(cmd->prp1);
 	memset(ns, 0x00, PAGE_SIZE * 2);
-
-	for (i = 1; i <= NR_NAMESPACE; i++) {
-		if (i > cmd->nsid) {
-			printk("[%s] ns %d %px\n", __FUNCTION__, i, ns);
-			*ns = i;
-			ns++;
-		}
-	}
 
 	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
 	cq_entry(cq_head).sq_id = 0;
@@ -286,7 +274,6 @@ static void __nvmev_admin_identify_namespace_desc(int eid, int cq_head)
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	struct nvme_id_ns_desc * ns_desc;
-	size_t nsid = cmd->nsid - 1;
 
 	NVMEV_DEBUG("[%s] ns %d\n", __FUNCTION__, cmd->nsid);
 
@@ -296,7 +283,7 @@ static void __nvmev_admin_identify_namespace_desc(int eid, int cq_head)
 	ns_desc->nidt = NVME_NIDT_CSI;
 	ns_desc->nidl = 1;
 
-	ns_desc->nid[0] = NS_CSI(nsid); // Zoned Name Space Command Set
+	ns_desc->nid[0] = NS_CSI; // Zoned Name Space Command Set
 
 	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
 	cq_entry(cq_head).sq_id = 0;

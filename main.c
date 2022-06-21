@@ -479,12 +479,6 @@ static bool __load_configs(struct nvmev_config *config)
 #if SUPPORT_ZNS
 	config->storage_size = (memmap_size - 1) << 20;
 	
-#if NR_NAMESPACE == 1
-	// still support only single namespace 
-	config->ns_start[0] = config->storage_start;
-	config->ns_size[0] = config->storage_size / NR_NAMESPACE;
-#endif
-
 	config->zone_size = MB(zone_size_mb);
 	config->nr_zones = config->storage_size / config->zone_size;
 	
