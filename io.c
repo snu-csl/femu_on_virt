@@ -503,8 +503,17 @@ void nvmev_proc_io_cq(int cqid, int new_db, int old_db)
 	if (new_db == -1) cq->cq_tail = cq->queue_size - 1;
 }
 
-static void __fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int command_id)
+static void __fill_cq_result(struct nvmev_proc_table * proc_entry)
 {
+	int sqid = proc_entry -> sqid;
+	int cqid = proc_entry -> cqid;
+	int sq_entry = proc_entry -> sq_entry;
+	unsigned int command_id = proc_entry -> command_id;
+	unsigned int status = proc_entry -> status;
+	unsigned int result0 = proc_entry -> result0;
+	unsigned int result1 = proc_entry -> result1;
+
+
 	struct nvmev_completion_queue *cq = vdev->cqes[cqid];
 	int cq_head = cq->cq_head;
 
@@ -512,7 +521,9 @@ static void __fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int comm
 	cq_entry(cq_head).command_id = command_id;
 	cq_entry(cq_head).sq_id = sqid;
 	cq_entry(cq_head).sq_head = sq_entry;
-	cq_entry(cq_head).status = cq->phase | NVME_SC_SUCCESS << 1;
+	cq_entry(cq_head).status = cq->phase | status << 1;
+	cq_entry(cq_head).result0 = result0;
+	cq_entry(cq_head).result1 = result1;
 
 	if (++cq_head == cq->queue_size) {
 		cq_head = 0;
@@ -593,8 +604,8 @@ static int nvmev_kthread_io(void *data)
 			}
 
 			if (pe->nsecs_target <= curr_nsecs) {
-				__fill_cq_result(pe->sqid, pe->cqid,
-						pe->sq_entry, pe->command_id);
+				__fill_cq_result(pe);
+				
 #if SUPPORT_ZNS == 0
 				__check_gc_and_run(pe->sqid, pe->sq_entry);
 #endif

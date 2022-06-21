@@ -608,8 +608,8 @@ enum {
 };
 
 struct nvme_completion {
-	__le32	result;		/* Used by admin commands to return data */
-	__u32	rsvd;
+	__le32	result0;	/* Used by admin commands to return data */
+	__le32	result1;
 	__le16	sq_head;	/* how much of this queue may be reclaimed */
 	__le16	sq_id;		/* submission queue that generated this entry */
 	__u16	command_id;	/* of the command which completed */

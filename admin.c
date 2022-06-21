@@ -384,7 +384,7 @@ static void __nvmev_admin_set_features(int eid, int cq_head)
             num_queue = ((sq_entry(eid).features.dword11 >> 16) & 0xFFFF) + 1;
 			vdev->nr_cq = min(num_queue, NR_MAX_IO_QUEUE);
 
-            cq_entry(cq_head).result = ((vdev->nr_cq - 1) << 16 | (vdev->nr_sq - 1));
+            cq_entry(cq_head).result0 = ((vdev->nr_cq - 1) << 16 | (vdev->nr_sq - 1));
 			break;
 		}
 		case NVME_FEAT_IRQ_COALESCE:
@@ -477,7 +477,7 @@ static void __nvmev_proc_admin_req(int entry_id)
 			cq_entry(cq_head).command_id = sq_entry(entry_id).features.command_id;
 			cq_entry(cq_head).sq_id = 0;
 			cq_entry(cq_head).sq_head = entry_id;
-			cq_entry(cq_head).result = 0;
+			cq_entry(cq_head).result0 = 0;
 			cq_entry(cq_head).status = queue->phase | NVME_SC_ASYNC_LIMIT << 1;
 			break;
 		case nvme_admin_activate_fw:
