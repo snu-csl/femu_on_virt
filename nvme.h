@@ -184,6 +184,19 @@ struct nvme_id_ns {
 	__u8			vs[3712];
 };
 
+struct nvme_id_ns_desc {
+	__u8			nidt; //namespace id type
+	__u8			nidl; //namespace id length
+	__u8			rsvd[2];
+	__u8			nid[4092];
+};
+
+struct nvme_lba_format_extension {
+	__u8		zsze[8];
+	__u8		zdes[8];
+	__u8		rsv[56];
+};
+
 enum {
 	NVME_NS_FEAT_THIN	= 1 << 0,
 	NVME_NS_FLBAS_LBA_MASK	= 0xf,
@@ -533,6 +546,14 @@ struct nvme_command {
 	};
 };
 
+enum 
+{
+	NVME_SCT_GENERIC_CMD_STATUS = 0,
+	NVME_SCT_CMD_SPECIFIC_STATUS,
+	NVME_SCT_MEDIA_INTEGRITY_ERRORS,
+	NVME_SCT_PATH_RELATED_STATUS
+};
+
 enum {
 	NVME_SC_SUCCESS			= 0x0,
 	NVME_SC_INVALID_OPCODE		= 0x1,
@@ -593,6 +614,20 @@ struct nvme_completion {
 	__le16	sq_id;		/* submission queue that generated this entry */
 	__u16	command_id;	/* of the command which completed */
 	__le16	status;		/* did the command fail, and if so, why? */
+};
+
+enum{
+	
+	NVME_NIDT_EUI	= 0x1, /*IEEE Extended Unique Identifier*/
+	NVME_NIDT_GUI	= 0x2, /*Namespace Globally Unique Identifier*/
+	NVME_NIDT_UUID	= 0x3, /*Namespace UUID*/
+	NVME_NIDT_CSI	= 0x4, /*Command Set Identifier*/
+};
+
+enum{
+	NVME_CSI_NVM	= 0x0, /*NVM Command Set*/
+	NVME_CSI_KV		= 0x1, /*Key Value Command Set*/
+	NVME_CSI_ZNS	= 0x2, /*Zoned Namespace Command Set*/
 };
 
 #define NVME_VS(major, minor) (((major) << 16) | ((minor) << 8))

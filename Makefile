@@ -3,6 +3,8 @@ PWD     := $(shell pwd)
 
 obj-m   := nvmev.o
 nvmev-objs := main.o pci.o admin.o io.o ftl.o pqueue.o
+nvmev-objs += zns.o zone_read_write.o zone_mgmt_send.o zone_mgmt_recv.o 
+nvmev-objs += channel.o
 
 default:
 		$(MAKE) -C $(KERNELDIR) M=$(PWD) modules

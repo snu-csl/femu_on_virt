@@ -23,6 +23,22 @@
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
+#define SUPPORT_ZNS 1
+#define SUPPORT_MULTI_IO_WORKER_BY_SQ	0 // will be added
+
+#define NR_NAMESPACE	1 //multi namespace is not supported
+ 
+#if SUPPORT_ZNS == 0
+#define NS_CSI_0 NVME_CSI_NVM
+#define NS_CSI_1 NVME_CSI_NVM  // not used in NR_NAMESPACE == 1
+#else
+#define NS_CSI_0 NVME_CSI_ZNS
+// WA : # of ZNS Namspace should not be more 1
+#define NS_CSI_1 NVME_CSI_NVM  // not used in NR_NAMESPACE == 1
+#endif 
+
+#define NS_CSI(ns) ((ns == 0) ? (NS_CSI_0) : (NS_CSI_1))
+
 #define NVMEV_DRV_NAME "NVMeVirt"
 
 #define NVMEV_INFO(string, args...) \
@@ -31,6 +47,7 @@
 	printk(KERN_ERR "%s: " string, NVMEV_DRV_NAME, ##args)
 #define NVMEV_ASSERT(x) \
 	if (!(x)) printk(KERN_ERR "%s: FEMU ASSERT at line %d, (%s)\n", NVMEV_DRV_NAME, __LINE__, #x)
+
 
 #ifdef CONFIG_NVMEV_DEBUG_VERBOSE
 #define NVMEV_DEBUG(string, args...) \
@@ -50,6 +67,16 @@
 #define NR_MAX_PARALLEL_IO 16384
 
 #define PAGE_OFFSET_MASK (PAGE_SIZE - 1)
+
+#define KB(k) ((k) * 1024)
+#define MB(m) (KB((m) * 1024))
+
+#define LBA_TO_BYTE(lba) ((lba) << 9)
+#define BYTE_TO_LBA(byte) ((byte) >> 9)
+
+#define INVALID32 (0xFFFFFFFF)
+#define INVALID64 (0xFFFFFFFFFFFFFFFF)
+#define ASSERT(X)
 
 struct nvmev_sq_stat {
 	unsigned int nr_dispatched;
@@ -120,6 +147,9 @@ struct nvmev_config {
 	unsigned long storage_start; //byte
 	unsigned long storage_size;	// byte
 
+	unsigned long ns_start[NR_NAMESPACE]; // byte
+	unsigned long ns_size[NR_NAMESPACE];  // byte
+
 	unsigned int read_delay;	// ns
 	unsigned int read_time;		// ns
 	unsigned int read_trailing;	// ns
@@ -133,6 +163,16 @@ struct nvmev_config {
 	unsigned int cpu_nr_dispatcher;
 	unsigned int nr_io_cpu;
 	unsigned int cpu_nr_proc_io[32];
+
+#if SUPPORT_ZNS
+	unsigned int zone_size;	// byte
+	unsigned int nr_zones;	
+	unsigned int nr_active_zones;
+	unsigned int nr_open_zones;
+	unsigned int nr_zrwa_zones;
+
+	unsigned int nr_io_units_per_zone;
+#endif
 };
 
 struct nvmev_proc_table {
@@ -152,6 +192,10 @@ struct nvmev_proc_table {
 
 	bool is_copied;
 	bool is_completed;
+
+	unsigned int status;
+	unsigned int result0;
+	unsigned int result1;
 
 	unsigned int next, prev;
 };
@@ -188,6 +232,7 @@ struct nvmev_dev {
 	struct task_struct *nvmev_manager;
 
 	void *storage_mapped;
+	void * ns_mapped[NR_NAMESPACE];
 
 	struct nvmev_proc_info *proc_info;
 	unsigned int proc_turn;

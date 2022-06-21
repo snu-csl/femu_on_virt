@@ -20,6 +20,12 @@
 #include "nvmev.h"
 #include "ftl.h"
 
+#if SUPPORT_ZNS
+#include "zns.h"
+#endif
+
+#include "channel.h"
+
 #undef PERF_DEBUG
 
 #define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
@@ -74,6 +80,88 @@ static unsigned long long __schedule_io_units(int opcode, unsigned long lba, uns
 
 	return latest;
 }
+
+#if SUPPORT_ZNS 
+#define ZONE_TO_DIE(zone) ((zone) % (vdev->config.nr_io_units)) 
+#define DIE_TO_CHANNEL(die) (die % NR_NAND_CHANNELS)
+
+static unsigned long long __schedule_io_units_zns(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
+{
+	unsigned int io_unit_size = 1 << vdev->config.io_unit_shift; // used for normal IO operation
+
+	unsigned int zone = LBA_TO_ZONE(lba); // find corresponding zone
+	unsigned int die = ZONE_TO_DIE(zone);
+	
+	unsigned int delay = 0;
+	unsigned int latency = 0;
+	unsigned int trailing = 0;
+
+	unsigned long long latest = 0;	/* Time of completion */
+	unsigned long long latest_completion_time;
+	unsigned long long nand_transfer_time; 
+	unsigned long long pcie_transfer_time;
+	
+	if (opcode == nvme_cmd_write) {
+		delay = vdev->config.write_delay;
+		latency = vdev->config.write_time;
+		trailing = vdev->config.write_trailing;
+
+	} else if (opcode == nvme_cmd_read) {
+		
+		delay = vdev->config.read_delay;
+		latency = vdev->config.read_time;
+		trailing = vdev->config.read_trailing;
+		
+		// constants for sk hynix zns ssdx. it should be cleared
+		#if 0
+		unsigned int min_latency; = 7390;
+		if (length <= (4 * 1024))
+		{
+			delay = 69540 - min_latency;
+			latency = 0;
+			trailing = 0;
+		}
+		else if (length <= (64* 1024))
+		{
+			delay = 78490 - min_latency;
+			latency = 6515;
+			trailing = 0;
+		}
+		else
+		{
+			delay = 37390 - min_latency;
+			latency = 9083;
+			trailing = 0;
+		}
+		#endif
+	}
+
+	/* Command latency. not support multi dies per zone */
+	latest_completion_time = max(nsecs_start, vdev->io_unit_stat[die]) + delay; // set starting time first
+
+	do {
+		latest_completion_time += (DIV_ROUND_UP(length, io_unit_size) * latency);	
+		latest = latest_completion_time;
+	} while (0);
+
+	/* Parallelism : channel, pcie contention  */
+	nand_transfer_time = (NAND_CHANNEL_OCCUPANCY_TIME_4KB * DIV_ROUND_UP(length, io_unit_size));
+	pcie_transfer_time = (PCIE_OCCUPANCY_TIME_4KB * DIV_ROUND_UP(length, io_unit_size));
+	latest -= (nand_transfer_time + pcie_transfer_time);
+	
+	// add delay of nand channel contention 
+	latest += request_ch(NAND_CH(DIE_TO_CHANNEL(die)), latest, length);
+	latest += nand_transfer_time;
+	
+	// record latest completion time for nand die 
+	vdev->io_unit_stat[die] = latest;
+	
+	// add delay of pcie contention
+	latest += request_ch(PCIE_CHANNEL, latest, length);
+	latest += pcie_transfer_time;
+	return latest;
+}
+#endif
 
 static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
 {
@@ -315,10 +403,11 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	switch(cmd->common.opcode) {
 	case nvme_cmd_write:
 	case nvme_cmd_read:
-		nsecs_target = 0;
-		// io_len = __cmd_io_size(&cmd->rw);
-		// nsecs_target = __schedule_io_units(cmd->common.opcode,
-		// 			cmd->rw.slba, io_len, nsecs_start);
+		#if SUPPORT_ZNS
+		io_len = __cmd_io_size(&cmd->rw);
+		nsecs_target = __schedule_io_units_zns(cmd->common.opcode,
+		 			cmd->rw.slba, io_len, nsecs_start);
+		#endif
 		break;
 	case nvme_cmd_flush:
 		nsecs_target = __nvmev_proc_flush(sqid, sq_entry);
@@ -331,6 +420,11 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	case nvme_cmd_resv_report:
 	case nvme_cmd_resv_acquire:
 	case nvme_cmd_resv_release:
+	#if SUPPORT_ZNS
+	case nvme_cmd_zone_mgmt_send:
+	case nvme_cmd_zone_mgmt_recv:
+	case nvme_cmd_zone_append:
+	#endif
 	default:
 		break;
 	}
@@ -481,7 +575,11 @@ static int nvmev_kthread_io(void *data)
 				unsigned long long memcpy_time;
 				pe->nsecs_copy_start = local_clock() + delta;
 #endif
+#if SUPPORT_ZNS
+				zns_proc_io_cmd(pe);
+#else
 				__do_perform_io(pe);
+#endif
 
 #ifdef PERF_DEBUG
 				pe->nsecs_copy_done = local_clock() + delta;
@@ -497,9 +595,9 @@ static int nvmev_kthread_io(void *data)
 			if (pe->nsecs_target <= curr_nsecs) {
 				__fill_cq_result(pe->sqid, pe->cqid,
 						pe->sq_entry, pe->command_id);
-
+#if SUPPORT_ZNS == 0
 				__check_gc_and_run(pe->sqid, pe->sq_entry);
-
+#endif
 				NVMEV_DEBUG("%s: completed %u, %d %d %d\n",
 						pi->thread_name, curr,
 						pe->sqid, pe->cqid, pe->sq_entry);
