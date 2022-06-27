@@ -36,6 +36,20 @@ static inline unsigned long long __get_wallclock(void)
 	return cpu_clock(vdev->config.cpu_nr_dispatcher);
 }
 
+static void __check_gc_and_run(int sqid, int sq_entry)
+{
+	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	struct nvme_command *cmd = &sq_entry(sq_entry);
+
+	/* clean one line if needed (in the background) */
+	if (cmd->common.opcode == nvme_cmd_write) {
+		if (should_gc()) {
+			NVMEV_INFO("NEED GC!\n");
+			do_gc(false); // 782336
+		}
+	}
+}
+
 /* Return the time to complete */
 static unsigned long long __schedule_io_units(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
 {
@@ -75,11 +89,8 @@ static unsigned long long __schedule_io_units(int opcode, unsigned long lba, uns
 	return latest;
 }
 
-static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
+static unsigned int __do_perform_io(int sqid, int sq_entry)
 {
-	int sqid = pe->sqid;
-	int sq_entry = pe->sq_entry;
-	unsigned long long nsecs_start = pe->nsecs_start;
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	size_t offset;
 	size_t length, remaining;
@@ -88,8 +99,6 @@ static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
 	u64 paddr;
 	u64 *paddr_list = NULL;
 	size_t mem_offs = 0;
-	struct nvme_command *cmd = &sq_entry(sq_entry);
-	uint64_t max_lat = 0;
 
 	offset = sq_entry(sq_entry).rw.slba << 9;
 	length = (sq_entry(sq_entry).rw.length + 1) << 9;
@@ -135,14 +144,6 @@ static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
 
 	if (paddr_list != NULL)
 		kunmap_atomic(paddr_list);
-
-	if (cmd->common.opcode == nvme_cmd_write) {
-		max_lat = ssd_write(cmd, nsecs_start);
-	} else if (cmd->common.opcode == nvme_cmd_read) {
-		max_lat = ssd_read(cmd, nsecs_start);
-	}
-
-	pe->nsecs_target = nsecs_start + max_lat;
 
 	return length;
 }
@@ -299,6 +300,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	unsigned long long nsecs_target = 0;
 	unsigned long long nsecs_start = __get_wallclock();
 	size_t io_len = 0;
+	uint64_t max_lat = 0;
 	struct nvme_command *cmd = &sq_entry(sq_entry);
 
 #ifdef PERF_DEBUG
@@ -314,11 +316,20 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 
 	switch(cmd->common.opcode) {
 	case nvme_cmd_write:
-	case nvme_cmd_read:
-		nsecs_target = 0;
 		// io_len = __cmd_io_size(&cmd->rw);
 		// nsecs_target = __schedule_io_units(cmd->common.opcode,
 		// 			cmd->rw.slba, io_len, nsecs_start);
+
+		max_lat = ssd_write(cmd, nsecs_start);
+		nsecs_start = nsecs_start + max_lat;
+		break;
+	case nvme_cmd_read:
+		// io_len = __cmd_io_size(&cmd->rw);
+		// nsecs_target = __schedule_io_units(cmd->common.opcode,
+		// 			cmd->rw.slba, io_len, nsecs_start);
+
+		max_lat = ssd_read(cmd, nsecs_start);
+		nsecs_start = nsecs_start + max_lat;
 		break;
 	case nvme_cmd_flush:
 		nsecs_target = __nvmev_proc_flush(sqid, sq_entry);
@@ -341,6 +352,8 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 
 	__enqueue_io_req(sqid, sq->cqid, sq_entry, nsecs_start, nsecs_target);
 
+	__check_gc_and_run(sqid, sq_entry);
+	
 #ifdef PERF_DEBUG
 	prev_clock3 = local_clock();
 #endif
@@ -430,20 +443,6 @@ static void __fill_cq_result(int sqid, int cqid, int sq_entry, unsigned int comm
 	spin_unlock(&cq->entry_lock);
 }
 
-static void __check_gc_and_run(int sqid, int sq_entry)
-{
-	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	struct nvme_command *cmd = &sq_entry(sq_entry);
-
-	/* clean one line if needed (in the background) */
-	if (cmd->common.opcode == nvme_cmd_write) {
-		if (should_gc()) {
-			NVMEV_INFO("NEED GC!\n");
-			do_gc(false); // 782336
-		}
-	}
-}
-
 static int nvmev_kthread_io(void *data)
 {
 	struct nvmev_proc_info *pi = (struct nvmev_proc_info *)data;
@@ -481,7 +480,7 @@ static int nvmev_kthread_io(void *data)
 				unsigned long long memcpy_time;
 				pe->nsecs_copy_start = local_clock() + delta;
 #endif
-				__do_perform_io(pe);
+				__do_perform_io(pe->sqid, pe->sq_entry);
 
 #ifdef PERF_DEBUG
 				pe->nsecs_copy_done = local_clock() + delta;
@@ -497,8 +496,6 @@ static int nvmev_kthread_io(void *data)
 			if (pe->nsecs_target <= curr_nsecs) {
 				__fill_cq_result(pe->sqid, pe->cqid,
 						pe->sq_entry, pe->command_id);
-
-				__check_gc_and_run(pe->sqid, pe->sq_entry);
 
 				NVMEV_DEBUG("%s: completed %u, %d %d %d\n",
 						pi->thread_name, curr,
@@ -518,7 +515,6 @@ static int nvmev_kthread_io(void *data)
 				pe->is_completed = true;
 
 				curr = pe->next;
-
 			} else {
 				break;
 			}
