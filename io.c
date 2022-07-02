@@ -42,6 +42,20 @@ static inline unsigned long long __get_wallclock(void)
 	return cpu_clock(vdev->config.cpu_nr_dispatcher);
 }
 
+static void __check_gc_and_run(int sqid, int sq_entry)
+{
+	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	struct nvme_command *cmd = &sq_entry(sq_entry);
+
+	/* clean one line if needed (in the background) */
+	if (cmd->common.opcode == nvme_cmd_write) {
+		if (should_gc()) {
+			NVMEV_INFO("NEED GC!\n");
+			do_gc(false); // 782336
+		}
+	}
+}
+
 /* Return the time to complete */
 static unsigned long long __schedule_io_units(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
 {
@@ -81,93 +95,8 @@ static unsigned long long __schedule_io_units(int opcode, unsigned long lba, uns
 	return latest;
 }
 
-#if SUPPORT_ZNS 
-#define ZONE_TO_DIE(zone) ((zone) % (vdev->config.nr_io_units)) 
-#define DIE_TO_CHANNEL(die) (die % NR_NAND_CHANNELS)
-
-static unsigned long long __schedule_io_units_zns(int opcode, unsigned long lba, unsigned int length, unsigned long long nsecs_start)
+static unsigned int __do_perform_io(int sqid, int sq_entry)
 {
-	unsigned int io_unit_size = 1 << vdev->config.io_unit_shift; // used for normal IO operation
-
-	unsigned int zone = LBA_TO_ZONE(lba); // find corresponding zone
-	unsigned int die = ZONE_TO_DIE(zone);
-	
-	unsigned int delay = 0;
-	unsigned int latency = 0;
-	unsigned int trailing = 0;
-
-	unsigned long long latest = 0;	/* Time of completion */
-	unsigned long long latest_completion_time;
-	unsigned long long nand_transfer_time; 
-	unsigned long long pcie_transfer_time;
-	
-	if (opcode == nvme_cmd_write) {
-		delay = vdev->config.write_delay;
-		latency = vdev->config.write_time;
-		trailing = vdev->config.write_trailing;
-
-	} else if (opcode == nvme_cmd_read) {
-		
-		delay = vdev->config.read_delay;
-		latency = vdev->config.read_time;
-		trailing = vdev->config.read_trailing;
-		
-		// constants for sk hynix zns ssdx. it should be cleared
-		#if 0
-		unsigned int min_latency; = 7390;
-		if (length <= (4 * 1024))
-		{
-			delay = 69540 - min_latency;
-			latency = 0;
-			trailing = 0;
-		}
-		else if (length <= (64* 1024))
-		{
-			delay = 78490 - min_latency;
-			latency = 6515;
-			trailing = 0;
-		}
-		else
-		{
-			delay = 37390 - min_latency;
-			latency = 9083;
-			trailing = 0;
-		}
-		#endif
-	}
-
-	/* Command latency. not support multi dies per zone */
-	latest_completion_time = max(nsecs_start, vdev->io_unit_stat[die]) + delay; // set starting time first
-
-	do {
-		latest_completion_time += (DIV_ROUND_UP(length, io_unit_size) * latency);	
-		latest = latest_completion_time;
-	} while (0);
-
-	/* Parallelism : channel, pcie contention  */
-	nand_transfer_time = (NAND_CHANNEL_OCCUPANCY_TIME_4KB * DIV_ROUND_UP(length, io_unit_size));
-	pcie_transfer_time = (PCIE_OCCUPANCY_TIME_4KB * DIV_ROUND_UP(length, io_unit_size));
-	latest -= (nand_transfer_time + pcie_transfer_time);
-	
-	// add delay of nand channel contention 
-	latest += request_ch(NAND_CH(DIE_TO_CHANNEL(die)), latest, length);
-	latest += nand_transfer_time;
-	
-	// record latest completion time for nand die 
-	vdev->io_unit_stat[die] = latest;
-	
-	// add delay of pcie contention
-	latest += request_ch(PCIE_CHANNEL, latest, length);
-	latest += pcie_transfer_time;
-	return latest;
-}
-#endif
-
-static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
-{
-	int sqid = pe->sqid;
-	int sq_entry = pe->sq_entry;
-	unsigned long long nsecs_start = pe->nsecs_start;
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	size_t offset;
 	size_t length, remaining;
@@ -176,8 +105,6 @@ static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
 	u64 paddr;
 	u64 *paddr_list = NULL;
 	size_t mem_offs = 0;
-	struct nvme_command *cmd = &sq_entry(sq_entry);
-	uint64_t max_lat = 0;
 
 	offset = sq_entry(sq_entry).rw.slba << 9;
 	length = (sq_entry(sq_entry).rw.length + 1) << 9;
@@ -223,14 +150,6 @@ static unsigned int __do_perform_io(struct nvmev_proc_table *pe)
 
 	if (paddr_list != NULL)
 		kunmap_atomic(paddr_list);
-
-	if (cmd->common.opcode == nvme_cmd_write) {
-		max_lat = ssd_write(cmd, nsecs_start);
-	} else if (cmd->common.opcode == nvme_cmd_read) {
-		max_lat = ssd_read(cmd, nsecs_start);
-	}
-
-	pe->nsecs_target = nsecs_start + max_lat;
 
 	return length;
 }
@@ -387,6 +306,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	unsigned long long nsecs_target = 0;
 	unsigned long long nsecs_start = __get_wallclock();
 	size_t io_len = 0;
+	uint64_t max_lat = 0;
 	struct nvme_command *cmd = &sq_entry(sq_entry);
 
 #ifdef PERF_DEBUG
@@ -402,12 +322,20 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 
 	switch(cmd->common.opcode) {
 	case nvme_cmd_write:
+		// io_len = __cmd_io_size(&cmd->rw);
+		// nsecs_target = __schedule_io_units(cmd->common.opcode,
+		// 			cmd->rw.slba, io_len, nsecs_start);
+
+		max_lat = ssd_write(cmd, nsecs_start);
+		nsecs_start = nsecs_start + max_lat;
+		break;
 	case nvme_cmd_read:
-		#if SUPPORT_ZNS
-		io_len = __cmd_io_size(&cmd->rw);
-		nsecs_target = __schedule_io_units_zns(cmd->common.opcode,
-		 			cmd->rw.slba, io_len, nsecs_start);
-		#endif
+		// io_len = __cmd_io_size(&cmd->rw);
+		// nsecs_target = __schedule_io_units(cmd->common.opcode,
+		// 			cmd->rw.slba, io_len, nsecs_start);
+
+		max_lat = ssd_read(cmd, nsecs_start);
+		nsecs_start = nsecs_start + max_lat;
 		break;
 	case nvme_cmd_flush:
 		nsecs_target = __nvmev_proc_flush(sqid, sq_entry);
@@ -435,6 +363,8 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 
 	__enqueue_io_req(sqid, sq->cqid, sq_entry, nsecs_start, nsecs_target);
 
+	__check_gc_and_run(sqid, sq_entry);
+	
 #ifdef PERF_DEBUG
 	prev_clock3 = local_clock();
 #endif
@@ -535,20 +465,6 @@ static void __fill_cq_result(struct nvmev_proc_table * proc_entry)
 	spin_unlock(&cq->entry_lock);
 }
 
-static void __check_gc_and_run(int sqid, int sq_entry)
-{
-	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	struct nvme_command *cmd = &sq_entry(sq_entry);
-
-	/* clean one line if needed (in the background) */
-	if (cmd->common.opcode == nvme_cmd_write) {
-		if (should_gc()) {
-			NVMEV_INFO("NEED GC!\n");
-			do_gc(false); // 782336
-		}
-	}
-}
-
 static int nvmev_kthread_io(void *data)
 {
 	struct nvmev_proc_info *pi = (struct nvmev_proc_info *)data;
@@ -586,11 +502,7 @@ static int nvmev_kthread_io(void *data)
 				unsigned long long memcpy_time;
 				pe->nsecs_copy_start = local_clock() + delta;
 #endif
-#if SUPPORT_ZNS
-				zns_proc_io_cmd(pe);
-#else
-				__do_perform_io(pe);
-#endif
+				__do_perform_io(pe->sqid, pe->sq_entry);
 
 #ifdef PERF_DEBUG
 				pe->nsecs_copy_done = local_clock() + delta;
@@ -627,7 +539,6 @@ static int nvmev_kthread_io(void *data)
 				pe->is_completed = true;
 
 				curr = pe->next;
-
 			} else {
 				break;
 			}
