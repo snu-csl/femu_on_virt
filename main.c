@@ -543,8 +543,6 @@ static int NVMeV_init(void)
 	ZNS_INIT();
 #endif
 	
-	CHANNEL_INIT();
-	
 	if (!NVMEV_PCI_INIT(vdev)) {
 		goto ret_err;
 	}

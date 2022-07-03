@@ -120,9 +120,12 @@ struct nand_lun {
 struct ssd_channel {
     struct nand_lun *lun;
     int nluns;
-    uint64_t next_ch_avail_time;
-    bool busy;
     uint64_t gc_endtime;
+    struct channel_model * perf_model;
+};
+
+struct ssd_pcie {
+    struct channel_model * perf_model;
 };
 
 struct ssdparams {
@@ -140,6 +143,9 @@ struct ssdparams {
     int ch_xfer_lat;  /* channel transfer latency for one page in nanoseconds
                        * this defines the channel bandwith
                        */
+    
+    uint64_t ch_bandwidth; /*NAND CH Maximum bandwidth in MB/s*/
+    uint64_t pcie_bandwidth; /*PCIE Maximum bandwidth in MB/s*/
 
     double gc_thres_pcent;
     int gc_thres_lines;
@@ -215,12 +221,15 @@ struct line_mgmt {
 struct nand_cmd {
     int type;
     int cmd;
+    int xfer_size; // byte
     int64_t stime; /* Coperd: request arrival time */
 };
 
 struct ssd {
     struct ssdparams sp;
     struct ssd_channel *ch;
+    struct ssd_pcie *pcie;
+
     struct ppa *maptbl; /* page level mapping table */
     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
     struct write_pointer wp;
@@ -240,4 +249,8 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
 bool should_gc(void);
 int do_gc(bool force);
 void adjust_ftl_latency(int target, int lat);
+
+/* Macros for specific setting. Modify these macros for your target */
+#define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
+#define PCIE_BANDWIDTH			(3200ull) //MB/s
 #endif

@@ -3,6 +3,7 @@
 
 #include "nvmev.h"
 #include "ftl.h"
+#include "channel.h"
 
 struct ssd ssd;
 
@@ -269,6 +270,9 @@ static void ssd_init_params(struct ssdparams *spp, int nchs)
     spp->blk_er_lat = NAND_ERASE_LATENCY;
     spp->ch_xfer_lat = 0;
 
+    spp->ch_bandwidth = NAND_CHANNEL_BANDWIDTH; 
+    spp->pcie_bandwidth = PCIE_BANDWIDTH; 
+
     /* calculated values */
     spp->secs_per_blk = spp->secs_per_pg * spp->pgs_per_blk;
     spp->secs_per_pl = spp->secs_per_blk * spp->blks_per_pl;
@@ -363,8 +367,15 @@ static void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp)
     for (i = 0; i < ch->nluns; i++) {
         ssd_init_nand_lun(&ch->lun[i], spp);
     }
-    ch->next_ch_avail_time = 0;
-    ch->busy = 0;
+
+    ch->perf_model = kmalloc(sizeof(struct channel_model), GFP_KERNEL);
+    chmodel_init(ch->perf_model, spp->ch_bandwidth);
+}
+
+static void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
+{
+    pcie->perf_model = kmalloc(sizeof(struct channel_model), GFP_KERNEL);
+    chmodel_init(pcie->perf_model, spp->pcie_bandwidth);
 }
 
 static void ssd_init_maptbl(struct ssd *ssd)
@@ -412,6 +423,9 @@ unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size
     for (i = 0; i < spp->nchs; i++) {
         ssd_init_ch(&(ssd.ch[i]), spp);
     }
+
+    ssd.pcie = kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
+    ssd_init_pcie(ssd.pcie, spp);
 
     /* initialize maptbl */
     NVMEV_INFO("initialize maptbl\n");
@@ -496,13 +510,16 @@ static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
 
 static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd)
 {
-    
     int c = ncmd->cmd;
     uint64_t cmd_stime = (ncmd->stime == 0) ? \
         __get_ioclock() : ncmd->stime;
-    uint64_t nand_stime;
+    uint64_t nand_stime, nand_etime;
+    uint64_t chnl_stime, chnl_etime;
+    
     struct ssdparams *spp = &ssd->sp;
-    struct nand_lun *lun = get_lun(ssd, ppa);
+    struct nand_lun *lun = get_lun(ssd, ppa); 
+    struct ssd_channel * ch = get_ch(ssd, ppa); 
+
     uint64_t lat = 0;
 
     //printk("Enter stime: %lld, %lld\n", ncmd->stime, cmd_stime);
@@ -511,43 +528,31 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
         /* read: perform NAND cmd first */
         nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                      lun->next_lun_avail_time;
-        lun->next_lun_avail_time = nand_stime + spp->pg_rd_lat;
-        lat = lun->next_lun_avail_time - cmd_stime;
-#if 0
-        lun->next_lun_avail_time = nand_stime + spp->pg_rd_lat;
-
+        nand_etime = nand_stime + spp->pg_rd_lat;
+   
         /* read: then data transfer through channel */
-        chnl_stime = (ch->next_ch_avail_time < lun->next_lun_avail_time) ? \
-            lun->next_lun_avail_time : ch->next_ch_avail_time;
-        ch->next_ch_avail_time = chnl_stime + spp->ch_xfer_lat;
-
-        lat = ch->next_ch_avail_time - cmd_stime;
-#endif
+        chnl_stime = nand_etime;
+        chnl_etime = chmodel_request(ch->perf_model, chnl_stime, ncmd->xfer_size);
+        lun->next_lun_avail_time = chnl_etime;
+        lat = lun->next_lun_avail_time - cmd_stime;
         break;
 
     case NAND_WRITE:
         /* write: transfer data through channel first */
-        nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
+        chnl_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                      lun->next_lun_avail_time;
-        if (ncmd->type == USER_IO) {
-            lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
-        } else {
-            lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
-        }
-        lat = lun->next_lun_avail_time - cmd_stime;
 
-#if 0
-        chnl_stime = (ch->next_ch_avail_time < cmd_stime) ? cmd_stime : \
-                     ch->next_ch_avail_time;
-        ch->next_ch_avail_time = chnl_stime + spp->ch_xfer_lat;
-
+        chnl_etime = chmodel_request(ch->perf_model, chnl_stime, ncmd->xfer_size);
+        
         /* write: then do NAND program */
-        nand_stime = (lun->next_lun_avail_time < ch->next_ch_avail_time) ? \
-            ch->next_ch_avail_time : lun->next_lun_avail_time;
-        lun->next_lun_avail_time = nand_stime + spp->pg_wr_lat;
-
+        nand_stime = chnl_etime;
+        if (ncmd->type == USER_IO) {
+            nand_etime = nand_stime + spp->pg_wr_lat;
+        } else {
+            nand_etime = nand_stime + spp->pg_wr_lat;
+        }
+        lun->next_lun_avail_time = nand_etime;
         lat = lun->next_lun_avail_time - cmd_stime;
-#endif
         break;
 
     case NAND_ERASE:
