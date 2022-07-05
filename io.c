@@ -321,7 +321,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 		// 			cmd->rw.slba, io_len, nsecs_start);
 
 		max_lat = ssd_write(cmd, nsecs_start);
-		nsecs_start = nsecs_start + max_lat;
+		nsecs_target = nsecs_start + max_lat;
 		break;
 	case nvme_cmd_read:
 		// io_len = __cmd_io_size(&cmd->rw);
@@ -329,7 +329,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 		// 			cmd->rw.slba, io_len, nsecs_start);
 
 		max_lat = ssd_read(cmd, nsecs_start);
-		nsecs_start = nsecs_start + max_lat;
+		nsecs_target = nsecs_start + max_lat;
 		break;
 	case nvme_cmd_flush:
 		nsecs_target = __nvmev_proc_flush(sqid, sq_entry);
