@@ -508,7 +508,7 @@ static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
     return &(blk->pg[ppa->g.pg]);
 }
 
-static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd)
+uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd)
 {
     int c = ncmd->cmd;
     uint64_t cmd_stime = (ncmd->stime == 0) ? \
@@ -516,13 +516,12 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
     uint64_t nand_stime, nand_etime;
     uint64_t chnl_stime, chnl_etime;
     
+    NVMEV_DEBUG("Enter stime: %lld, ch %d lun %d \n", ncmd->stime, ppa->g.ch, ppa->g.lun);
+
     struct ssdparams *spp = &ssd->sp;
     struct nand_lun *lun = get_lun(ssd, ppa); 
     struct ssd_channel * ch = get_ch(ssd, ppa); 
 
-    uint64_t lat = 0;
-
-    //printk("Enter stime: %lld, %lld\n", ncmd->stime, cmd_stime);
     switch (c) {
     case NAND_READ:
         /* read: perform NAND cmd first */
@@ -534,7 +533,6 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
         chnl_stime = nand_etime;
         chnl_etime = chmodel_request(ch->perf_model, chnl_stime, ncmd->xfer_size);
         lun->next_lun_avail_time = chnl_etime;
-        lat = lun->next_lun_avail_time - cmd_stime;
         break;
 
     case NAND_WRITE:
@@ -552,7 +550,6 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
             nand_etime = nand_stime + spp->pg_wr_lat;
         }
         lun->next_lun_avail_time = nand_etime;
-        lat = lun->next_lun_avail_time - cmd_stime;
         break;
 
     case NAND_ERASE:
@@ -561,14 +558,18 @@ static uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand
                      lun->next_lun_avail_time;
         lun->next_lun_avail_time = nand_stime + spp->blk_er_lat;
 
-        lat = lun->next_lun_avail_time - cmd_stime;
         break;
 
     default:
         NVMEV_ERROR("Unsupported NAND command: 0x%x\n", c);
     }
 
-    return lat;
+    return lun->next_lun_avail_time ;
+}
+
+inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length) 
+{
+    return chmodel_request(ssd->pcie->perf_model, request_time, length);
 }
 
 /* update SSD status about one page from PG_VALID -> PG_VALID */

@@ -537,12 +537,11 @@ static int NVMeV_init(void)
 	if (!__load_configs(&vdev->config)) {
 		goto ret_err;
 	}
-#if SUPPORT_ZNS == 0
-	vdev->config.storage_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.memmap_size);
-#else
-	ZNS_INIT();
+
+	vdev->config.storage_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.memmap_size - MB(1));
+#if SUPPORT_ZNS 
+	zns_init();
 #endif
-	
 	if (!NVMEV_PCI_INIT(vdev)) {
 		goto ret_err;
 	}

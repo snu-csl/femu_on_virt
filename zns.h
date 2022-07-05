@@ -15,15 +15,27 @@ extern struct nvmev_dev *vdev;
 #define NR_MAX_OPEN_ZONE (vdev->config.nr_open_zones) //0xFFFFFFFF : No limit
 #define BYTES_PER_ZONE (vdev->config.zone_size)
 #define LBAS_PER_ZONE (BYTE_TO_LBA(BYTES_PER_ZONE))
-
-#define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
-
 #define LBA_TO_ZONE(lba) ((lba) / LBAS_PER_ZONE)
 #define ZONE_TO_SLBA(zid) ((zid) * LBAS_PER_ZONE)
+
+#define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 
 #define NR_MAX_ZRWA_ZONE (vdev->config.nr_zrwa_zones) //0xFFFFFFFF : No limit
 #define LBAS_PER_ZRWAFG	(BYTE_TO_LBA(KB(1))) // ZRWA Flush Granurity 
 #define LBAS_PER_ZRWA (BYTE_TO_LBA(MB(1))) // ZRWA Size
+
+#define PGM_PAGE_SIZE (192*1024ULL)
+#define READ_PAGE_SIZE (64*1024ULL)
+
+#define CHANNELS_PER_SSD (ssd.sp.nchs)
+#define LUNS_PER_CHANNEL (ssd.sp.luns_per_ch)
+#define DIES_PER_ZONE (1)
+#define NR_TOTAL_DIES (CHANNELS_PER_SSD * LUNS_PER_CHANNEL)
+
+#define ZONE_TO_SDIE(zid) ((zid) % (NR_TOTAL_DIES/DIES_PER_ZONE))
+#define ZONE_TO_DIE(zid, off) (ZONE_TO_SDIE((zid)) + (off / PGM_PAGE_SIZE) % DIES_PER_ZONE) 
+#define DIE_TO_CHANNEL(die) ((die) % CHANNELS_PER_SSD)
+#define DIE_TO_LUN(die) ((die) / CHANNELS_PER_SSD)
 
 /* zns extern global variables*/
 extern struct zone_resource_info res_infos[RES_TYPE_COUNT];
@@ -43,17 +55,12 @@ bool __acquire_zone_resource(__u32 type);
 void __release_zone_resource(__u32 type);
 void __change_zone_state(__u32 zid, enum zone_state state);
 
-// data transfer
-__u64 __prp_transfer_data(__u64 prp1, __u64 prp2, void * buffer, __u64 length, __u32 io);
-
 /* zns external interface */
-__u32 zns_proc_mgmt_recv(struct nvme_zone_mgmt_recv * cmd);
-__u32 zns_proc_mgmt_send(struct nvme_zone_mgmt_send * cmd);
-__u32 zns_proc_nvme_write(struct nvme_rw_command * cmd);
-__u32 zns_proc_nvme_read(struct nvme_rw_command * cmd);
-__u32 zns_proc_append(struct nvme_zone_append * cmd,  __u64 * wp);
+void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret);
+void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret);
+void zns_write(struct nvme_request * req, struct nvme_result * ret);
+void zns_read(struct nvme_request * req, struct nvme_result * ret);
 
-void ZNS_INIT(void);
+void zns_init(void);
 void zns_exit(void);
-void zns_proc_io_cmd(struct nvmev_proc_table *pe);
 #endif

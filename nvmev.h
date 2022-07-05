@@ -41,12 +41,11 @@
 #define NVMEV_ASSERT(x) \
 	if (!(x)) printk(KERN_ERR "%s: FEMU ASSERT at line %d, (%s)\n", NVMEV_DRV_NAME, __LINE__, #x)
 
-
 #ifdef CONFIG_NVMEV_DEBUG_VERBOSE
 #define NVMEV_DEBUG(string, args...) \
 	printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
 #else
-#define NVMEV_DEBUG(string, args...)
+#define NVMEV_DEBUG(string, args...) 
 #endif
 
 #ifdef CONFIG_NVMEV_DEBUG_JAEHOON

@@ -138,8 +138,11 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 		}
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			memcpy(vdev->storage_mapped + offset, vaddr + mem_offs, io_size);
-		} else {
+		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
 			memcpy(vaddr + mem_offs, vdev->storage_mapped + offset, io_size);
+		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_zone_mgmt_send) {
+			if (((struct nvme_zone_mgmt_send *)&sq_entry(sq_entry))->zsa == ZSA_RESET_ZONE)
+				memset(vdev->storage_mapped + offset, 0, BYTES_PER_ZONE);
 		}
 
 		kunmap_atomic(vaddr);
@@ -235,6 +238,79 @@ static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long lon
 	}
 }
 
+static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long long nsecs_start, struct nvme_result * ret)
+{
+	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+
+	unsigned int proc_turn = vdev->proc_turn;
+	struct nvmev_proc_info *pi = &vdev->proc_info[proc_turn];
+	unsigned int entry = pi->free_seq;
+
+	if (pi->proc_table[entry].next >= NR_MAX_PARALLEL_IO) {
+		WARN_ON_ONCE("IO queue is almost full");
+		pi->free_seq = entry;
+		return;
+	}
+
+	if (++proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
+	vdev->proc_turn = proc_turn;
+	pi->free_seq = pi->proc_table[entry].next;
+	BUG_ON(pi->free_seq >= NR_MAX_PARALLEL_IO);
+
+	NVMEV_DEBUG("%s/%u[%d], sq %d cq %d, entry %d %llu + %llu\n",
+			pi->thread_name, entry, sq_entry(sq_entry).rw.opcode,
+			sqid, cqid, sq_entry, nsecs_start, ret->nsecs_target - nsecs_start);
+
+	/////////////////////////////////
+	pi->proc_table[entry].sqid = sqid;
+	pi->proc_table[entry].cqid = cqid;
+	pi->proc_table[entry].sq_entry = sq_entry;
+	pi->proc_table[entry].command_id = sq_entry(sq_entry).common.command_id;
+	pi->proc_table[entry].nsecs_start = nsecs_start;
+	pi->proc_table[entry].nsecs_enqueue = local_clock();
+	pi->proc_table[entry].nsecs_target = ret->nsecs_target;
+	pi->proc_table[entry].status = ret->status;
+	pi->proc_table[entry].is_completed = false;
+	pi->proc_table[entry].is_copied = false;
+	pi->proc_table[entry].prev = -1;
+	pi->proc_table[entry].next = -1;
+	
+	mb();	/* IO kthread shall see the updated pe at once */
+
+	// (END) -> (START) order, nsecs target ascending order
+	if (pi->io_seq == -1) {
+		pi->io_seq = entry;
+		pi->io_seq_end = entry;
+	} else {
+		unsigned int curr = pi->io_seq_end;
+
+		while (curr != -1) {
+			if (pi->proc_table[curr].nsecs_target <= pi->proc_io_nsecs)
+				break;
+
+			if (pi->proc_table[curr].nsecs_target <= ret->nsecs_target)
+				break;
+
+			curr = pi->proc_table[curr].prev;
+		}
+
+		if (curr == -1) { /* Head inserted */
+			pi->proc_table[pi->io_seq].prev = entry;
+			pi->proc_table[entry].next = pi->io_seq;
+			pi->io_seq = entry;
+		} else if (pi->proc_table[curr].next == -1) { /* Tail */
+			pi->proc_table[entry].prev = curr;
+			pi->io_seq_end = entry;
+			pi->proc_table[curr].next = entry;
+		} else { /* In between */
+			pi->proc_table[entry].prev = curr;
+			pi->proc_table[entry].next = pi->proc_table[curr].next;
+
+			pi->proc_table[pi->proc_table[entry].next].prev = entry;
+			pi->proc_table[curr].next = entry;
+		}
+	}
+}
 
 static void __reclaim_completed_reqs(void)
 {
@@ -308,7 +384,12 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	size_t io_len = 0;
 	uint64_t max_lat = 0;
 	struct nvme_command *cmd = &sq_entry(sq_entry);
-
+#if SUPPORT_ZNS
+	struct nvme_request req;
+	struct nvme_result ret = {0,};
+	req.cmd = cmd;
+	req.nsecs_start = nsecs_start;
+#endif
 #ifdef PERF_DEBUG
 	unsigned long long prev_clock = local_clock();
 	unsigned long long prev_clock2 = 0;
@@ -322,20 +403,18 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 
 	switch(cmd->common.opcode) {
 	case nvme_cmd_write:
-		// io_len = __cmd_io_size(&cmd->rw);
-		// nsecs_target = __schedule_io_units(cmd->common.opcode,
-		// 			cmd->rw.slba, io_len, nsecs_start);
-
-		max_lat = ssd_write(cmd, nsecs_start);
-		nsecs_start = nsecs_start + max_lat;
+#if SUPPORT_ZNS
+		zns_write(&req, &ret);
+#else
+		nsecs_target = ssd_write(cmd, nsecs_start);
+#endif
 		break;
 	case nvme_cmd_read:
-		// io_len = __cmd_io_size(&cmd->rw);
-		// nsecs_target = __schedule_io_units(cmd->common.opcode,
-		// 			cmd->rw.slba, io_len, nsecs_start);
-
-		max_lat = ssd_read(cmd, nsecs_start);
-		nsecs_start = nsecs_start + max_lat;
+#if SUPPORT_ZNS
+		zns_read(&req, &ret);
+#else
+		nsecs_target = ssd_read(cmd, nsecs_start);
+#endif 
 		break;
 	case nvme_cmd_flush:
 		nsecs_target = __nvmev_proc_flush(sqid, sq_entry);
@@ -350,7 +429,11 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	case nvme_cmd_resv_release:
 	#if SUPPORT_ZNS
 	case nvme_cmd_zone_mgmt_send:
+		zns_zmgmt_send(&req, &ret);
+		break;
 	case nvme_cmd_zone_mgmt_recv:
+		zns_zmgmt_recv(&req, &ret);
+		break;
 	case nvme_cmd_zone_append:
 	#endif
 	default:
@@ -360,10 +443,13 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 #ifdef PERF_DEBUG
 	prev_clock2 = local_clock();
 #endif
-
+#if SUPPORT_ZNS
+	__enqueue_io_req2(sqid, sq->cqid, sq_entry, nsecs_start, &ret);
+#else
 	__enqueue_io_req(sqid, sq->cqid, sq_entry, nsecs_start, nsecs_target);
-
 	__check_gc_and_run(sqid, sq_entry);
+#endif
+	
 	
 #ifdef PERF_DEBUG
 	prev_clock3 = local_clock();

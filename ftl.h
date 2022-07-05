@@ -253,4 +253,20 @@ void adjust_ftl_latency(int target, int lat);
 /* Macros for specific setting. Modify these macros for your target */
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3200ull) //MB/s
+
+struct nvme_request {
+    struct nvme_command * cmd;
+    __u64 nsecs_start;
+};
+
+struct nvme_result {
+    __u32 status;
+    __u64 nsecs_target;
+    __u64 wp; // only for zone append
+};
+
+extern struct ssd ssd;
+
+uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
+inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length) ;
 #endif

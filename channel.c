@@ -24,7 +24,7 @@ void chmodel_init(struct channel_model * ch, __u64 bandwidth/*MB/s*/)
 
 	MEMSET(&(ch->avail_credits[0]), ch->max_credits, NR_CREDIT_ENTRIES);
 
-	NVMEV_DEBUG("[%s] max_credits %d tx_time %d\n", ch->max_credits, ch->xfer_lat);
+	NVMEV_DEBUG("[%s] max_credits %d tx_time %lld\n",__FUNCTION__, ch->max_credits, ch->xfer_lat);
 }
 
 __u64 chmodel_request( struct channel_model * ch, __u64 request_time, __u64 length)
