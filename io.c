@@ -242,7 +242,11 @@ static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long lo
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
+#if SUPPORT_MULTI_IO_WORKER_BY_SQ
+	unsigned int proc_turn = (sqid - 1) % (vdev->config.nr_io_cpu);
+#else
 	unsigned int proc_turn = vdev->proc_turn;
+#endif
 	struct nvmev_proc_info *pi = &vdev->proc_info[proc_turn];
 	unsigned int entry = pi->free_seq;
 
@@ -268,7 +272,7 @@ static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long lo
 	pi->proc_table[entry].command_id = sq_entry(sq_entry).common.command_id;
 	pi->proc_table[entry].nsecs_start = nsecs_start;
 	pi->proc_table[entry].nsecs_enqueue = local_clock();
-	pi->proc_table[entry].nsecs_target = ret->nsecs_target;
+	pi->proc_table[entry].nsecs_target =  ret->nsecs_target;
 	pi->proc_table[entry].status = ret->status;
 	pi->proc_table[entry].is_completed = false;
 	pi->proc_table[entry].is_copied = false;
@@ -632,6 +636,9 @@ static int nvmev_kthread_io(void *data)
 
 		for (qidx = 1; qidx <= vdev->nr_cq; qidx++) {
 			struct nvmev_completion_queue *cq = vdev->cqes[qidx];
+#if SUPPORT_MULTI_IO_WORKER_BY_SQ
+			if ((pi->id) != ((qidx - 1) % vdev->config.nr_io_cpu)) continue;
+#endif
 			if (cq == NULL || !cq->irq_enabled) continue;
 
 			if (spin_trylock(&cq->irq_lock)) {
@@ -681,6 +688,7 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev)
 		}
 		pi->proc_table[NR_MAX_PARALLEL_IO - 1].next = -1;
 
+		pi->id = proc_idx; 
 		pi->free_seq = 0;
 		pi->free_seq_end = NR_MAX_PARALLEL_IO - 1;
 		pi->io_seq = -1;

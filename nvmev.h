@@ -24,7 +24,7 @@
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
 #define SUPPORT_ZNS 1
-#define SUPPORT_MULTI_IO_WORKER_BY_SQ	0 // will be added
+#define SUPPORT_MULTI_IO_WORKER_BY_SQ	1 
 
 #if SUPPORT_ZNS == 0
 #define NS_CSI NVME_CSI_NVM
@@ -200,7 +200,8 @@ struct nvmev_proc_info {
 	unsigned int free_seq_end;	/* free io req tail index */
 	unsigned int io_seq;		/* io req head index */
 	unsigned int io_seq_end;	/* io req tail index */
-
+	unsigned int id;
+	
 	unsigned long long proc_io_nsecs;
 
 	struct task_struct *nvmev_io_worker;
