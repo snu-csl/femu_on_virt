@@ -23,7 +23,7 @@
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
-#define SUPPORT_ZNS 1
+#define SUPPORT_ZNS 0
 #define SUPPORT_MULTI_IO_WORKER_BY_SQ	1 
 
 #if SUPPORT_ZNS == 0
@@ -69,6 +69,9 @@
 
 #define LBA_TO_BYTE(lba) ((lba) << 9)
 #define BYTE_TO_LBA(byte) ((byte) >> 9)
+
+#define LPN_TO_BYTE(lpn) ((lpn) << 12)
+#define BYTE_TO_LPN(byte) ((byte) >> 12)
 
 #define INVALID32 (0xFFFFFFFF)
 #define INVALID64 (0xFFFFFFFFFFFFFFFF)

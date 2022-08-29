@@ -29,6 +29,7 @@ enum {
     NAND_READ =  0,
     NAND_WRITE = 1,
     NAND_ERASE = 2,
+    NAND_NOP = 3,
 
     #if SUPPORT_ZNS
     NAND_READ_LATENCY = 40950,
@@ -82,18 +83,26 @@ enum {
 #define LUN_BITS    (8)
 #define CH_BITS     (7)
 
+#define PG_OFFS_BITS   (4) // 16 pages -> 1 wordline
+#define WORDLINE_BITS  (PG_BITS - PG_OFFS_BITS)
 /* describe a physical page addr */
 struct ppa {
     union {
         struct {
-            uint64_t blk : BLK_BITS;
             uint64_t pg  : PG_BITS;
-            uint64_t sec : SEC_BITS;
+            uint64_t blk : BLK_BITS;
             uint64_t pl  : PL_BITS;
             uint64_t lun : LUN_BITS;
             uint64_t ch  : CH_BITS;
             uint64_t rsv : 1;
         } g;
+
+        struct {
+            uint64_t pg_offs : PG_OFFS_BITS;
+            uint64_t wordline : WORDLINE_BITS;
+            uint64_t blk_in_die : BLK_BITS + PL_BITS + LUN_BITS + CH_BITS;
+            uint64_t rsv : 1;
+        } h;
 
         uint64_t ppa;
     };
@@ -143,6 +152,8 @@ struct ssd_pcie {
 struct ssdparams {
     int secsz;        /* sector size in bytes */
     int secs_per_pg;  /* # of sectors per page */
+    int pgs_per_flash_pg; /* # of pgs per flash page */
+    int flash_pgs_per_blk; /* # of flash pages per block */
     int pgs_per_blk;  /* # of NAND pages per block */
     int blks_per_pl;  /* # of blocks per plane */
     int pls_per_lun;  /* # of planes per LUN (Die) */

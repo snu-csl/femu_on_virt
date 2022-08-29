@@ -140,11 +140,14 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 			memcpy(vdev->storage_mapped + offset, vaddr + mem_offs, io_size);
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
 			memcpy(vaddr + mem_offs, vdev->storage_mapped + offset, io_size);
-		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_zone_mgmt_send) {
+		}
+		#if SUPPORT_ZNS 
+		else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_zone_mgmt_send) {
 			if (((struct nvme_zone_mgmt_send *)&sq_entry(sq_entry))->zsa == ZSA_RESET_ZONE)
 				memset(vdev->storage_mapped + offset, 0, BYTES_PER_ZONE);
 		}
-
+		#endif
+		
 		kunmap_atomic(vaddr);
 
 		remaining -= io_size;
