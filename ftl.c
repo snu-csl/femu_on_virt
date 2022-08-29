@@ -262,13 +262,20 @@ static void ssd_init_params(struct ssdparams *spp, int nchs)
     spp->pgs_per_blk = 256;
     spp->blks_per_pl = 256; /* 16GB */
     spp->pls_per_lun = 1;
+#if SUPPORT_ZNS
+    spp->luns_per_ch = 32;
+    spp->nchs = 8;
+#else
     spp->luns_per_ch = 8;
     spp->nchs = nchs;
-
+#endif
     spp->pg_rd_lat = NAND_READ_LATENCY;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
     spp->blk_er_lat = NAND_ERASE_LATENCY;
     spp->ch_xfer_lat = 0;
+    spp->fw_rd_lat = FW_READ_LATENCY;
+    spp->fw_wr_lat = FW_PROG_LATENCY;
+    spp->fw_xfer_lat = FW_XFER_LATENCY; 
 
     spp->ch_bandwidth = NAND_CHANNEL_BANDWIDTH; 
     spp->pcie_bandwidth = PCIE_BANDWIDTH; 

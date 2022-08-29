@@ -30,9 +30,21 @@ enum {
     NAND_WRITE = 1,
     NAND_ERASE = 2,
 
+    #if SUPPORT_ZNS
+    NAND_READ_LATENCY = 40950,
+    NAND_PROG_LATENCY = 10000,
+    NAND_ERASE_LATENCY = 0,
+    FW_READ_LATENCY = (37540 - 7390),
+    FW_PROG_LATENCY = 0,
+    FW_XFER_LATENCY = 413,
+    #else
     NAND_READ_LATENCY = 10000,
     NAND_PROG_LATENCY = 10000,
     NAND_ERASE_LATENCY = 2000000,
+    FW_READ_LATENCY = 0,
+    FW_PROG_LATENCY = 0,
+    FW_XFER_LATENCY = 0,
+    #endif
 };
 
 enum {
@@ -143,7 +155,10 @@ struct ssdparams {
     int ch_xfer_lat;  /* channel transfer latency for one page in nanoseconds
                        * this defines the channel bandwith
                        */
-    
+    int fw_rd_lat;       /* Firmware overhead of read in nanoseconds */
+    int fw_wr_lat;       /* Firmware overhead of write in nanoseconds */
+    int fw_xfer_lat;     /* Firmware overhead of data transfer in nanoseconds */
+
     uint64_t ch_bandwidth; /*NAND CH Maximum bandwidth in MB/s*/
     uint64_t pcie_bandwidth; /*PCIE Maximum bandwidth in MB/s*/
 
@@ -221,7 +236,7 @@ struct line_mgmt {
 struct nand_cmd {
     int type;
     int cmd;
-    int xfer_size; // byte
+    int64_t xfer_size; // byte
     int64_t stime; /* Coperd: request arrival time */
 };
 
