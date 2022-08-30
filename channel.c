@@ -24,7 +24,7 @@ void chmodel_init(struct channel_model * ch, __u64 bandwidth/*MB/s*/)
 
 	MEMSET(&(ch->avail_credits[0]), ch->max_credits, NR_CREDIT_ENTRIES);
 
-	NVMEV_DEBUG("[%s] max_credits %d tx_time %lld\n",__FUNCTION__, ch->max_credits, ch->xfer_lat);
+	printk("[%s] max_credits %d tx_time %lld\n",__FUNCTION__, ch->max_credits, ch->xfer_lat);
 }
 
 __u64 chmodel_request( struct channel_model * ch, __u64 request_time, __u64 length)
@@ -69,7 +69,7 @@ __u64 chmodel_request( struct channel_model * ch, __u64 request_time, __u64 leng
 	request_time_offs = (request_time/UNIT_TIME_INTERVAL) - (cur_time/UNIT_TIME_INTERVAL);
 
 	if (request_time_offs >= NR_CREDIT_ENTRIES) {
-		NVMEV_ERROR("[%s] Need to increase allay size 0x%llx 0x%llx 0x%x\n", __FUNCTION__, request_time, cur_time, request_time_offs);
+		NVMEV_ERROR("[%s] Need to increase array size 0x%llx 0x%llx 0x%x\n", __FUNCTION__, request_time, cur_time, request_time_offs);
 		return 0; // return minimum delay
 	}
 

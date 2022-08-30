@@ -23,7 +23,30 @@
     rmap    = 8 * 4194304 = 33554432
 */
 
+/* Macros for specific setting. Modify these macros for your target */
+#if SUPPORT_ZNS
+#define SSD_INSTANCES        1
+#define NAND_CHANNELS        8
+#define LUNS_PER_NAND_CH     32
+#define SSD_INSTANCE_BITS    1
+#define FLASH_PAGE_SIZE       (64*1024)
+#define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
+#define PCIE_BANDWIDTH			(3200ull) //MB/s
+#else /*S970*/
+#define SSD_INSTANCES        4
+#define NAND_CHANNELS        8
+#define LUNS_PER_NAND_CH     2
+#define SSD_INSTANCE_BITS    2
+#define FLASH_PAGE_SIZE      (32*1024)
+#define BLKS_PER_PLN         1024
 
+#define NAND_CHANNEL_BANDWIDTH	(1000ull) //MB/s
+#define PCIE_BANDWIDTH			(2900ull) //MB/s
+#endif
+
+#define NAND_CH_PER_SSD_INS  (NAND_CHANNELS/SSD_INSTANCES)
+#define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_INSTANCES)     
+#define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_INSTANCE_BITS)
 
 enum {
     NAND_READ =  0,
@@ -39,7 +62,7 @@ enum {
     FW_PROG_LATENCY = 0,
     FW_XFER_LATENCY = 413,
     #else
-    NAND_READ_LATENCY = 10000,
+    NAND_READ_LATENCY = 43000,
     NAND_PROG_LATENCY = 10000,
     NAND_ERASE_LATENCY = 2000000,
     FW_READ_LATENCY = 0,
@@ -182,30 +205,30 @@ struct ssdparams {
     double op_area_pcent;
 
     /* below are all calculated values */
-    int secs_per_blk; /* # of sectors per block */
-    int secs_per_pl;  /* # of sectors per plane */
-    int secs_per_lun; /* # of sectors per LUN */
-    int secs_per_ch;  /* # of sectors per channel */
-    int tt_secs;      /* # of sectors in the SSD */
+    unsigned long secs_per_blk; /* # of sectors per block */
+    unsigned long secs_per_pl;  /* # of sectors per plane */
+    unsigned long secs_per_lun; /* # of sectors per LUN */
+    unsigned long secs_per_ch;  /* # of sectors per channel */
+    unsigned long tt_secs;      /* # of sectors in the SSD */
 
-    int pgs_per_pl;   /* # of pages per plane */
-    int pgs_per_lun;  /* # of pages per LUN (Die) */
-    int pgs_per_ch;   /* # of pages per channel */
-    int tt_pgs;       /* total # of pages in the SSD */
+    unsigned long pgs_per_pl;   /* # of pages per plane */
+    unsigned long pgs_per_lun;  /* # of pages per LUN (Die) */
+    unsigned long pgs_per_ch;   /* # of pages per channel */
+    unsigned long tt_pgs;       /* total # of pages in the SSD */
 
-    int blks_per_lun; /* # of blocks per LUN */
-    int blks_per_ch;  /* # of blocks per channel */
-    int tt_blks;      /* total # of blocks in the SSD */
+    unsigned long blks_per_lun; /* # of blocks per LUN */
+    unsigned long blks_per_ch;  /* # of blocks per channel */
+    unsigned long tt_blks;      /* total # of blocks in the SSD */
 
-    int secs_per_line;
-    int pgs_per_line;
-    int blks_per_line;
-    int tt_lines;
+    unsigned long secs_per_line;
+    unsigned long pgs_per_line;
+    unsigned long blks_per_line;
+    unsigned long tt_lines;
 
-    int pls_per_ch;   /* # of planes per channel */
-    int tt_pls;       /* total # of planes in the SSD */
+    unsigned long pls_per_ch;   /* # of planes per channel */
+    unsigned long tt_pls;       /* total # of planes in the SSD */
 
-    int tt_luns;      /* total # of LUNs in the SSD */
+    unsigned long tt_luns;      /* total # of LUNs in the SSD */
 
     int pba_pcent;    /* (physical space / logical space) * 100*/    
 };
@@ -272,13 +295,8 @@ struct ssd {
 unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
 uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start);
 uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
-bool should_gc(void);
-int do_gc(bool force);
+void ssd_gc(void);
 void adjust_ftl_latency(int target, int lat);
-
-/* Macros for specific setting. Modify these macros for your target */
-#define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
-#define PCIE_BANDWIDTH			(3200ull) //MB/s
 
 struct nvme_request {
     struct nvme_command * cmd;
@@ -291,7 +309,7 @@ struct nvme_result {
     __u64 wp; // only for zone append
 };
 
-extern struct ssd ssd;
+extern struct ssd ssd[SSD_INSTANCES];
 
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
 inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length) ;

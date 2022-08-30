@@ -49,10 +49,7 @@ static void __check_gc_and_run(int sqid, int sq_entry)
 
 	/* clean one line if needed (in the background) */
 	if (cmd->common.opcode == nvme_cmd_write) {
-		if (should_gc()) {
-			NVMEV_INFO("NEED GC!\n");
-			do_gc(false); // 782336
-		}
+		ssd_gc();
 	}
 }
 
@@ -172,7 +169,11 @@ static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long lon
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
+#if SUPPORT_MULTI_IO_WORKER_BY_SQ
+	unsigned int proc_turn = (sqid - 1) % (vdev->config.nr_io_cpu);
+#else
 	unsigned int proc_turn = vdev->proc_turn;
+#endif
 	struct nvmev_proc_info *pi = &vdev->proc_info[proc_turn];
 	unsigned int entry = pi->free_seq;
 
@@ -612,7 +613,7 @@ static int nvmev_kthread_io(void *data)
 				__fill_cq_result(pe);
 				
 #if SUPPORT_ZNS == 0
-				__check_gc_and_run(pe->sqid, pe->sq_entry);
+				//__check_gc_and_run(pe->sqid, pe->sq_entry);
 #endif
 				NVMEV_DEBUG("%s: completed %u, %d %d %d\n",
 						pi->thread_name, curr,
@@ -690,8 +691,9 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev)
 			pi->proc_table[i].prev = i - 1;
 		}
 		pi->proc_table[NR_MAX_PARALLEL_IO - 1].next = -1;
-
+#if SUPPORT_MULTI_IO_WORKER_BY_SQ
 		pi->id = proc_idx; 
+#endif
 		pi->free_seq = 0;
 		pi->free_seq_end = NR_MAX_PARALLEL_IO - 1;
 		pi->io_seq = -1;

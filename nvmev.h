@@ -63,6 +63,10 @@
 #define KB(k) ((k) * 1024)
 #define MB(m) (KB((m) * 1024))
 
+#define BYTE_TO_KB(b) ((b) / 1024)
+#define BYTE_TO_MB(b) ((b) / 1024 / 1024)
+#define BYTE_TO_GB(b) ((b) / 1024 / 1024 / 1024)
+
 #define MS_PER_SEC(s)	((s) * 1000)
 #define US_PER_SEC(s)	(MS_PER_SEC(s) * 1000)
 #define NS_PER_SEC(s)	(US_PER_SEC(s) * 1000)	

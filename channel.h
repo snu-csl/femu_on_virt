@@ -2,7 +2,7 @@
 #define _CHANNEL_H
 
 /* Macros for channel model */
-#define NR_CREDIT_ENTRIES 		(1024*8)
+#define NR_CREDIT_ENTRIES 		(1024*32)
 #define UNIT_TIME_INTERVAL 		(25000ULL) //ns
 #define UNIT_XFER_SIZE 			(4096ULL)	//bytes
 #define UNIT_XFER_CREDITS		(10)    //credits needed to transfer data(UNIT_XFER_SIZE) 
@@ -34,7 +34,6 @@ struct channel_model {
     
 	credit_t avail_credits[NR_CREDIT_ENTRIES];
 };
-
 
 #define BANDWIDTH_TO_TX_TIME(MB_S) (((UNIT_XFER_SIZE)* NS_PER_SEC(1)) / (MB(MB_S)))
 #define BANDWIDTH_TO_MAX_CREDITS(MB_S) (MB(MB_S) * UNIT_TIME_INTERVAL / NS_PER_SEC(1) / UNIT_XFER_SIZE * UNIT_XFER_CREDITS)
