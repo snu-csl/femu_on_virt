@@ -1,11 +1,25 @@
 import os
-
 import sys
+import time
 
 class fio_perf_tester()  :
     def __init__(self, fio_path, device) :
         self.fio = fio_path
         self.device = device
+        self.log = None
+        self.dir = time.strftime("%Y%m%d-%H%M%S")
+        os.system('mkdir ' + self.dir)
+    def __set_log(self, file_name) :
+        self.log = file_name
+
+    def __make_and_set_log_name(self, access_pattern, s_bs, e_bs, s_thread, e_thread, s_qd, e_qd, fsize) :
+        file_name = self.dir + '/'
+        file_name += access_pattern + "_"
+        file_name += 'BS' + str(s_bs) + '-' + str(e_bs) + '_'
+        file_name += 'T' + str(s_thread) + '-' + str(e_thread) + '_'
+        file_name += 'QD' + str(s_qd) + '-' + str(e_qd) + '_'
+        file_name += 'FS' + str(fsize)
+        self.__set_log(file_name)
 
     def __setup_common_parameter(self, wl, qd, t, bs, fs):
         file_name = wl + str(t) + "t_" + str(qd) + "qd_" + bs + '_' + fs
@@ -59,65 +73,62 @@ class fio_perf_tester()  :
 
         f.write("[file]\n")
         f.write("offset=0 \n")
-
+        f.write("offset_align=4096\n")
         return file_name
     
+    def __run_fio(self, script):
+        command = "sudo " + self.fio +  " " + script
+        if self.log :
+            command = command + " | tee -a " + self.log
+
+        os.system(command)
+        
     def seq_write(self, off, t, qd, bs, fs) :
         s = self.__create_fio_seq_write(start_off=off, queue_depth=qd, num_thread=t, block_size=bs, file_size=fs)
-        command = "sudo " + self.fio +  " " + s
-        os.system(command)
+        self.__run_fio(script=s)
 
     def seq_read(self, off, t, qd, bs, fs) :
         s = self.__create_fio_seq_read(start_off=off, queue_depth=qd, num_thread=t, block_size=bs, file_size=fs)
-        command = "sudo " + self.fio +  " " + s
-        os.system(command)
+        self.__run_fio(script=s)
 
     def rand_read(self, t, qd, bs, fs, time) :
         s = self.__create_fio_rand_read(queue_depth=qd, num_thread=t, block_size=bs, file_size=fs, time=time)
-        command = "sudo " + self.fio +  " " + s 
-        os.system(command)
+        self.__run_fio(script=s)
     
     def test_rand_read_increasing_thread(self, qd, bs, fs, time, num_test) :
+        self.__make_and_set_log_name("RR", s_bs=bs, e_bs=bs, s_thread=1, e_thread=num_test, s_qd=qd, e_qd=qd, fsize=fs)
         t = 1
-
         for i in range(num_test):
             self.rand_read(t = t, qd = qd, bs = bs, fs = fs, time = time)
             t = t * 2
 
     def test_rand_read_increasing_qd(self, t, bs, fs, time, num_test) :
+        self.__make_and_set_log_name("RR", s_bs=bs, e_bs=bs, s_thread=t, e_thread=t, s_qd=1, e_qd=2**num_test, fsize=fs)
         qd = 1
 
         for i in range(num_test):
             self.rand_read(t = t, qd = qd, bs = bs, fs = fs, time = time)
             qd = qd * 2
-
+        
     def test_seq_read_increasing_thread(self, qd, bs, fs, num_test) :
+        self.__make_and_set_log_name("SR", s_bs=bs, e_bs=bs, s_thread=1, e_thread=2**num_test, s_qd=qd, e_qd=qd, fsize=fs)
         script = []
         t = 1
-
         for i in range(num_test):
-            s = self.__create_fio_seq_read(queue_depth=qd, num_thread=t, block_size=bs, file_size=fs)
+            self.seq_write(queue_depth=qd, num_thread=t, block_size=bs, file_size=fs)
             t = t * 2
-            script.append(s)
-
-        print(script)
-
-        for s in script :
-            command = "sudo " + self.fio +  " " + s
-            os.system(command)
-
+            
     def test_rand_read_qd1_increasing_bs(self, fs, time, num_test) :
+        self.__make_and_set_log_name("RR", s_bs='4K', e_bs=2**num_test, s_thread=1, e_thread=1, s_qd=1, e_qd=1, fsize=fs)
         bs = 4096
-
         for i in range(num_test):
             self.rand_read(t = 1, qd = 1, bs = str(bs), fs = fs, time = time)
             bs = bs * 2
     
     def test_seq_write_increasing_thread(self, qd, bs, fs, num_test) :
+        self.__make_and_set_log_name("SW", s_bs=bs, e_bs=bs, s_thread=1, e_thread=2**num_test, s_qd=qd, e_qd=qd, fsize=fs)
         t = 1
-
         for i in range(num_test):
-            os.system("./reset_all_zone.sh")
             self.seq_write(off='0M', t = t, qd = qd, bs = bs, fs = fs)
             t = t * 2
 
@@ -125,15 +136,25 @@ class fio_perf_tester()  :
 if __name__ == "__main__" :
     targ_device = '/dev/nvme3n1'
     tester = fio_perf_tester('fio', targ_device)
-
-    th = 1
-    qd = 4
-    bs = '4K'
-    fs = "200*32M"
-    time = 60
     
-    tester.seq_read(off="0M",t=th, qd=qd, bs=bs, fs=fs)
-    
+    fs='4G'
+    num_test=8
+    t = 3
+    #tester.seq_read(off="0M",t=1, qd=32, bs='8K', fs='1M')
+    #tester.seq_write(off='0M', t=1, qd=4, bs='128k', fs=fs)
+    fs='3G'
+    tester.test_rand_read_qd1_increasing_bs(fs=fs, time=t, num_test=9)
+    """
+    tester.test_rand_read_increasing_thread(qd=1, bs='4K', fs=fs, time=t, num_test=8)
+    tester.test_rand_read_increasing_thread(qd=1, bs='8K', fs=fs, time=t, num_test=num_test)
+    tester.test_rand_read_increasing_thread(qd=1, bs='16K', fs=fs, time=t, num_test=num_test)
+    tester.test_rand_read_increasing_thread(qd=1, bs='32K', fs=fs, time=t, num_test=num_test)
+    tester.test_rand_read_increasing_thread(qd=1, bs='64K', fs=fs, time=t, num_test=num_test) 
+    tester.test_rand_read_increasing_thread(qd=1, bs='128K', fs=fs, time=t, num_test=num_test)   
+    tester.test_rand_read_increasing_thread(qd=1, bs='256K', fs=fs, time=t, num_test=num_test)
+    #tester.test_rand_read_increasing_thread(qd=1, bs='4K', fs=fs, time=t, num_test=num_test)
+    """
+    #tester.test_rand_read_increasing_thread(qd=1, bs='128K', fs=fs, time=t, num_test=num_tes    t)
 
     
 
