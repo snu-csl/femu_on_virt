@@ -32,43 +32,64 @@
 #define FLASH_PAGE_SIZE       (64*1024)
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3200ull) //MB/s
-#else /*S970*/
+
+#define NAND_READ_LATENCY 40950
+#define NAND_PROG_LATENCY 10000
+#define NAND_ERASE_LATENCY 0
+#define FW_READ_LATENCY  (37540 - 7390)
+#define FW_PROG_LATENCY 0
+#define FW_XFER_LATENCY 413
+#elif 0 /*S970*/ 
 #define SSD_INSTANCES        4
-#define NAND_CHANNELS        8
-#define LUNS_PER_NAND_CH     2
+#define NAND_CHANNELS        4
+#define LUNS_PER_NAND_CH     5
+#define PLNS_PER_LUN         1
 #define SSD_INSTANCE_BITS    2
 #define FLASH_PAGE_SIZE      (32*1024)
 #define BLKS_PER_PLN         1024
 
 #define NAND_CHANNEL_BANDWIDTH	(1000ull) //MB/s
-#define PCIE_BANDWIDTH			(2900ull) //MB/s
+#define PCIE_BANDWIDTH			(2800ull) //MB/s
+
+#define NAND_4KB_READ_LATENCY (43000)
+#define NAND_READ_LATENCY 50000
+#define NAND_PROG_LATENCY 10000
+#define NAND_ERASE_LATENCY 0
+#define FW_READ_LATENCY 0
+#define FW_PROG_LATENCY 0
+#define FW_XFER_LATENCY 1000
+#else
+#define SSD_INSTANCES        4
+#define NAND_CHANNELS        8
+#define LUNS_PER_NAND_CH     3
+#define PLNS_PER_LUN         1
+#define SSD_INSTANCE_BITS    2
+#define FLASH_PAGE_SIZE      (32*1024)
+#define BLKS_PER_PLN         1024
+
+#define NAND_CHANNEL_BANDWIDTH	(600ull) //MB/s
+#define PCIE_BANDWIDTH			(3500ull) //MB/s
+
+#define NAND_4KB_READ_LATENCY (64910 - 11000)
+#define NAND_READ_LATENCY (73500 - 8000)
+#define NAND_PROG_LATENCY 100000
+#define NAND_ERASE_LATENCY 0
+#define FW_READ_LATENCY 0
+#define FW_PROG_LATENCY 0
+#define FW_XFER_LATENCY 0
 #endif
 
 #define NAND_CH_PER_SSD_INS  (NAND_CHANNELS/SSD_INSTANCES)
 #define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_INSTANCES)     
 #define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_INSTANCE_BITS)
 
+#define PG_SIZE 4096
+
 enum {
     NAND_READ =  0,
     NAND_WRITE = 1,
     NAND_ERASE = 2,
     NAND_NOP = 3,
-
-    #if SUPPORT_ZNS
-    NAND_READ_LATENCY = 40950,
-    NAND_PROG_LATENCY = 10000,
-    NAND_ERASE_LATENCY = 0,
-    FW_READ_LATENCY = (37540 - 7390),
-    FW_PROG_LATENCY = 0,
-    FW_XFER_LATENCY = 413,
-    #else
-    NAND_READ_LATENCY = 43000,
-    NAND_PROG_LATENCY = 10000,
-    NAND_ERASE_LATENCY = 2000000,
-    FW_READ_LATENCY = 0,
-    FW_PROG_LATENCY = 0,
-    FW_XFER_LATENCY = 0,
-    #endif
 };
 
 enum {
@@ -106,7 +127,11 @@ enum {
 #define LUN_BITS    (8)
 #define CH_BITS     (7)
 
+#if (FLASH_PAGE_SIZE == (64*1024))
 #define PG_OFFS_BITS   (4) // 16 pages -> 1 wordline
+#elif (FLASH_PAGE_SIZE == (32*1024))
+#define PG_OFFS_BITS   (3) // 8 pages -> 1 wordline
+#endif
 #define WORDLINE_BITS  (PG_BITS - PG_OFFS_BITS)
 /* describe a physical page addr */
 struct ppa {
@@ -150,6 +175,7 @@ struct nand_block {
 
 struct nand_plane {
     struct nand_block *blk;
+    uint64_t next_pln_avail_time;
     int nblks;
 };
 

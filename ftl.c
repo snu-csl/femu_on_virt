@@ -184,55 +184,55 @@ static void ssd_advance_write_pointer(struct ssd *ssd)
     check_addr(wpp->pg, spp->pgs_per_blk);
     wpp->pg++;
     if ((wpp->pg % spp->pgs_per_flash_pg) == 0) {
-        wpp->pg -= spp->pgs_per_flash_pg;  
-        check_addr(wpp->ch, spp->nchs);
-        wpp->ch++;
-        if (wpp->ch == spp->nchs) {
-            wpp->ch = 0;
-            check_addr(wpp->lun, spp->luns_per_ch);
-            wpp->lun++;
-            /* in this case, we should go to next lun */
-            if (wpp->lun == spp->luns_per_ch) {
-                wpp->lun = 0;
-                /* go to next wordline in the block */
-                wpp->pg += spp->pgs_per_flash_pg;
-                if (wpp->pg == spp->pgs_per_blk) {
-                    wpp->pg = 0;
-                    /* move current line to {victim,full} line list */
-                    if (wpp->curline->vpc == spp->pgs_per_line) {
-                        /* all pgs are still valid, move to full line list */
-                        NVMEV_ASSERT(wpp->curline->ipc == 0);
-                        QTAILQ_INSERT_TAIL(&lm->full_line_list, wpp->curline, entry);
-                        lm->full_line_cnt++;
-                        NVMEV_JH("wpp: move line to full_line_list\n");
-                    } else {
-                        NVMEV_JH("wpp: line is moved to victim list\n");
-                        NVMEV_ASSERT(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->pgs_per_line);
-                        /* there must be some invalid pages in this line */
-                        NVMEV_ASSERT(wpp->curline->ipc > 0);
-                        pqueue_insert(lm->victim_line_pq, wpp->curline);
-                        lm->victim_line_cnt++;
+        wpp->pg -= spp->pgs_per_flash_pg;
+            check_addr(wpp->ch, spp->nchs);
+            wpp->ch++;
+            if (wpp->ch == spp->nchs) {
+                wpp->ch = 0;
+                check_addr(wpp->lun, spp->luns_per_ch);
+                wpp->lun++;
+                /* in this case, we should go to next lun */
+                if (wpp->lun == spp->luns_per_ch) {
+                    wpp->lun = 0;
+                    /* go to next wordline in the block */
+                    wpp->pg += spp->pgs_per_flash_pg;
+                    if (wpp->pg == spp->pgs_per_blk) {
+                        wpp->pg = 0;
+                        /* move current line to {victim,full} line list */
+                        if (wpp->curline->vpc == spp->pgs_per_line) {
+                            /* all pgs are still valid, move to full line list */
+                            NVMEV_ASSERT(wpp->curline->ipc == 0);
+                            QTAILQ_INSERT_TAIL(&lm->full_line_list, wpp->curline, entry);
+                            lm->full_line_cnt++;
+                            NVMEV_JH("wpp: move line to full_line_list\n");
+                        } else {
+                            NVMEV_JH("wpp: line is moved to victim list\n");
+                            NVMEV_ASSERT(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->pgs_per_line);
+                            /* there must be some invalid pages in this line */
+                            NVMEV_ASSERT(wpp->curline->ipc > 0);
+                            pqueue_insert(lm->victim_line_pq, wpp->curline);
+                            lm->victim_line_cnt++;
+                        }
+                        /* current line is used up, pick another empty line */
+                        check_addr(wpp->blk, spp->blks_per_pl);
+                        wpp->curline = NULL;
+                        wpp->curline = get_next_free_line(ssd);
+                        if (!wpp->curline) {
+                            /* TODO */
+                            NVMEV_ERROR("curline is NULL!");
+                        }
+                        NVMEV_JH("wpp: got new clean line %d\n", wpp->curline->id);
+                        wpp->blk = wpp->curline->id;
+                        check_addr(wpp->blk, spp->blks_per_pl);
+                        /* make sure we are starting from page 0 in the super block */
+                        NVMEV_ASSERT(wpp->pg == 0);
+                        NVMEV_ASSERT(wpp->lun == 0);
+                        NVMEV_ASSERT(wpp->ch == 0);
+                        /* TODO: assume # of pl_per_lun is 1, fix later */
+                        NVMEV_ASSERT(wpp->pl == 0);
                     }
-                    /* current line is used up, pick another empty line */
-                    check_addr(wpp->blk, spp->blks_per_pl);
-                    wpp->curline = NULL;
-                    wpp->curline = get_next_free_line(ssd);
-                    if (!wpp->curline) {
-                        /* TODO */
-                        NVMEV_ERROR("curline is NULL!");
-                    }
-                    NVMEV_JH("wpp: got new clean line %d\n", wpp->curline->id);
-                    wpp->blk = wpp->curline->id;
-                    check_addr(wpp->blk, spp->blks_per_pl);
-                    /* make sure we are starting from page 0 in the super block */
-                    NVMEV_ASSERT(wpp->pg == 0);
-                    NVMEV_ASSERT(wpp->lun == 0);
-                    NVMEV_ASSERT(wpp->ch == 0);
-                    /* TODO: assume # of pl_per_lun is 1, fix later */
-                    NVMEV_ASSERT(wpp->pl == 0);
                 }
             }
-        }
     }
     NVMEV_JH("advanced wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d (curline %d)\n", 
         wpp->ch, wpp->lun, wpp->pg, wpp->blk, wpp->pg, wpp->curline->id);
@@ -271,7 +271,7 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
     spp->secsz = 512;
     spp->secs_per_pg = 8;
     spp->blks_per_pl = BLKS_PER_PLN; 
-    spp->pls_per_lun = 1;
+    spp->pls_per_lun = PLNS_PER_LUN;
     spp->luns_per_ch = LUNS_PER_NAND_CH;
     spp->nchs = NAND_CH_PER_SSD_INS;
 
@@ -403,6 +403,7 @@ static void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
 {
     pcie->perf_model = kmalloc(sizeof(struct channel_model), GFP_KERNEL);
     chmodel_init(pcie->perf_model, spp->pcie_bandwidth);
+    pcie->perf_model->xfer_lat = 0;
 }
 
 static void ssd_init_maptbl(struct ssd *ssd)
@@ -560,15 +561,19 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
                             ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg);
 
     struct ssdparams *spp = &ssd->sp;
-    struct nand_lun *lun = get_lun(ssd, ppa); 
+    struct nand_lun *lun = get_lun(ssd, ppa);
     struct ssd_channel * ch = get_ch(ssd, ppa); 
 
     switch (c) {
     case NAND_READ:
         /* read: perform NAND cmd first */
-        nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
-                     lun->next_lun_avail_time;
-        nand_etime = nand_stime + spp->pg_rd_lat;
+            nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
+                        lun->next_lun_avail_time;
+
+        if (ncmd->xfer_size == 4096)
+            nand_etime = nand_stime + NAND_4KB_READ_LATENCY;
+        else       
+            nand_etime = nand_stime + spp->pg_rd_lat;
    
         /* read: then data transfer through channel */
         chnl_stime = nand_etime;
@@ -942,7 +947,7 @@ uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
             cur_ppa = get_maptbl_ent(ssd_ins, local_lpn);
             if (!mapped_ppa(&cur_ppa) || !valid_ppa(ssd_ins, &cur_ppa))
             {
-                NVMEV_DEBUG("lpn 0x%llx not mapped to valid ppa\n", local_lpn);
+                NVMEV_ERROR("lpn 0x%llx not mapped to valid ppa\n", local_lpn);
                 NVMEV_DEBUG("Invalid ppa,ch:%d,lun:%d,blk:%d,pl:%d,pg:%d\n",
                 cur_ppa.g.ch, cur_ppa.g.lun, cur_ppa.g.blk, cur_ppa.g.pl, cur_ppa.g.pg);
                 continue;
@@ -970,6 +975,7 @@ uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
         }
     }
 
+    maxlat += spp->fw_xfer_lat * DIV_ROUND_UP(LBA_TO_BYTE(nr_lba), LPN_TO_BYTE(1));
     // get delay from pcie model 
 	maxlat = ssd_advance_pcie(&ssd[0], maxlat, LBA_TO_BYTE(nr_lba));
 
