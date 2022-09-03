@@ -30,6 +30,9 @@
 #define LUNS_PER_NAND_CH     32
 #define SSD_INSTANCE_BITS    1
 #define FLASH_PAGE_SIZE       (64*1024)
+#define PLNS_PER_LUN         1 /* not used*/
+#define BLKS_PER_PLN         0 /* not used*/
+
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3200ull) //MB/s
 

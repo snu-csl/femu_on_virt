@@ -27,8 +27,8 @@ extern struct nvmev_dev *vdev;
 #define PGM_PAGE_SIZE (192*1024ULL)
 #define READ_PAGE_SIZE (64*1024ULL)
 
-#define CHANNELS_PER_SSD (ssd.sp.nchs)
-#define LUNS_PER_CHANNEL (ssd.sp.luns_per_ch)
+#define CHANNELS_PER_SSD (ssd[0].sp.nchs)
+#define LUNS_PER_CHANNEL (ssd[0].sp.luns_per_ch)
 #define DIES_PER_ZONE (1)
 #define NR_TOTAL_DIES (CHANNELS_PER_SSD * LUNS_PER_CHANNEL)
 
