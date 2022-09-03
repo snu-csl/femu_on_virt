@@ -293,9 +293,8 @@ void zns_read(struct nvme_request * req, struct nvme_result * ret)
 	// get delay from nand model
 	swr.type = USER_IO;
 	swr.cmd = NAND_READ;
-	swr.stime = nsecs_start + 
-				__get_firmware_read_latency() + 
-				__get_firmware_transfer_latency(bytes_to_read);
+	swr.stime = nsecs_start + __get_firmware_read_latency();
+				
 	lba = slba;
 
 	while (remaining)

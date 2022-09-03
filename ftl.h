@@ -33,9 +33,11 @@
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3200ull) //MB/s
 
+#define NAND_4KB_READ_LATENCY 25485
 #define NAND_READ_LATENCY 40950
-#define NAND_PROG_LATENCY 10000
+#define NAND_PROG_LATENCY 1913640
 #define NAND_ERASE_LATENCY 0
+
 #define FW_READ_LATENCY  (37540 - 7390)
 #define FW_PROG_LATENCY 0
 #define FW_XFER_LATENCY 413
@@ -209,6 +211,7 @@ struct ssdparams {
     int luns_per_ch;  /* # of LUNs per channel */
     int nchs;         /* # of channels in the SSD */
 
+    int pg_4kb_rd_lat;/* NAND page 4KB read latency in nanoseconds */
     int pg_rd_lat;    /* NAND page read latency in nanoseconds */
     int pg_wr_lat;    /* NAND page program latency in nanoseconds */
     int blk_er_lat;   /* NAND block erase latency in nanoseconds */

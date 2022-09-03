@@ -283,6 +283,7 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
     spp->flash_pgs_per_blk = DIV_ROUND_UP(blk_size, FLASH_PAGE_SIZE);  
     spp->pgs_per_blk = spp->pgs_per_flash_pg * spp->flash_pgs_per_blk;
 
+    spp->pg_4kb_rd_lat = NAND_4KB_READ_LATENCY;
     spp->pg_rd_lat = NAND_READ_LATENCY;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
     spp->blk_er_lat = NAND_ERASE_LATENCY;
@@ -397,13 +398,15 @@ static void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp)
 
     ch->perf_model = kmalloc(sizeof(struct channel_model), GFP_KERNEL);
     chmodel_init(ch->perf_model, spp->ch_bandwidth);
+
+    /* Add firmware overhead */
+    ch->perf_model->xfer_lat+=spp->fw_xfer_lat;
 }
 
 static void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
 {
     pcie->perf_model = kmalloc(sizeof(struct channel_model), GFP_KERNEL);
     chmodel_init(pcie->perf_model, spp->pcie_bandwidth);
-    pcie->perf_model->xfer_lat = 0;
 }
 
 static void ssd_init_maptbl(struct ssd *ssd)
@@ -567,11 +570,11 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
     switch (c) {
     case NAND_READ:
         /* read: perform NAND cmd first */
-            nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
-                        lun->next_lun_avail_time;
+        nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
+                    lun->next_lun_avail_time;
 
         if (ncmd->xfer_size == 4096)
-            nand_etime = nand_stime + NAND_4KB_READ_LATENCY;
+            nand_etime = nand_stime + spp->pg_4kb_rd_lat;
         else       
             nand_etime = nand_stime + spp->pg_rd_lat;
    
