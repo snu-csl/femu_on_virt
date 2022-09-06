@@ -288,7 +288,11 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
     spp->pg_wr_lat = NAND_PROG_LATENCY;
     spp->blk_er_lat = NAND_ERASE_LATENCY;
     spp->ch_xfer_lat = 0;
-    spp->fw_rd_lat = FW_READ_LATENCY;
+    spp->ch_max_xfer_size = MAX_NAND_XFER_SIZE;
+
+    spp->fw_rd0_lat = FW_READ0_LATENCY;
+    spp->fw_rd1_lat = FW_READ1_LATENCY;
+    spp->fw_rd0_size = FW_READ0_SIZE;
     spp->fw_wr_lat = FW_PROG_LATENCY;
     spp->fw_xfer_lat = FW_XFER_LATENCY; 
 
@@ -552,6 +556,11 @@ static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
     return &(blk->pg[ppa->g.pg]);
 }
 
+inline uint64_t ssd_advance_pcie(__u64 request_time, __u64 length) 
+{
+    return chmodel_request(ssd[0].pcie->perf_model, request_time, length);
+}
+
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd)
 {
     int c = ncmd->cmd;
@@ -559,6 +568,8 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
         __get_ioclock(ssd) : ncmd->stime;
     uint64_t nand_stime, nand_etime;
     uint64_t chnl_stime, chnl_etime;
+    uint64_t pcie_etime;
+    uint64_t remaining, xfer_size, completed_time;
     
     NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu\n",
                             ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg);
@@ -566,6 +577,7 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
     struct ssdparams *spp = &ssd->sp;
     struct nand_lun *lun = get_lun(ssd, ppa);
     struct ssd_channel * ch = get_ch(ssd, ppa); 
+    remaining = ncmd->xfer_size;
 
     switch (c) {
     case NAND_READ:
@@ -580,7 +592,20 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
    
         /* read: then data transfer through channel */
         chnl_stime = nand_etime;
-        chnl_etime = chmodel_request(ch->perf_model, chnl_stime, ncmd->xfer_size);
+
+        while (remaining) {
+            xfer_size = min(remaining, spp->ch_max_xfer_size);
+            chnl_etime = chmodel_request(ch->perf_model, chnl_stime, xfer_size);
+            
+            if (ncmd->type == USER_IO) /* overlap pci transfer with nand ch transfer*/
+                completed_time = ssd_advance_pcie(chnl_etime, xfer_size);
+            else
+                completed_time = chnl_etime;
+
+            remaining -= xfer_size;
+            chnl_stime = chnl_etime;
+        }
+
         lun->next_lun_avail_time = chnl_etime;
         break;
 
@@ -601,14 +626,16 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
             nand_etime = nand_stime + spp->pg_wr_lat;
         }
         lun->next_lun_avail_time = nand_etime;
+        completed_time = nand_etime;
         break;
 
     case NAND_ERASE:
         /* erase: only need to advance NAND status */
         nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                      lun->next_lun_avail_time;
-        lun->next_lun_avail_time = nand_stime + spp->blk_er_lat;
-
+        nand_etime = nand_stime + spp->blk_er_lat;
+        lun->next_lun_avail_time = nand_etime;
+        completed_time = nand_etime;
         break;
 
     case NAND_NOP:
@@ -616,19 +643,14 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
         nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                      lun->next_lun_avail_time;
         lun->next_lun_avail_time = nand_stime;
-
+        completed_time = nand_stime;
         break;
 
     default:
         NVMEV_ERROR("Unsupported NAND command: 0x%x\n", c);
     }
 
-    return lun->next_lun_avail_time;
-}
-
-inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length) 
-{
-    return chmodel_request(ssd->pcie->perf_model, request_time, length);
+    return completed_time;
 }
 
 /* update SSD status about one page from PG_VALID -> PG_VALID */
@@ -937,6 +959,12 @@ uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
         return 0;
     }
 
+    if (LBA_TO_BYTE(nr_lba) <= spp->fw_rd0_size)
+        srd.stime += spp->fw_rd0_lat;
+    else
+        srd.stime += spp->fw_rd1_lat;
+
+
     for (i = 0; (i < SSD_INSTANCES) && (start_lpn <= end_lpn); i++, start_lpn++) {
         ssd_ins = get_ssd_ins_from_lpn(start_lpn);
         xfer_size = 0;
@@ -977,10 +1005,6 @@ uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
             maxlat = (sublat > maxlat) ? sublat : maxlat;
         }
     }
-
-    maxlat += spp->fw_xfer_lat * DIV_ROUND_UP(LBA_TO_BYTE(nr_lba), LPN_TO_BYTE(1));
-    // get delay from pcie model 
-	maxlat = ssd_advance_pcie(&ssd[0], maxlat, LBA_TO_BYTE(nr_lba));
 
     return maxlat;
 }
@@ -1064,7 +1088,7 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
     }
 
     // get delay from pcie model 
-	maxlat = ssd_advance_pcie(&ssd[0], maxlat, LBA_TO_BYTE(nr_lba));
+	maxlat = ssd_advance_pcie(maxlat, LBA_TO_BYTE(nr_lba));
     
     return maxlat;
 }

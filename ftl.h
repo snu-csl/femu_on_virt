@@ -41,45 +41,30 @@
 #define NAND_PROG_LATENCY 1913640
 #define NAND_ERASE_LATENCY 0
 
-#define FW_READ_LATENCY  (37540 - 7390)
+#define FW_READ1_LATENCY  (37540 - 7390)
 #define FW_PROG_LATENCY 0
 #define FW_XFER_LATENCY 413
-#elif 0 /*S970*/ 
-#define SSD_INSTANCES        4
-#define NAND_CHANNELS        4
-#define LUNS_PER_NAND_CH     5
-#define PLNS_PER_LUN         1
-#define SSD_INSTANCE_BITS    2
-#define FLASH_PAGE_SIZE      (32*1024)
-#define BLKS_PER_PLN         1024
-
-#define NAND_CHANNEL_BANDWIDTH	(1000ull) //MB/s
-#define PCIE_BANDWIDTH			(2800ull) //MB/s
-
-#define NAND_4KB_READ_LATENCY (43000)
-#define NAND_READ_LATENCY 50000
-#define NAND_PROG_LATENCY 10000
-#define NAND_ERASE_LATENCY 0
-#define FW_READ_LATENCY 0
-#define FW_PROG_LATENCY 0
-#define FW_XFER_LATENCY 1000
 #else
 #define SSD_INSTANCES        4
 #define NAND_CHANNELS        8
-#define LUNS_PER_NAND_CH     3
+#define LUNS_PER_NAND_CH     2
 #define PLNS_PER_LUN         1
 #define SSD_INSTANCE_BITS    2
 #define FLASH_PAGE_SIZE      (32*1024)
 #define BLKS_PER_PLN         1024
+#define MAX_NAND_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
 
-#define NAND_CHANNEL_BANDWIDTH	(600ull) //MB/s
-#define PCIE_BANDWIDTH			(3500ull) //MB/s
+#define NAND_CHANNEL_BANDWIDTH	(704ull) //MB/s
+#define PCIE_BANDWIDTH			(3360ull) //MB/s
 
-#define NAND_4KB_READ_LATENCY (64910 - 11000)
-#define NAND_READ_LATENCY (73500 - 8000)
+#define NAND_4KB_READ_LATENCY 34785
+#define NAND_READ_LATENCY 34500
 #define NAND_PROG_LATENCY 100000
 #define NAND_ERASE_LATENCY 0
-#define FW_READ_LATENCY 0
+
+#define FW_READ0_LATENCY 9500
+#define FW_READ1_LATENCY 20000
+#define FW_READ0_SIZE (16*1024)
 #define FW_PROG_LATENCY 0
 #define FW_XFER_LATENCY 0
 #endif
@@ -221,7 +206,11 @@ struct ssdparams {
     int ch_xfer_lat;  /* channel transfer latency for one page in nanoseconds
                        * this defines the channel bandwith
                        */
-    int fw_rd_lat;       /* Firmware overhead of read in nanoseconds */
+    int ch_max_xfer_size;
+
+    int fw_rd0_lat;       /* Firmware overhead of read 0 of read in nanoseconds */
+    int fw_rd1_lat;       /* Firmware overhead of read 1 of read in nanoseconds */
+    int fw_rd0_size;
     int fw_wr_lat;       /* Firmware overhead of write in nanoseconds */
     int fw_xfer_lat;     /* Firmware overhead of data transfer in nanoseconds */
 
@@ -344,5 +333,4 @@ struct nvme_result {
 extern struct ssd ssd[SSD_INSTANCES];
 
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
-inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length) ;
 #endif

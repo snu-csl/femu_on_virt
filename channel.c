@@ -62,7 +62,7 @@ __u64 chmodel_request( struct channel_model * ch, __u64 request_time, __u64 leng
 	if (request_time < cur_time) {
 		NVMEV_DEBUG("[%s] Reqeust time is before the current time 0x%llx 0x%llx\n", 
 									__FUNCTION__, request_time, cur_time);
-		return 0; // return minimum delay
+		return request_time; // return minimum delay
 	}
 
 	//Search request time index
@@ -70,7 +70,7 @@ __u64 chmodel_request( struct channel_model * ch, __u64 request_time, __u64 leng
 
 	if (request_time_offs >= NR_CREDIT_ENTRIES) {
 		NVMEV_ERROR("[%s] Need to increase array size 0x%llx 0x%llx 0x%x\n", __FUNCTION__, request_time, cur_time, request_time_offs);
-		return 0; // return minimum delay
+		return request_time; // return minimum delay
 	}
 
 	pos = (ch->head + request_time_offs) %  NR_CREDIT_ENTRIES;
