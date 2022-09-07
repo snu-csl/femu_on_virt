@@ -559,10 +559,6 @@ static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
 inline uint64_t ssd_advance_pcie(__u64 request_time, __u64 length) 
 {
     struct channel_model * perf_model = ssd[0].pcie->perf_model;
-    uint64_t pcie_overlap_delay = perf_model->xfer_lat * ((length/UNIT_XFER_SIZE) - (4096/UNIT_XFER_SIZE)); 
-    if (request_time > pcie_overlap_delay)
-        request_time -= pcie_overlap_delay;
-
     return chmodel_request(perf_model, request_time, length);
 }
 
