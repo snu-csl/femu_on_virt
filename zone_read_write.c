@@ -58,7 +58,7 @@ static inline struct ppa __lba_to_ppa(uint64_t lba)
 
 static inline  __u64 __get_firmware_read_latency(void)
 {
-	return ssd[0].sp.fw_rd_lat;
+	return ssd[0].sp.fw_rd1_lat;
 }
 
 static inline  __u64 __get_firmware_write_latency(void)
@@ -240,7 +240,7 @@ void zns_write(struct nvme_request * req, struct nvme_result * ret)
 			nsecs_completed = ssd_advance_status(&ssd[0], &ppa, &swr);
 			nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 			remaining -= swr.xfer_size;
-			lba += lbas_to_write;
+			lba += BYTE_TO_LBA(swr.xfer_size);
 		} 
 		
 		// get delay from pcie model 
@@ -298,7 +298,7 @@ void zns_read(struct nvme_request * req, struct nvme_result * ret)
 		nsecs_completed = ssd_advance_status(&ssd[0], &ppa, &swr);
 		nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 		remaining -= swr.xfer_size;
-		lba += lbas_to_read;
+		lba += BYTE_TO_LBA(swr.xfer_size);
 	} 
 
 	// get delay from pcie model 
