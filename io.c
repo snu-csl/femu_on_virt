@@ -49,7 +49,7 @@ static void __check_gc_and_run(int sqid, int sq_entry)
 
 	/* clean one line if needed (in the background) */
 	if (cmd->common.opcode == nvme_cmd_write) {
-		ssd_gc();
+		ssd_gc_bg();
 	}
 }
 
@@ -455,7 +455,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	__enqueue_io_req2(sqid, sq->cqid, sq_entry, nsecs_start, &ret);
 #else
 	__enqueue_io_req(sqid, sq->cqid, sq_entry, nsecs_start, nsecs_target);
-	__check_gc_and_run(sqid, sq_entry);
+	//__check_gc_and_run(sqid, sq_entry);
 #endif
 	
 	

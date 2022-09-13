@@ -102,6 +102,21 @@ static inline void victim_line_set_pos(void *a, size_t pos)
     ((struct line *)a)->pos = pos;
 }
 
+static inline void consume_write_credit(struct ssd *ssd)
+{
+    ssd->wfc.write_credits--;
+}
+
+static inline void check_and_refill_write_credit(struct ssd *ssd)
+{
+    struct write_flow_control * wfc = &(ssd->wfc);
+    if (wfc->write_credits <= 0) {
+        ssd_gc2(ssd);
+
+        wfc->write_credits += wfc->credits_to_refill; 
+    } 
+}
+
 static void ssd_init_lines(struct ssd *ssd)
 {
     struct ssdparams *spp = &ssd->sp;
@@ -136,11 +151,18 @@ static void ssd_init_lines(struct ssd *ssd)
     lm->full_line_cnt = 0;
 }
 
-static void ssd_init_write_pointer(struct ssd *ssd)
+static void ssd_init_write_pointer(struct ssd *ssd, uint32_t io_type)
 {
-    struct write_pointer *wpp = &ssd->wp;
+    struct write_pointer *wpp;
     struct line_mgmt *lm = &ssd->lm;
     struct line *curline = NULL;
+
+    if (io_type == USER_IO)
+        wpp = &ssd->wp;
+    else if (io_type == GC_IO)
+        wpp = &ssd->gc_wp;
+    else
+        NVMEV_ASSERT(0);
 
     curline = QTAILQ_FIRST(&lm->free_line_list);
     QTAILQ_REMOVE(&lm->free_line_list, curline, entry);
@@ -151,8 +173,15 @@ static void ssd_init_write_pointer(struct ssd *ssd)
     wpp->ch = 0;
     wpp->lun = 0;
     wpp->pg = 0;
-    wpp->blk = 0;
+    wpp->blk = curline->id;
     wpp->pl = 0;
+}
+
+static void ssd_init_write_flow_control(struct ssd *ssd) {
+    struct write_flow_control * wfc = &(ssd->wfc);
+
+    wfc->write_credits = ssd->sp.pgs_per_line;
+    wfc->credits_to_refill = ssd->sp.pgs_per_line; 
 }
 
 static inline void check_addr(int a, int max)
@@ -177,11 +206,17 @@ static struct line *get_next_free_line(struct ssd *ssd)
     return curline;
 }
 
-static void ssd_advance_write_pointer(struct ssd *ssd)
+static void ssd_advance_write_pointer(struct ssd *ssd, uint32_t io_type)
 {
     struct ssdparams *spp = &ssd->sp;
-    struct write_pointer *wpp = &ssd->wp;
     struct line_mgmt *lm = &ssd->lm;
+    struct write_pointer *wpp;
+    if (io_type == USER_IO)
+        wpp = &ssd->wp;
+    else if (io_type == GC_IO)
+        wpp = &ssd->gc_wp;
+    else
+        NVMEV_ASSERT(0);
 
     NVMEV_DEBUG("current wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n", 
         wpp->ch, wpp->lun, wpp->pl, wpp->blk, wpp->pg);
@@ -243,10 +278,18 @@ static void ssd_advance_write_pointer(struct ssd *ssd)
         wpp->ch, wpp->lun, wpp->pg, wpp->blk, wpp->pg, wpp->curline->id);
 }
 
-static struct ppa get_new_page(struct ssd *ssd)
+static struct ppa get_new_page(struct ssd *ssd, uint32_t io_type)
 {
-    struct write_pointer *wpp = &ssd->wp;
+    struct write_pointer *wpp;
     struct ppa ppa;
+
+    if (io_type == USER_IO)
+        wpp = &ssd->wp;
+    else if (io_type == GC_IO)
+        wpp = &ssd->gc_wp;
+    else
+        NVMEV_ASSERT(0);
+
     ppa.ppa = 0;
     ppa.g.ch = wpp->ch;
     ppa.g.lun = wpp->lun;
@@ -333,11 +376,11 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
 
     spp->gc_thres_pcent = 0.75;
     spp->gc_thres_lines = (int)((1 - spp->gc_thres_pcent) * spp->tt_lines);
-    spp->gc_thres_pcent_high = 0.95;
+    spp->gc_thres_pcent_high = 0.997;
     spp->gc_thres_lines_high = (int)((1 - spp->gc_thres_pcent_high) * spp->tt_lines);
     spp->enable_gc_delay = 1;
 
-    spp->op_area_pcent = 0.10;
+    spp->op_area_pcent = 0.05;
     spp->pba_pcent = (int)((1 + spp->op_area_pcent) * 100);
 
     check_params(spp);
@@ -475,7 +518,10 @@ void ssd_init_ftl_instance(struct ssd *ssd, unsigned int cpu_nr_dispatcher, unsi
 
     /* initialize write pointer, this is how we allocate new pages for writes */
     NVMEV_INFO("initialize write pointer\n");
-    ssd_init_write_pointer(ssd);
+    ssd_init_write_pointer(ssd, USER_IO);
+    ssd_init_write_pointer(ssd, GC_IO);
+
+    ssd_init_write_flow_control(ssd);
 
     return;
 }
@@ -775,7 +821,7 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
     uint64_t lpn = get_rmap_ent(ssd, old_ppa);
 
     NVMEV_ASSERT(valid_lpn(ssd, lpn));
-    new_ppa = get_new_page(ssd);
+    new_ppa = get_new_page(ssd, GC_IO);
     /* update maptbl */
     set_maptbl_ent(ssd, lpn, &new_ppa);
     /* update rmap */
@@ -784,7 +830,7 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
     mark_page_valid(ssd, &new_ppa);
 
     /* need to advance the write pointer here */
-    ssd_advance_write_pointer(ssd);
+    ssd_advance_write_pointer(ssd, GC_IO);
 
     if (ssd->sp.enable_gc_delay) {
         struct nand_cmd gcw;
@@ -804,10 +850,10 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
 #if 0
     new_ch = get_ch(ssd, &new_ppa);
     new_ch->gc_endtime = new_ch->next_ch_avail_time;
-#endif
 
     new_lun = get_lun(ssd, &new_ppa);
     new_lun->gc_endtime = new_lun->next_lun_avail_time;
+#endif
 
     return 0;
 }
@@ -858,6 +904,46 @@ static void clean_one_block(struct ssd *ssd, struct ppa *ppa)
     NVMEV_ASSERT(get_blk(ssd, ppa)->vpc == cnt);
 }
 
+/* here ppa identifies the block we want to clean */
+static void clean_one_flash_page(struct ssd *ssd, struct ppa *ppa)
+{
+    struct ssdparams *spp = &ssd->sp;
+    struct nand_page *pg_iter = NULL;
+    int cnt = 0;
+    int pg;
+    uint64_t completed_time = 0;
+
+    for (pg = 0; pg < spp->pgs_per_flash_pg; pg++) {
+        ppa->h.pg_offs = pg;
+        pg_iter = get_pg(ssd, ppa);
+        /* there shouldn't be any free page in victim blocks */
+        NVMEV_ASSERT(pg_iter->status != PG_FREE);
+        if (pg_iter->status == PG_VALID) 
+            cnt++;
+    }
+
+    if (cnt > 0) {
+        if (ssd->sp.enable_gc_delay) {
+            struct nand_cmd gcr;
+            gcr.type = GC_IO;
+            gcr.cmd = NAND_READ;
+            gcr.stime = 0;
+            gcr.xfer_size = LPN_TO_BYTE(cnt);
+            completed_time = ssd_advance_status(ssd, ppa, &gcr);
+        }
+
+        for (pg = 0; pg < spp->pgs_per_flash_pg; pg++) {
+            ppa->h.pg_offs = pg;
+            pg_iter = get_pg(ssd, ppa);
+
+            /* there shouldn't be any free page in victim blocks */
+            if (pg_iter->status == PG_VALID) 
+                /* delay the maptbl update until "write" happens */
+                gc_write_page(ssd, ppa);
+        }
+    }
+}
+
 static void mark_line_free(struct ssd *ssd, struct ppa *ppa)
 {
     struct line_mgmt *lm = &ssd->lm;
@@ -876,7 +962,7 @@ int do_gc(struct ssd *ssd, bool force)
     struct nand_lun *lunp;
     struct nand_block *blkp;
     struct ppa ppa;
-    int ch, lun;
+    int ch, lun, flash_pg;
 
     victim_line = select_victim_line(ssd, force);
     if (!victim_line) {
@@ -888,25 +974,33 @@ int do_gc(struct ssd *ssd, bool force)
               victim_line->ipc,victim_line->vpc, ssd->lm.victim_line_cnt, ssd->lm.full_line_cnt,
               ssd->lm.free_line_cnt);
 
+    ssd->wfc.credits_to_refill = victim_line->ipc;
+
     /* copy back valid data */
-    for (ch = 0; ch < spp->nchs; ch++) {
-        for (lun = 0; lun < spp->luns_per_ch; lun++) {
-            ppa.g.ch = ch;
-            ppa.g.lun = lun;
-            ppa.g.pl = 0;
-            lunp = get_lun(ssd, &ppa);
-            clean_one_block(ssd, &ppa);
-            mark_block_free(ssd, &ppa);
+    for (flash_pg = 0; flash_pg < spp->flash_pgs_per_blk; flash_pg++) {
+        ppa.h.wordline = flash_pg; 
+        for (ch = 0; ch < spp->nchs; ch++) {
+            for (lun = 0; lun < spp->luns_per_ch; lun++) {
+                ppa.g.ch = ch;
+                ppa.g.lun = lun;
+                ppa.g.pl = 0;
+                lunp = get_lun(ssd, &ppa);
+                clean_one_flash_page(ssd, &ppa);
 
-            if (spp->enable_gc_delay) {
-                struct nand_cmd gce;
-                gce.type = GC_IO;
-                gce.cmd = NAND_ERASE;
-                gce.stime = 0;
-                ssd_advance_status(ssd, &ppa, &gce);
+                if (flash_pg == (spp->flash_pgs_per_blk - 1)){
+                    mark_block_free(ssd, &ppa);
+
+                    if (spp->enable_gc_delay) {
+                        struct nand_cmd gce;
+                        gce.type = GC_IO;
+                        gce.cmd = NAND_ERASE;
+                        gce.stime = 0;
+                        ssd_advance_status(ssd, &ppa, &gce);
+                    }
+
+                    lunp->gc_endtime = lunp->next_lun_avail_time;
+                }
             }
-
-            lunp->gc_endtime = lunp->next_lun_avail_time;
         }
     }
 
@@ -916,7 +1010,7 @@ int do_gc(struct ssd *ssd, bool force)
     return 0;
 }
 
-void ssd_gc(void) {
+void ssd_gc_bg(void) {
     unsigned int i = 0;
     struct ssd *ssd_ins;
 
@@ -930,7 +1024,7 @@ void ssd_gc(void) {
     }
 }
 
-void ssd_gc_urgent(void) {
+void ssd_gc(void) {
     unsigned int i = 0, r;
     struct ssd *ssd_ins;
 
@@ -944,6 +1038,15 @@ void ssd_gc_urgent(void) {
             if (r == -1)
                 break;
         }
+    }
+}
+
+void ssd_gc2(struct ssd *ssd) {
+    unsigned int i = 0, r;
+    if (should_gc_high(ssd)) {
+        NVMEV_INFO("should_gc_high passed");
+        /* perform GC here until !should_gc(ssd) */
+        r = do_gc(ssd, true);
     }
 }
 
@@ -1051,8 +1154,6 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
         return 0;
     }
 
-    /* check and do urgent gc*/
-    ssd_gc_urgent();
 
     for (i = 0; (i < SSD_INSTANCES) && (start_lpn <= end_lpn); i++, start_lpn++) {
 
@@ -1069,7 +1170,7 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
             }
 
             /* new write */
-            ppa = get_new_page(ssd_ins);
+            ppa = get_new_page(ssd_ins, USER_IO);
             /* update maptbl */
             set_maptbl_ent(ssd_ins, local_lpn, &ppa);
             NVMEV_JH("ssd_write: got new ppa %lld, ", ppa2pgidx(ssd_ins, &ppa));
@@ -1079,7 +1180,7 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
             mark_page_valid(ssd_ins, &ppa);
 
             /* need to advance the write pointer here */
-            ssd_advance_write_pointer(ssd_ins);
+            ssd_advance_write_pointer(ssd_ins, USER_IO);
 
             /* Aggregate write io in flash page */
             if (last_pg_in_wordline(ssd_ins, &ppa)) {
@@ -1091,6 +1192,9 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
             }
             curlat = ssd_advance_status(ssd_ins, &ppa, &swr);
             maxlat = (curlat > maxlat) ? curlat : maxlat;
+
+            consume_write_credit(ssd_ins);
+            check_and_refill_write_credit(ssd_ins);
         }
     }
 

@@ -319,6 +319,11 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
+struct write_flow_control {
+    int write_credits;
+    int credits_to_refill;
+};
+
 struct ssd {
     struct ssdparams sp;
     struct ssd_channel *ch;
@@ -327,7 +332,9 @@ struct ssd {
     struct ppa *maptbl; /* page level mapping table */
     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
     struct write_pointer wp;
+    struct write_pointer gc_wp;
     struct line_mgmt lm;
+    struct write_flow_control wfc;
     unsigned int cpu_nr_dispatcher;
 
     // /* lockless ring for communication with NVMe IO thread */
@@ -340,7 +347,9 @@ struct ssd {
 unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
 uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start);
 uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
+void ssd_gc_bg(void);
 void ssd_gc(void);
+void ssd_gc2(struct ssd *ssd);
 void adjust_ftl_latency(int target, int lat);
 
 struct nvme_request {
