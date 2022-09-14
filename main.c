@@ -542,13 +542,13 @@ static int NVMeV_init(void)
 #if SUPPORT_ZNS 
 	zns_init();
 #endif
+	NVMEV_STORAGE_INIT(vdev);
+
 	if (!NVMEV_PCI_INIT(vdev)) {
 		goto ret_err;
 	}
 
 	__print_perf_configs();
-
-	NVMEV_STORAGE_INIT(vdev);
 
 	NVMEV_IO_PROC_INIT(vdev);
 	NVMEV_DISPATCHER_INIT(vdev);
