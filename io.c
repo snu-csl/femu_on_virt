@@ -19,6 +19,7 @@
 
 #include "nvmev.h"
 #include "ftl.h"
+#include "dma.h"
 
 #if SUPPORT_ZNS
 #include "zns.h"
@@ -36,6 +37,7 @@
 	cq->cq[CQ_ENTRY_TO_PAGE_NUM(entry_id)][CQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
 
 extern struct nvmev_dev *vdev;
+int dma_flag = 1;
 
 static inline unsigned long long __get_wallclock(void)
 {
@@ -153,6 +155,93 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 
 	if (paddr_list != NULL)
 		kunmap_atomic(paddr_list);
+
+	return length;
+}
+
+u64 paddr_list[513] = {0,};
+static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
+{
+	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
+	size_t offset;
+	size_t length, remaining;
+	int prp_offs = 0;
+	int prp2_offs = 0;
+	int num_prps = 0;
+	u64 paddr;
+	u64 *tmp_paddr_list = NULL;
+	size_t mem_offs = 0;
+	size_t io_size, chunk_size;
+
+	offset = sq_entry(sq_entry).rw.slba << 9;
+	length = (sq_entry(sq_entry).rw.length + 1) << 9;
+	remaining = length;
+
+	memset(paddr_list, 0, 513);
+	/* Loop to get the PRP list */	
+	while (remaining) {
+		io_size = 0;
+
+		prp_offs++;
+		if (prp_offs == 1) {
+			paddr_list[prp_offs] = sq_entry(sq_entry).rw.prp1;
+		} else if (prp_offs == 2) {
+			paddr_list[prp_offs] = sq_entry(sq_entry).rw.prp2;
+			if (remaining > PAGE_SIZE) {
+				tmp_paddr_list = kmap_atomic_pfn(PRP_PFN(paddr_list[prp_offs])) + (paddr_list[prp_offs] & PAGE_OFFSET_MASK);
+				paddr_list[prp_offs] = tmp_paddr_list[prp2_offs++];
+			}
+		} else {
+			paddr_list[prp_offs] = tmp_paddr_list[prp2_offs++];
+		}
+
+		io_size = min_t(size_t, remaining, PAGE_SIZE);
+
+		remaining -= io_size;
+	}
+	num_prps = prp_offs;
+
+	if (tmp_paddr_list != NULL)
+		kunmap_atomic(tmp_paddr_list);
+
+	remaining = length;
+	prp_offs = 1;
+	
+	/* Loop for data transfer */
+	while (remaining) {
+		mem_offs = 0;
+		io_size = 0;
+		chunk_size = 0;
+
+		paddr = paddr_list[prp_offs];
+		chunk_size = PAGE_SIZE;
+		for (prp_offs++; prp_offs <= num_prps; prp_offs++) {
+			if (paddr_list[prp_offs] == paddr_list[prp_offs - 1] + PAGE_SIZE)
+				chunk_size += PAGE_SIZE;
+			else
+				break;
+		}
+
+		io_size = min_t(size_t, remaining, chunk_size);
+
+		if (paddr & PAGE_OFFSET_MASK) {
+			mem_offs = paddr & PAGE_OFFSET_MASK;
+		}
+		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
+			dmatest_submit(paddr + mem_offs, vdev->config.storage_start + offset, io_size);
+		} else {
+			dmatest_submit(vdev->config.storage_start + offset, paddr + mem_offs, io_size);
+		}
+		#if SUPPORT_ZNS 
+		else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_zone_mgmt_send) {
+			if (((struct nvme_zone_mgmt_send *)&sq_entry(sq_entry))->zsa == ZSA_RESET_ZONE)
+				memset(vdev->storage_mapped + offset, 0, BYTES_PER_ZONE);
+		}
+		#endif
+
+		remaining -= io_size;
+		offset += io_size;
+	}
 
 	return length;
 }
@@ -596,7 +685,10 @@ static int nvmev_kthread_io(void *data)
 				unsigned long long memcpy_time;
 				pe->nsecs_copy_start = local_clock() + delta;
 #endif
-				__do_perform_io(pe->sqid, pe->sq_entry);
+				if (dma_flag)
+					__do_perform_io_using_dma(pe->sqid, pe->sq_entry);
+				else
+					__do_perform_io(pe->sqid, pe->sq_entry);
 
 #ifdef PERF_DEBUG
 				pe->nsecs_copy_done = local_clock() + delta;

@@ -29,6 +29,7 @@
 #include "nvmev.h"
 #include "ftl.h"
 #include "channel.h"
+#include "dma.h"
 
 #if SUPPORT_ZNS
 #include "zns.h"
@@ -542,6 +543,9 @@ static int NVMeV_init(void)
 #if SUPPORT_ZNS 
 	zns_init();
 #endif
+
+	dmatest_chan_set("dma7chan0");
+
 	NVMEV_STORAGE_INIT(vdev);
 
 	if (!NVMEV_PCI_INIT(vdev)) {
