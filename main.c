@@ -443,7 +443,7 @@ static bool __load_configs(struct nvmev_config *config)
 	config->memmap_start = memmap_start << 30;
 	config->memmap_size = memmap_size << 20;
 	config->storage_start = config->memmap_start + (1UL << 20);
-	// config->storage_size = (memmap_size - 1) << 20;
+	config->storage_size = (memmap_size - 1) << 20;
 
 	config->read_time = read_time;
 	config->read_delay = read_delay;
@@ -480,7 +480,8 @@ static int NVMeV_init(void)
 		goto ret_err;
 	}
 
-	vdev->config.storage_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.memmap_size);
+	unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.storage_size);
+	vdev->config.storage_size = tmp_size - (tmp_size % PAGE_SIZE);
 
 	if (!NVMEV_PCI_INIT(vdev)) {
 		goto ret_err;
