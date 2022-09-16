@@ -159,7 +159,7 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 	return length;
 }
 
-u64 paddr_list[513] = {0,};
+u64 paddr_list[513] = {0,}; // Not using index 0 to make max index == num_prp
 static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
@@ -197,6 +197,12 @@ static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
 
 		io_size = min_t(size_t, remaining, PAGE_SIZE);
 
+		if (paddr_list[prp_offs] & PAGE_OFFSET_MASK) {
+			mem_offs = paddr_list[prp_offs] & PAGE_OFFSET_MASK;
+			if (io_size + mem_offs > PAGE_SIZE)
+				io_size = PAGE_SIZE - mem_offs;
+		}
+
 		remaining -= io_size;
 	}
 	num_prps = prp_offs;
@@ -214,7 +220,15 @@ static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
 		chunk_size = 0;
 
 		paddr = paddr_list[prp_offs];
-		chunk_size = PAGE_SIZE;
+		chunk_size = min_t(size_t, remaining, PAGE_SIZE);
+
+		/* For non-page aligned paddr, it will never be between continuous PRP list (Always first paddr)  */
+		if (paddr & PAGE_OFFSET_MASK) {
+			mem_offs = paddr & PAGE_OFFSET_MASK;
+			if (chunk_size + mem_offs > PAGE_SIZE)
+				chunk_size = PAGE_SIZE - mem_offs;
+		}
+
 		for (prp_offs++; prp_offs <= num_prps; prp_offs++) {
 			if (paddr_list[prp_offs] == paddr_list[prp_offs - 1] + PAGE_SIZE)
 				chunk_size += PAGE_SIZE;
@@ -224,13 +238,10 @@ static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
 
 		io_size = min_t(size_t, remaining, chunk_size);
 
-		if (paddr & PAGE_OFFSET_MASK) {
-			mem_offs = paddr & PAGE_OFFSET_MASK;
-		}
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
-			dmatest_submit(paddr + mem_offs, vdev->config.storage_start + offset, io_size);
+			dmatest_submit(paddr, vdev->config.storage_start + offset, io_size);
 		} else {
-			dmatest_submit(vdev->config.storage_start + offset, paddr + mem_offs, io_size);
+			dmatest_submit(vdev->config.storage_start + offset, paddr, io_size);
 		}
 		#if SUPPORT_ZNS 
 		else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_zone_mgmt_send) {
