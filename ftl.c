@@ -409,8 +409,8 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
 
     spp->gc_thres_pcent = 0.75;
     spp->gc_thres_lines = (int)((1 - spp->gc_thres_pcent) * spp->tt_lines);
-    spp->gc_thres_pcent_high = 0.997;
-    spp->gc_thres_lines_high = (int)((1 - spp->gc_thres_pcent_high) * spp->tt_lines);
+    spp->gc_thres_pcent_high = 0.997; /* Mot used */
+    spp->gc_thres_lines_high = 2; /* Need only two lines.(host write, gc)*/
     spp->enable_gc_delay = 1;
 
     spp->op_area_pcent = 0.05;
