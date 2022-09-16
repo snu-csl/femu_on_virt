@@ -77,6 +77,9 @@
 #define LPN_TO_BYTE(lpn) ((lpn) << 12)
 #define BYTE_TO_LPN(byte) ((byte) >> 12)
 
+
+#define LBA_TO_LPN(lba) (BYTE_TO_LPN(LBA_TO_BYTE(lba)))
+
 #define INVALID32 (0xFFFFFFFF)
 #define INVALID64 (0xFFFFFFFFFFFFFFFF)
 #define ASSERT(X)
@@ -183,6 +186,7 @@ struct nvmev_proc_table {
 	unsigned int command_id;
 
 	unsigned long long nsecs_start;
+	unsigned long long nsecs_target_early;
 	unsigned long long nsecs_target;
 
 	unsigned long long nsecs_enqueue;
@@ -191,8 +195,10 @@ struct nvmev_proc_table {
 	unsigned long long nsecs_cq_filled;
 
 	bool is_copied;
+	bool is_early_completed;
 	bool is_completed;
-
+	bool early_completion;
+	
 	unsigned int status;
 	unsigned int result0;
 	unsigned int result1;
@@ -278,7 +284,7 @@ void nvmev_proc_admin_cq(int new_db, int old_db);
 // OPS I/O QUEUE
 void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev);
 void NVMEV_IO_PROC_FINAL(struct nvmev_dev *vdev);
-void nvmev_proc_io_sq(int qid, int new_db, int old_db);
+int nvmev_proc_io_sq(int qid, int new_db, int old_db);
 void nvmev_proc_io_cq(int qid, int new_db, int old_db);
 
 

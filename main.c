@@ -154,8 +154,7 @@ static void nvmev_proc_dbs(void)
 		new_db = vdev->dbs[dbs_idx];
 		old_db = vdev->old_dbs[dbs_idx];
 		if (new_db != old_db) {
-			nvmev_proc_io_sq(qid, new_db, old_db);
-			vdev->old_dbs[dbs_idx] = new_db;
+			vdev->old_dbs[dbs_idx] = nvmev_proc_io_sq(qid, new_db, old_db);
 		}
 	}
 

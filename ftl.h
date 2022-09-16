@@ -89,7 +89,7 @@
 #define FW_READ0_LATENCY (25510 - 17010)
 #define FW_READ1_LATENCY (30326 - 19586)
 #define FW_READ0_SIZE (16*1024)
-#define FW_PROG_LATENCY 0
+#define FW_PROG_LATENCY (4000)
 #define FW_XFER_LATENCY 0
 #endif
 
@@ -344,14 +344,6 @@ struct ssd {
     // QemuThread ftl_thread;
 };
 
-unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
-uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start);
-uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start);
-void ssd_gc_bg(void);
-void ssd_gc(void);
-void ssd_gc2(struct ssd *ssd);
-void adjust_ftl_latency(int target, int lat);
-
 struct nvme_request {
     struct nvme_command * cmd;
     __u64 nsecs_start;
@@ -360,10 +352,21 @@ struct nvme_request {
 struct nvme_result {
     __u32 status;
     __u64 nsecs_target;
+    __u32 early_completion;
+    __u64 nsecs_target_early;
     __u64 wp; // only for zone append
 };
 
 extern struct ssd ssd[SSD_INSTANCES];
 
+unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
+bool ssd_read(struct nvme_request * req, struct nvme_result * ret);
+bool ssd_write(struct nvme_request * req, struct nvme_result * ret);
+void ssd_gc_bg(void);
+void ssd_gc(void);
+void ssd_gc2(struct ssd *ssd);
+void adjust_ftl_latency(int target, int lat);
+bool release_write_buffer(uint32_t nr_buffers);
+bool allocate_write_buffer(uint32_t nr_buffers);
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
 #endif

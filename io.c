@@ -372,6 +372,10 @@ static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long lo
 	pi->proc_table[entry].prev = -1;
 	pi->proc_table[entry].next = -1;
 	
+	pi->proc_table[entry].early_completion = ret->early_completion;
+	pi->proc_table[entry].nsecs_target_early =  ret->nsecs_target_early;
+	pi->proc_table[entry].is_early_completed = false;
+
 	mb();	/* IO kthread shall see the updated pe at once */
 
 	// (END) -> (START) order, nsecs target ascending order
@@ -459,7 +463,7 @@ static void __reclaim_completed_reqs(void)
 	}
 }
 
-static unsigned long long __nvmev_proc_flush(int sqid, int sq_entry)
+static void __nvmev_proc_flush(struct nvme_request * req, struct nvme_result * ret)
 {
 	unsigned long long latest = 0;
 	int i;
@@ -470,9 +474,10 @@ static unsigned long long __nvmev_proc_flush(int sqid, int sq_entry)
 		latest = max(latest, vdev->io_unit_stat[i]);
 	}
 
-	return latest;
+	ret->status = NVME_SC_SUCCESS;
+	ret->nsecs_target = latest;
+	return;
 }
-
 static size_t __nvmev_proc_io(int sqid, int sq_entry)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
@@ -481,12 +486,13 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	size_t io_len = 0;
 	uint64_t max_lat = 0;
 	struct nvme_command *cmd = &sq_entry(sq_entry);
-#if SUPPORT_ZNS
 	struct nvme_request req;
 	struct nvme_result ret = {0,};
 	req.cmd = cmd;
 	req.nsecs_start = nsecs_start;
-#endif
+	ret.early_completion = false;
+	ret.nsecs_target = nsecs_start;
+	ret.status = NVME_SC_SUCCESS;
 #ifdef PERF_DEBUG
 	unsigned long long prev_clock = local_clock();
 	unsigned long long prev_clock2 = 0;
@@ -497,24 +503,25 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	static unsigned long long clock3 = 0;
 	static unsigned long long counter = 0;
 #endif
-
 	switch(cmd->common.opcode) {
 	case nvme_cmd_write:
 #if SUPPORT_ZNS
 		zns_write(&req, &ret);
 #else
-		nsecs_target = ssd_write(cmd, nsecs_start);
+		if (!ssd_write(&req, &ret))
+			return false;
 #endif
 		break;
 	case nvme_cmd_read:
 #if SUPPORT_ZNS
 		zns_read(&req, &ret);
 #else
-		nsecs_target = ssd_read(cmd, nsecs_start);
+		if (!ssd_read(&req, &ret))
+			return false;
 #endif 
 		break;
 	case nvme_cmd_flush:
-		nsecs_target = __nvmev_proc_flush(sqid, sq_entry);
+		__nvmev_proc_flush(&req, &ret);
 		break;
 	case nvme_cmd_write_uncor:
 	case nvme_cmd_compare:
@@ -540,12 +547,9 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 #ifdef PERF_DEBUG
 	prev_clock2 = local_clock();
 #endif
-#if SUPPORT_ZNS
+
 	__enqueue_io_req2(sqid, sq->cqid, sq_entry, nsecs_start, &ret);
-#else
-	__enqueue_io_req(sqid, sq->cqid, sq_entry, nsecs_start, nsecs_target);
 	//__check_gc_and_run(sqid, sq_entry);
-#endif
 	
 	
 #ifdef PERF_DEBUG
@@ -571,33 +575,39 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 		counter = 0;
 	}
 #endif
-	return io_len;
+	return true;
 }
 
 
-void nvmev_proc_io_sq(int sqid, int new_db, int old_db)
+int nvmev_proc_io_sq(int sqid, int new_db, int old_db)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	int num_proc = new_db - old_db;
 	int seq;
 	int sq_entry = old_db;
-
-	if (unlikely(!sq)) return;
+	int latest_db;
+	
+	if (unlikely(!sq)) return old_db;
 	if (unlikely(num_proc < 0)) num_proc += sq->queue_size;
 
 	for (seq = 0; seq < num_proc; seq++) {
-		size_t io_size = __nvmev_proc_io(sqid, sq_entry);
+		if (!__nvmev_proc_io(sqid, sq_entry))
+			break;
 
 		if (++sq_entry == sq->queue_size) {
 			sq_entry = 0;
 		}
 		sq->stat.nr_dispatched++;
 		sq->stat.nr_in_flight++;
-		sq->stat.total_io += io_size;
+		//sq->stat.total_io += io_size;
 	}
 	sq->stat.nr_dispatch++;
 	sq->stat.max_nr_in_flight =
 		max_t(int, sq->stat.max_nr_in_flight, sq->stat.nr_in_flight);
+
+	latest_db = (old_db + seq) % sq->queue_size;
+	//latest_db = new_db;
+	return latest_db;
 }
 
 void nvmev_proc_io_cq(int cqid, int new_db, int old_db)
@@ -701,9 +711,22 @@ static int nvmev_kthread_io(void *data)
 						pe->sqid, pe->cqid, pe->sq_entry);
 			}
 
+			if (pe->early_completion && pe->is_early_completed == false) {
+				if (pe->nsecs_target_early <= curr_nsecs) {
+
+					__fill_cq_result(pe);
+					pe->is_early_completed = true;
+				} 
+			}
+			
 			if (pe->nsecs_target <= curr_nsecs) {
-				__fill_cq_result(pe);
-				
+	
+				if (!pe->early_completion)
+					__fill_cq_result(pe);
+				else {
+					struct nvmev_submission_queue *sq = vdev->sqes[pe->sqid];
+					release_write_buffer(LBA_TO_LPN(sq_entry(pe->sq_entry).rw.length + 1));
+				}
 #if SUPPORT_ZNS == 0
 				//__check_gc_and_run(pe->sqid, pe->sq_entry);
 #endif
@@ -723,11 +746,9 @@ static int nvmev_kthread_io(void *data)
 #endif
 				mb(); /* Reclaimer shall see after here */
 				pe->is_completed = true;
-
-				curr = pe->next;
-			} else {
-				break;
 			}
+
+			curr = pe->next; 
 		}
 
 		for (qidx = 1; qidx <= vdev->nr_cq; qidx++) {

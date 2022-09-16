@@ -6,6 +6,8 @@
 #include "channel.h"
 
 struct ssd ssd[SSD_INSTANCES];
+uint32_t nr_write_buffers = 2048;
+spinlock_t buffer_lock;
 
 static inline unsigned long long __get_ioclock(struct ssd *ssd)
 {
@@ -15,6 +17,37 @@ static inline unsigned long long __get_ioclock(struct ssd *ssd)
 static inline bool last_pg_in_wordline(struct ssd *ssd, struct ppa *ppa)
 {
     return ppa->h.pg_offs == (ssd->sp.pgs_per_flash_pg - 1);
+}
+
+static inline bool first_pg_in_wordline(struct ssd *ssd, struct ppa *ppa)
+{
+    return ppa->h.pg_offs == 0;
+}
+
+bool allocate_write_buffer(uint32_t nr_buffers)
+{
+    #if 1
+    while(!spin_trylock(&buffer_lock));
+    
+    if (nr_write_buffers < nr_buffers) {
+        spin_unlock(&buffer_lock);
+        return false;
+    } 
+
+    nr_write_buffers-=nr_buffers;
+    spin_unlock(&buffer_lock);
+    #endif
+    return true;
+}
+
+bool release_write_buffer(uint32_t nr_buffers)
+{
+    #if 1
+    while(!spin_trylock(&buffer_lock));
+    nr_write_buffers+= nr_buffers;
+    spin_unlock(&buffer_lock);
+    #endif
+    return true;
 }
 
 bool should_gc(struct ssd *ssd)
@@ -542,6 +575,8 @@ unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size
 
     NVMEV_INFO("FTL physical space: %ld, logical space: %ld (physical/logical * 100 = %d)\n", memmap_size, logical_space, spp->pba_pcent);
 
+    spin_lock_init(&buffer_lock);
+
     return logical_space;
 }
 
@@ -665,15 +700,8 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
         NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu\n",
                             ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg);
 
-        pcie_stime = cmd_stime;
-
-        if (ncmd->type == USER_IO) /* overlap pci transfer with nand ch transfer*/
-            pcie_etime = ssd_advance_pcie(pcie_stime, xfer_size);
-        else
-            pcie_etime = pcie_stime;
-
         /* write: transfer data through channel first */
-        chnl_stime = (lun->next_lun_avail_time < pcie_etime) ? pcie_etime : \
+        chnl_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                      lun->next_lun_avail_time;
 
         chnl_etime = chmodel_request(ch->perf_model, chnl_stime, ncmd->xfer_size);
@@ -838,7 +866,7 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
         gcw.cmd = NAND_NOP;
         gcw.stime = 0;
 
-        if (last_pg_in_wordline(ssd, &new_ppa)) {
+        if (first_pg_in_wordline(ssd, &new_ppa)) {
             gcw.cmd = NAND_WRITE;
             gcw.xfer_size = LPN_TO_BYTE(ssd->sp.pgs_per_flash_pg);
         }
@@ -1032,7 +1060,7 @@ void ssd_gc(void) {
         ssd_ins = &ssd[i];
 
         while (should_gc_high(ssd_ins)) {
-            NVMEV_INFO("should_gc_high passed");
+            NVMEV_DEBUG("should_gc_high passed");
             /* perform GC here until !should_gc(ssd) */
             r = do_gc(ssd_ins, true);
             if (r == -1)
@@ -1044,7 +1072,7 @@ void ssd_gc(void) {
 void ssd_gc2(struct ssd *ssd) {
     unsigned int i = 0, r;
     if (should_gc_high(ssd)) {
-        NVMEV_INFO("should_gc_high passed");
+        NVMEV_DEBUG("should_gc_high passed");
         /* perform GC here until !should_gc(ssd) */
         r = do_gc(ssd, true);
     }
@@ -1056,8 +1084,10 @@ bool is_same_flash_page(struct ppa ppa1, struct ppa ppa2)
            (ppa1.h.wordline == ppa2.h.wordline);
 }
 
-uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
+bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
 {
+    struct nvme_command * cmd = req->cmd;
+    uint64_t nsecs_start = req->nsecs_start;
     struct ssd *ssd_ins;
     struct ssdparams *spp = &(ssd[0].sp);  
     uint64_t lba = cmd->rw.slba;
@@ -1077,7 +1107,7 @@ uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
     NVMEV_DEBUG("ssd_read: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn) >= spp->tt_pgs) {
         NVMEV_ERROR("ssd_read: lpn passed FTL range(start_lpn=%lld,tt_pgs=%d)\n", start_lpn, spp->tt_pgs);
-        return 0;
+        return false;
     }
 
     if (LBA_TO_BYTE(nr_lba) <= spp->fw_rd0_size)
@@ -1127,11 +1157,16 @@ uint64_t ssd_read(struct nvme_command *cmd, unsigned long long nsecs_start)
         }
     }
 
-    return maxlat;
+    ret->early_completion = false;
+    ret->nsecs_target = maxlat;
+    ret->status = NVME_SC_SUCCESS; 
+    return true;
 }
 
-uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
+bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 {
+    struct nvme_command * cmd = req->cmd;
+    uint64_t nsecs_start = req->nsecs_start;
     uint64_t lba = cmd->rw.slba;
     struct ssd *ssd_ins;
     struct ssdparams *spp = &(ssd[0].sp);
@@ -1146,15 +1181,20 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
     struct nand_cmd swr;
     swr.type = USER_IO;
     swr.stime = nsecs_start;
-    swr.stime += spp->fw_wr_lat
+    
     
     NVMEV_DEBUG("ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_pgs) {
         NVMEV_ERROR("ssd_write: lpn passed FTL range(start_lpn=%lld,tt_pgs=%d)\n", start_lpn, spp->tt_pgs);
-        return 0;
+        return false;
     }
+    
+    if (!allocate_write_buffer(end_lpn - start_lpn + 1))
+        return false;
 
-
+    swr.stime += spp->fw_wr_lat;
+    swr.stime = ssd_advance_pcie(swr.stime, LBA_TO_BYTE(nr_lba));
+    
     for (i = 0; (i < SSD_INSTANCES) && (start_lpn <= end_lpn); i++, start_lpn++) {
 
         ssd_ins = get_ssd_ins_from_lpn(start_lpn);
@@ -1183,7 +1223,7 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
             ssd_advance_write_pointer(ssd_ins, USER_IO);
 
             /* Aggregate write io in flash page */
-            if (last_pg_in_wordline(ssd_ins, &ppa)) {
+            if (first_pg_in_wordline(ssd_ins, &ppa)) {
                 swr.cmd = NAND_WRITE;
                 swr.xfer_size = LPN_TO_BYTE(pgs_to_pgm);
             } else {            
@@ -1197,8 +1237,14 @@ uint64_t ssd_write(struct nvme_command *cmd, unsigned long long nsecs_start)
             check_and_refill_write_credit(ssd_ins);
         }
     }
+    
+    ret->nsecs_target = maxlat;
+    ret->early_completion = true;
+    ret->nsecs_target_early = nsecs_start + spp->fw_wr_lat;
+    ret->status = NVME_SC_SUCCESS;
 
-    return maxlat;
+    NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
+    return true;
 }
 
 void adjust_ftl_latency(int target, int lat)
