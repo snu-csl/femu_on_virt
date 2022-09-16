@@ -31,7 +31,7 @@ class fio_perf_tester()  :
         f.write("filename=" + self.device + '\n')
         f.write('rw='+ wl +'\n')
         f.write('bs='+bs+'\n')
-        f.write('size=('+fs+ ')' + '\n')
+        f.write('size='+fs+ '\n')
         f.write('iodepth='+str(qd)+'\n')
         f.write('direct=1\n')
         f.write('group_reporting=1\n')
@@ -48,7 +48,7 @@ class fio_perf_tester()  :
         
         for i in range(num_thread) :
             f.write('[file' + str(i) +']'+ '\n')
-            f.write("offset="+ '('+start_off+'+'+str(i)+'*'+file_size+')' + '\n')
+            f.write("offset="+start_off+'+'+str(i)+'*'+file_size + '\n')
 
         return file_name
     
@@ -58,7 +58,7 @@ class fio_perf_tester()  :
 
         for i in range(num_thread) :
             f.write('[file' + str(i) +']'+ '\n')
-            f.write("offset="+ '('+start_off+'+'+str(i)+'*'+file_size+')' + '\n')
+            f.write("offset="+start_off+'+'+str(i)+'*'+file_size + '\n')
         
         return file_name
 
@@ -73,7 +73,6 @@ class fio_perf_tester()  :
 
         f.write("[file]\n")
         f.write("offset=0 \n")
-        f.write("offset_align=4096\n")
         return file_name
     
     def __run_fio(self, script):
@@ -132,18 +131,26 @@ class fio_perf_tester()  :
             self.seq_write(off='0M', t = t, qd = qd, bs = bs, fs = fs)
             t = t * 2
 
+    def test_seq_write_increasing_bs(self, qd, t, fs, num_test) :
+        self.__make_and_set_log_name("SW", s_bs=1, e_bs=2**num_test, s_thread=t, e_thread=t, s_qd=qd, e_qd=qd, fsize=fs)
+        bs = 32768
+        for i in range(num_test):
+            self.seq_write(off='0M', t = t, qd = qd, bs = str(bs), fs = fs)
+            bs = bs * 2
             
 if __name__ == "__main__" :
-    targ_device = '/dev/nvme3n1'
+    targ_device = '/dev/nvme5n1'
     tester = fio_perf_tester('fio', targ_device)
     
-    fs='4G'
-    num_test=8
-    t = 3
+    fs='27G'
+    num_test=4
+    t = 6
     #tester.seq_read(off="0M",t=1, qd=32, bs='8K', fs='1M')
-    #tester.seq_write(off='0M', t=1, qd=4, bs='128k', fs=fs)
+    #tester.seq_write(off='0M', t=1, qd=2, bs='256k', fs=fs)
+
+    tester.test_seq_write_increasing_bs(qd=1, t=1, fs=fs, num_test=num_test)
     fs='3G'
-    tester.test_rand_read_qd1_increasing_bs(fs=fs, time=t, num_test=9)
+    #tester.test_rand_read_qd1_increasing_bs(fs=fs, time=t, num_test=9)
     """
     tester.test_rand_read_increasing_thread(qd=1, bs='4K', fs=fs, time=t, num_test=8)
     tester.test_rand_read_increasing_thread(qd=1, bs='8K', fs=fs, time=t, num_test=num_test)
