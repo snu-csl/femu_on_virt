@@ -89,8 +89,9 @@
 #define FW_READ0_LATENCY (25510 - 17010)
 #define FW_READ1_LATENCY (30326 - 19586)
 #define FW_READ0_SIZE (16*1024)
-#define FW_PROG_LATENCY (4000)
-#define FW_XFER_LATENCY 0
+#define FW_PROG0_LATENCY  (3100)
+#define FW_PROG1_LATENCY (460)
+#define FW_XFER_LATENCY (0)
 #endif
 
 #define NAND_CH_PER_SSD_INS  (NAND_CHANNELS/SSD_INSTANCES)
@@ -235,7 +236,8 @@ struct ssdparams {
     int fw_rd0_lat;       /* Firmware overhead of read 0 of read in nanoseconds */
     int fw_rd1_lat;       /* Firmware overhead of read 1 of read in nanoseconds */
     int fw_rd0_size;
-    int fw_wr_lat;       /* Firmware overhead of write in nanoseconds */
+    int fw_wr0_lat;       /* Firmware overhead of write in nanoseconds */
+    int fw_wr1_lat;       /* Firmware overhead of write in nanoseconds */
     int fw_xfer_lat;     /* Firmware overhead of data transfer in nanoseconds */
 
     uint64_t ch_bandwidth; /*NAND CH Maximum bandwidth in MB/s*/
@@ -346,6 +348,7 @@ struct ssd {
 
 struct nvme_request {
     struct nvme_command * cmd;
+    __u32 sq_id;
     __u64 nsecs_start;
 };
 
@@ -367,6 +370,6 @@ void ssd_gc(void);
 void ssd_gc2(struct ssd *ssd);
 void adjust_ftl_latency(int target, int lat);
 bool release_write_buffer(uint32_t nr_buffers);
-bool allocate_write_buffer(uint32_t nr_buffers);
+uint32_t allocate_write_buffer(uint32_t nr_buffers);
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
 #endif

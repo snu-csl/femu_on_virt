@@ -6,7 +6,7 @@
 #include "channel.h"
 
 struct ssd ssd[SSD_INSTANCES];
-uint32_t nr_write_buffers = 2048;
+uint32_t nr_write_buffers = 256;
 spinlock_t buffer_lock;
 
 static inline unsigned long long __get_ioclock(struct ssd *ssd)
@@ -24,27 +24,37 @@ static inline bool first_pg_in_wordline(struct ssd *ssd, struct ppa *ppa)
     return ppa->h.pg_offs == 0;
 }
 
-bool allocate_write_buffer(uint32_t nr_buffers)
+uint32_t allocate_write_buffer(uint32_t nr_buffers)
 {
     #if 1
     while(!spin_trylock(&buffer_lock));
     
     if (nr_write_buffers < nr_buffers) {
         spin_unlock(&buffer_lock);
-        return false;
+        return 0;
     } 
 
     nr_write_buffers-=nr_buffers;
     spin_unlock(&buffer_lock);
+    return nr_buffers;
+    #elif 0
+    uint32_t num;
+    while(!spin_trylock(&buffer_lock));
+    num = min(nr_write_buffers, nr_buffers);
+    num = min(num, 16);
+    nr_write_buffers -= num;
+    spin_unlock(&buffer_lock);
+    return num;
+    #else 
+    return nr_buffers;
     #endif
-    return true;
 }
 
 bool release_write_buffer(uint32_t nr_buffers)
 {
     #if 1
     while(!spin_trylock(&buffer_lock));
-    nr_write_buffers+= nr_buffers;
+    nr_write_buffers += nr_buffers;
     spin_unlock(&buffer_lock);
     #endif
     return true;
@@ -374,7 +384,8 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
     spp->fw_rd0_lat = FW_READ0_LATENCY;
     spp->fw_rd1_lat = FW_READ1_LATENCY;
     spp->fw_rd0_size = FW_READ0_SIZE;
-    spp->fw_wr_lat = FW_PROG_LATENCY;
+    spp->fw_wr0_lat = FW_PROG0_LATENCY;
+    spp->fw_wr1_lat = FW_PROG1_LATENCY;
     spp->fw_xfer_lat = FW_XFER_LATENCY; 
 
     spp->ch_bandwidth = NAND_CHANNEL_BANDWIDTH; 
@@ -658,8 +669,8 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
     uint64_t pcie_stime, pcie_etime;
     uint64_t remaining, xfer_size, completed_time;
     
-    NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu\n",
-                            ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg);
+    NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu command %d ppa 0x%llx\n",
+                            ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg, c, ppa->ppa);
 
     struct ssdparams *spp = &ssd->sp;
     struct nand_lun *lun = get_lun(ssd, ppa);
@@ -685,7 +696,8 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
             chnl_etime = chmodel_request(ch->perf_model, chnl_stime, xfer_size);
             
             if (ncmd->type == USER_IO) /* overlap pci transfer with nand ch transfer*/
-                completed_time = ssd_advance_pcie(chnl_etime, xfer_size);
+                completed_time = 
+					ssd_advance_pcie(chnl_etime, xfer_size);
             else
                 completed_time = chnl_etime;
 
@@ -1127,9 +1139,9 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
         for (lpn = start_lpn; lpn <= end_lpn; lpn+=SSD_INSTANCES) {
             local_lpn = LPN_TO_LOCAL_LPN(lpn);
             cur_ppa = get_maptbl_ent(ssd_ins, local_lpn);
-            if (!mapped_ppa(&cur_ppa) || !valid_ppa(ssd_ins, &cur_ppa))
+			if (!mapped_ppa(&cur_ppa) || !valid_ppa(ssd_ins, &cur_ppa))
             {
-                NVMEV_ERROR("lpn 0x%llx not mapped to valid ppa\n", local_lpn);
+                NVMEV_DEBUG("lpn 0x%llx not mapped to valid ppa\n", local_lpn);
                 NVMEV_DEBUG("Invalid ppa,ch:%d,lun:%d,blk:%d,pl:%d,pg:%d\n",
                 cur_ppa.g.ch, cur_ppa.g.lun, cur_ppa.g.blk, cur_ppa.g.pl, cur_ppa.g.pg);
                 continue;
@@ -1152,7 +1164,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
         // issue remaining io
         if (xfer_size > 0) {
             srd.xfer_size = xfer_size;
-            sublat = ssd_advance_status(ssd_ins, &cur_ppa, &srd);
+            sublat = ssd_advance_status(ssd_ins, &prev_ppa, &srd);
             maxlat = (sublat > maxlat) ? sublat : maxlat;
         }
     }
@@ -1163,6 +1175,9 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     return true;
 }
 
+uint32_t temp_remaining[NR_MAX_IO_QUEUE] = {0,};
+uint64_t temp_latest_early_completed[NR_MAX_IO_QUEUE] = {0,};
+void enqueue_io_req3(int sqid, unsigned long long nsecs_start, unsigned long long nsecs_target, unsigned int pgs_to_release);
 bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 {
     struct nvme_command * cmd = req->cmd;
@@ -1178,73 +1193,91 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     uint64_t curlat = 0, maxlat = 0;
     uint32_t pgs_to_pgm = spp->pgs_per_flash_pg;
     uint32_t i = 0;
+    uint32_t buffers_allocated = 0;
     struct nand_cmd swr;
     swr.type = USER_IO;
     swr.stime = nsecs_start;
-    
-    
+    uint32_t * remaining = &temp_remaining[req->sq_id];
+
     NVMEV_DEBUG("ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_pgs) {
         NVMEV_ERROR("ssd_write: lpn passed FTL range(start_lpn=%lld,tt_pgs=%d)\n", start_lpn, spp->tt_pgs);
         return false;
     }
     
-    if (!allocate_write_buffer(end_lpn - start_lpn + 1))
-        return false;
+    swr.stime = swr.stime > temp_latest_early_completed[req->sq_id] ? swr.stime : temp_latest_early_completed[req->sq_id];  
+    if (*remaining == 0) {
+        *remaining = end_lpn - start_lpn + 1;
+        swr.stime += spp->fw_wr0_lat;
+    }
+    else    
+        start_lpn = end_lpn - *remaining + 1; 
 
-    swr.stime += spp->fw_wr_lat;
-    swr.stime = ssd_advance_pcie(swr.stime, LBA_TO_BYTE(nr_lba));
+    buffers_allocated = allocate_write_buffer(*remaining); 
+	
+	swr.stime += spp->fw_wr1_lat * buffers_allocated;
+    swr.stime = ssd_advance_pcie(swr.stime, LPN_TO_BYTE(buffers_allocated));
+
+    temp_latest_early_completed[req->sq_id] = swr.stime;
     
-    for (i = 0; (i < SSD_INSTANCES) && (start_lpn <= end_lpn); i++, start_lpn++) {
+    for (lpn = start_lpn; lpn <= end_lpn && buffers_allocated > 0; lpn++, buffers_allocated--) {
+        ssd_ins = get_ssd_ins_from_lpn(lpn);
+        local_lpn = LPN_TO_LOCAL_LPN(lpn); 
+        ppa = get_maptbl_ent(ssd_ins, local_lpn); // 현재 LPN에 대해 전에 이미 쓰인 PPA가 있는지 확인
+        if (mapped_ppa(&ppa)) {
+            /* update old page information first */
+            mark_page_invalid(ssd_ins, &ppa);
+            set_rmap_ent(ssd_ins, INVALID_LPN, &ppa);
+            NVMEV_JH("ssd_write: %lld is invalid, ", ppa2pgidx(ssd_ins, &ppa));
+        }
 
-        ssd_ins = get_ssd_ins_from_lpn(start_lpn);
-        
-        for (lpn = start_lpn; lpn <= end_lpn; lpn+=SSD_INSTANCES) {
-            local_lpn = LPN_TO_LOCAL_LPN(lpn); 
-            ppa = get_maptbl_ent(ssd_ins, local_lpn); // 현재 LPN에 대해 전에 이미 쓰인 PPA가 있는지 확인
-            if (mapped_ppa(&ppa)) {
-                /* update old page information first */
-                mark_page_invalid(ssd_ins, &ppa);
-                set_rmap_ent(ssd_ins, INVALID_LPN, &ppa);
-                NVMEV_JH("ssd_write: %lld is invalid, ", ppa2pgidx(ssd_ins, &ppa));
-            }
+        /* new write */
+        ppa = get_new_page(ssd_ins, USER_IO);
+        /* update maptbl */
+        set_maptbl_ent(ssd_ins, local_lpn, &ppa);
+        NVMEV_JH("ssd_write: got new ppa %lld, ", ppa2pgidx(ssd_ins, &ppa));
+        /* update rmap */
+        set_rmap_ent(ssd_ins, local_lpn, &ppa);
 
-            /* new write */
-            ppa = get_new_page(ssd_ins, USER_IO);
-            /* update maptbl */
-            set_maptbl_ent(ssd_ins, local_lpn, &ppa);
-            NVMEV_JH("ssd_write: got new ppa %lld, ", ppa2pgidx(ssd_ins, &ppa));
-            /* update rmap */
-            set_rmap_ent(ssd_ins, local_lpn, &ppa);
+        mark_page_valid(ssd_ins, &ppa);
 
-            mark_page_valid(ssd_ins, &ppa);
+        /* need to advance the write pointer here */
+        ssd_advance_write_pointer(ssd_ins, USER_IO);
 
-            /* need to advance the write pointer here */
-            ssd_advance_write_pointer(ssd_ins, USER_IO);
+        /* Aggregate write io in flash page */
+        if (last_pg_in_wordline(ssd_ins, &ppa)) {
+            swr.cmd = NAND_WRITE;
+            swr.xfer_size = LPN_TO_BYTE(pgs_to_pgm);
 
-            /* Aggregate write io in flash page */
-            if (first_pg_in_wordline(ssd_ins, &ppa)) {
-                swr.cmd = NAND_WRITE;
-                swr.xfer_size = LPN_TO_BYTE(pgs_to_pgm);
-            } else {            
-                swr.cmd = NAND_NOP;
-                swr.xfer_size = LPN_TO_BYTE(1);   
-            }
             curlat = ssd_advance_status(ssd_ins, &ppa, &swr);
             maxlat = (curlat > maxlat) ? curlat : maxlat;
 
-            consume_write_credit(ssd_ins);
-            check_and_refill_write_credit(ssd_ins);
+            enqueue_io_req3(req->sq_id, swr.stime, curlat, pgs_to_pgm);
+        } else {            
+            swr.cmd = NAND_NOP;
+            swr.xfer_size = LPN_TO_BYTE(1);
+
+            curlat = ssd_advance_status(ssd_ins, &ppa, &swr);
+            maxlat = (curlat > maxlat) ? curlat : maxlat;   
         }
+        
+        consume_write_credit(ssd_ins);
+        check_and_refill_write_credit(ssd_ins);
+        (*remaining)--;
     }
     
-    ret->nsecs_target = maxlat;
-    ret->early_completion = true;
-    ret->nsecs_target_early = nsecs_start + spp->fw_wr_lat;
-    ret->status = NVME_SC_SUCCESS;
+    if (lpn > end_lpn) {
+        NVMEV_ASSERT(*remaining == 0);
+        ret->nsecs_target = swr.stime > maxlat ? swr.stime : maxlat;
+        ret->early_completion = true;
+        ret->nsecs_target_early = swr.stime;//nsecs_start + spp->fw_wr_lat;
+        ret->status = NVME_SC_SUCCESS;
 
-    NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
-    return true;
+        NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void adjust_ftl_latency(int target, int lat)
