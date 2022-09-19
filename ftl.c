@@ -671,7 +671,11 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
     
     NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu command %d ppa 0x%llx\n",
                             ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg, c, ppa->ppa);
-
+	
+	if (!mapped_ppa(ppa)) {
+		NVMEV_INFO("Error ppa 0x%llx\n", ppa->ppa);
+		return cmd_stime;
+	}
     struct ssdparams *spp = &ssd->sp;
     struct nand_lun *lun = get_lun(ssd, ppa);
     struct ssd_channel * ch = get_ch(ssd, ppa); 
@@ -1109,7 +1113,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     uint64_t start_lpn = lba / spp->secs_per_pg;
     uint64_t end_lpn = (lba + nr_lba - 1) / spp->secs_per_pg;
     uint64_t lpn, local_lpn;
-    uint64_t sublat, maxlat = 0;
+    uint64_t sublat, maxlat = nsecs_start;
     uint32_t xfer_size, i;
     struct nand_cmd srd;
     srd.type = USER_IO;
@@ -1148,14 +1152,16 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
             }
 
             // aggregate read io in same flash page
-            if (is_same_flash_page(cur_ppa, prev_ppa)) {
+            if (mapped_ppa(&prev_ppa) && is_same_flash_page(cur_ppa, prev_ppa)) {
                 xfer_size += LPN_TO_BYTE(1);
                 continue;
             }
 
-            srd.xfer_size = xfer_size;
-            sublat = ssd_advance_status(ssd_ins, &prev_ppa, &srd);
-            maxlat = (sublat > maxlat) ? sublat : maxlat;
+            if (xfer_size > 0) {
+                srd.xfer_size = xfer_size;
+                sublat = ssd_advance_status(ssd_ins, &prev_ppa, &srd);
+                maxlat = (sublat > maxlat) ? sublat : maxlat;
+            }
             
             xfer_size = LPN_TO_BYTE(1);
             prev_ppa = cur_ppa;
@@ -1175,8 +1181,6 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     return true;
 }
 
-uint32_t temp_remaining[NR_MAX_IO_QUEUE] = {0,};
-uint64_t temp_latest_early_completed[NR_MAX_IO_QUEUE] = {0,};
 void enqueue_io_req3(int sqid, unsigned long long nsecs_start, unsigned long long nsecs_target, unsigned int pgs_to_release);
 bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 {
@@ -1197,7 +1201,6 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     struct nand_cmd swr;
     swr.type = USER_IO;
     swr.stime = nsecs_start;
-    uint32_t * remaining = &temp_remaining[req->sq_id];
 
     NVMEV_DEBUG("ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_pgs) {
@@ -1205,21 +1208,16 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
         return false;
     }
     
-    swr.stime = swr.stime > temp_latest_early_completed[req->sq_id] ? swr.stime : temp_latest_early_completed[req->sq_id];  
-    if (*remaining == 0) {
-        *remaining = end_lpn - start_lpn + 1;
-        swr.stime += spp->fw_wr0_lat;
-    }
-    else    
-        start_lpn = end_lpn - *remaining + 1; 
-
-    buffers_allocated = allocate_write_buffer(*remaining); 
+    //swr.stime = swr.stime > temp_latest_early_completed[req->sq_id] ? swr.stime : temp_latest_early_completed[req->sq_id];  
+    buffers_allocated = allocate_write_buffer(end_lpn - start_lpn + 1); 
 	
+	if (buffers_allocated < (end_lpn - start_lpn + 1))
+		return false;
+
+	swr.stime += spp->fw_wr0_lat;
 	swr.stime += spp->fw_wr1_lat * buffers_allocated;
     swr.stime = ssd_advance_pcie(swr.stime, LPN_TO_BYTE(buffers_allocated));
-
-    temp_latest_early_completed[req->sq_id] = swr.stime;
-    
+ 
     for (lpn = start_lpn; lpn <= end_lpn && buffers_allocated > 0; lpn++, buffers_allocated--) {
         ssd_ins = get_ssd_ins_from_lpn(lpn);
         local_lpn = LPN_TO_LOCAL_LPN(lpn); 
@@ -1263,21 +1261,16 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
         
         consume_write_credit(ssd_ins);
         check_and_refill_write_credit(ssd_ins);
-        (*remaining)--;
     }
     
-    if (lpn > end_lpn) {
-        NVMEV_ASSERT(*remaining == 0);
-        ret->nsecs_target = swr.stime > maxlat ? swr.stime : maxlat;
+        ret->nsecs_target = maxlat;
         ret->early_completion = true;
-        ret->nsecs_target_early = swr.stime;//nsecs_start + spp->fw_wr_lat;
+        ret->nsecs_target_early = swr.stime;
         ret->status = NVME_SC_SUCCESS;
 
         NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
         return true;
-    } else {
-        return false;
-    }
+    
 }
 
 void adjust_ftl_latency(int target, int lat)
