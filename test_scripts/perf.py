@@ -62,6 +62,18 @@ class fio_perf_tester()  :
         
         return file_name
 
+    def __create_fio_rand_write(self, queue_depth, num_thread, block_size, file_size, time):       
+        f, file_name = self.__setup_common_parameter("randwrite", queue_depth, num_thread, block_size, file_size)
+
+        f.write("numjobs=" + str(num_thread)+'\n')
+
+        f.write("time_based\n")  
+        f.write("runtime=" + str(time) + '\n')
+
+        f.write("[file]\n")
+        f.write("offset=0 \n")
+        return file_name
+
     def __create_fio_rand_read(self, queue_depth, num_thread, block_size, file_size, time):
         
         f, file_name = self.__setup_common_parameter("randread", queue_depth, num_thread, block_size, file_size)
@@ -94,6 +106,10 @@ class fio_perf_tester()  :
         s = self.__create_fio_rand_read(queue_depth=qd, num_thread=t, block_size=bs, file_size=fs, time=time)
         self.__run_fio(script=s)
     
+    def rand_write(self, t, qd, bs, fs, time) :
+        s = self.__create_fio_rand_write(queue_depth=qd, num_thread=t, block_size=bs, file_size=fs, time=time)
+        self.__run_fio(script=s)
+
     def test_rand_read_increasing_thread(self, qd, bs, fs, time, num_test) :
         self.__make_and_set_log_name("RR", s_bs=bs, e_bs=bs, s_thread=1, e_thread=num_test, s_qd=qd, e_qd=qd, fsize=fs)
         t = 1
@@ -133,24 +149,33 @@ class fio_perf_tester()  :
 
     def test_seq_write_increasing_bs(self, qd, t, fs, num_test) :
         self.__make_and_set_log_name("SW", s_bs=1, e_bs=2**num_test, s_thread=t, e_thread=t, s_qd=qd, e_qd=qd, fsize=fs)
-        bs = 32768
+        bs = 4096
         for i in range(num_test):
             self.seq_write(off='0M', t = t, qd = qd, bs = str(bs), fs = fs)
             bs = bs * 2
-            
+    
+    def test_rand_write_increasing_bs(self, qd, t, fs, time, num_test) :
+        self.__make_and_set_log_name("RW", s_bs=1, e_bs=2**num_test, s_thread=t, e_thread=t, s_qd=qd, e_qd=qd, fsize=fs)
+        bs = 4096
+        for i in range(num_test):
+            self.rand_write(t = t, qd = qd, bs = str(bs), fs = fs, time = time)
+            bs = bs * 2
+
 if __name__ == "__main__" :
     targ_device = '/dev/nvme5n1'
     tester = fio_perf_tester('fio', targ_device)
     
     fs='27G'
-    num_test=4
+    num_test=8
     t = 6
     #tester.seq_read(off="0M",t=1, qd=32, bs='8K', fs='1M')
     #tester.seq_write(off='0M', t=1, qd=2, bs='256k', fs=fs)
 
-    tester.test_seq_write_increasing_bs(qd=1, t=1, fs=fs, num_test=num_test)
+    tester.rand_write(t=1,qd=1,bs='256K', fs=fs, time=10)
+    tester.rand_write(t=1,qd=1,bs='64K', fs=fs, time=10)
+    #tester.test_seq_write_increasing_bs(qd=1, t=1, fs=fs, num_test=num_test)
     fs='3G'
-    #tester.test_rand_read_qd1_increasing_bs(fs=fs, time=t, num_test=9)
+    ##tester.test_rand_read_qd1_increasing_bs(fs=fs, time=t, num_test=9)
     """
     tester.test_rand_read_increasing_thread(qd=1, bs='4K', fs=fs, time=t, num_test=8)
     tester.test_rand_read_increasing_thread(qd=1, bs='8K', fs=fs, time=t, num_test=num_test)
