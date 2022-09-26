@@ -431,7 +431,7 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
 
     total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->pgs_per_blk * spp->secsz * spp->secs_per_pg;
     blk_size = spp->pgs_per_blk *  spp->secsz * spp->secs_per_pg;
-    NVMEV_INFO("Total Capacity=%lu(GB), %lu(MB) Block Size=%lu(Byte) luns=%u lines=%u pgs_per_line=%u pgs_per_blk=%u gc_thresh_line=%d spp->gc_thres_lines_high=%d n", 
+    NVMEV_INFO("Total Capacity=%lu(GB), %lu(MB) Block Size=%lu(Byte) luns=%lu lines=%lu pgs_per_line=%lu pgs_per_blk=%u gc_thresh_line=%d spp->gc_thres_lines_high=%d n", 
                     BYTE_TO_GB(total_size), BYTE_TO_MB(total_size), blk_size, 
                     spp->tt_luns, spp->tt_lines, spp->pgs_per_line, spp->pgs_per_blk, spp->gc_thres_lines, spp->gc_thres_lines_high);
 }
@@ -537,7 +537,7 @@ void ssd_init_ftl_instance(struct ssd *ssd, unsigned int cpu_nr_dispatcher, unsi
 
     ssd_init_params(spp, capacity);
 
-    NVMEV_INFO("Init FTL Instance with %d channels(%d pages), CPU %d\n", spp->nchs, spp->tt_pgs, cpu_nr_dispatcher);
+    NVMEV_INFO("Init FTL Instance with %d channels(%ld pages), CPU %d\n", spp->nchs, spp->tt_pgs, cpu_nr_dispatcher);
 
     /* initialize ssd internal layout architecture */
     ssd->ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320
@@ -666,19 +666,21 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
         __get_ioclock(ssd) : ncmd->stime;
     uint64_t nand_stime, nand_etime;
     uint64_t chnl_stime, chnl_etime;
-    uint64_t pcie_stime, pcie_etime;
     uint64_t remaining, xfer_size, completed_time;
-    
+    struct ssdparams *spp;
+    struct nand_lun *lun;
+    struct ssd_channel * ch;
     NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu command %d ppa 0x%llx\n",
                             ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg, c, ppa->ppa);
 	
-	if (!mapped_ppa(ppa)) {
+    if (!mapped_ppa(ppa)) {
 		NVMEV_INFO("Error ppa 0x%llx\n", ppa->ppa);
 		return cmd_stime;
 	}
-    struct ssdparams *spp = &ssd->sp;
-    struct nand_lun *lun = get_lun(ssd, ppa);
-    struct ssd_channel * ch = get_ch(ssd, ppa); 
+
+    spp = &ssd->sp;
+    lun = get_lun(ssd, ppa);
+    ch = get_ch(ssd, ppa); 
     remaining = ncmd->xfer_size;
 
     switch (c) {
@@ -696,7 +698,7 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
         chnl_stime = nand_etime;
 
         while (remaining) {
-            xfer_size = min(remaining, spp->ch_max_xfer_size);
+            xfer_size = min(remaining, (uint64_t)spp->ch_max_xfer_size);
             chnl_etime = chmodel_request(ch->perf_model, chnl_stime, xfer_size);
             
             if (ncmd->type == USER_IO) /* overlap pci transfer with nand ch transfer*/
@@ -861,7 +863,6 @@ static void gc_read_page(struct ssd *ssd, struct ppa *ppa)
 static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
 {
     struct ppa new_ppa;
-    struct nand_lun *new_lun;
     uint64_t lpn = get_rmap_ent(ssd, old_ppa);
 
     NVMEV_ASSERT(valid_lpn(ssd, lpn));
@@ -1004,7 +1005,6 @@ int do_gc(struct ssd *ssd, bool force)
     struct line *victim_line = NULL;
     struct ssdparams *spp = &(ssd->sp);
     struct nand_lun *lunp;
-    struct nand_block *blkp;
     struct ppa ppa;
     int ch, lun, flash_pg;
 
@@ -1086,11 +1086,10 @@ void ssd_gc(void) {
 }
 
 void ssd_gc2(struct ssd *ssd) {
-    unsigned int i = 0, r;
     if (should_gc_high(ssd)) {
         NVMEV_DEBUG("should_gc_high passed");
         /* perform GC here until !should_gc(ssd) */
-        r = do_gc(ssd, true);
+        do_gc(ssd, true);
     }
 }
 
@@ -1120,9 +1119,9 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     srd.cmd = NAND_READ;
     srd.stime = nsecs_start;
 
-    NVMEV_DEBUG("ssd_read: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
+    NVMEV_DEBUG("ssd_read: start_lpn=%lld, len=%d, end_lpn=%ld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn) >= spp->tt_pgs) {
-        NVMEV_ERROR("ssd_read: lpn passed FTL range(start_lpn=%lld,tt_pgs=%d)\n", start_lpn, spp->tt_pgs);
+        NVMEV_ERROR("ssd_read: lpn passed FTL range(start_lpn=%lld,tt_pgs=%ld)\n", start_lpn, spp->tt_pgs);
         return false;
     }
 
@@ -1196,7 +1195,6 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     uint64_t lpn, local_lpn;
     uint64_t curlat = 0, maxlat = 0;
     uint32_t pgs_to_pgm = spp->pgs_per_flash_pg;
-    uint32_t i = 0;
     uint32_t buffers_allocated = 0;
     struct nand_cmd swr;
     swr.type = USER_IO;
@@ -1204,7 +1202,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 
     NVMEV_DEBUG("ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_pgs) {
-        NVMEV_ERROR("ssd_write: lpn passed FTL range(start_lpn=%lld,tt_pgs=%d)\n", start_lpn, spp->tt_pgs);
+        NVMEV_ERROR("ssd_write: lpn passed FTL range(start_lpn=%lld,tt_pgs=%ld)\n", start_lpn, spp->tt_pgs);
         return false;
     }
     

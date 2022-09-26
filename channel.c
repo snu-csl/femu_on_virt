@@ -24,7 +24,7 @@ void chmodel_init(struct channel_model * ch, __u64 bandwidth/*MB/s*/)
 
 	MEMSET(&(ch->avail_credits[0]), ch->max_credits, NR_CREDIT_ENTRIES);
 
-	printk("[%s] bandwidth %u max_credits %d tx_time %lld\n",__FUNCTION__, bandwidth, ch->max_credits, ch->xfer_lat);
+	printk("[%s] bandwidth %llu max_credits %u tx_time %u\n",__FUNCTION__, bandwidth, ch->max_credits, ch->xfer_lat);
 }
 
 __u64 chmodel_request( struct channel_model * ch, __u64 request_time, __u64 length)
