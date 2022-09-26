@@ -1180,7 +1180,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     return true;
 }
 
-void enqueue_io_req3(int sqid, unsigned long long nsecs_start, unsigned long long nsecs_target, unsigned int pgs_to_release);
+void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, unsigned int buffs_to_release);
 bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 {
     struct nvme_command * cmd = req->cmd;
@@ -1248,7 +1248,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
             curlat = ssd_advance_status(ssd_ins, &ppa, &swr);
             maxlat = (curlat > maxlat) ? curlat : maxlat;
 
-            enqueue_io_req3(req->sq_id, swr.stime, curlat, pgs_to_pgm);
+            enqueue_writeback_io_req(req->sq_id, curlat, pgs_to_pgm);
         } else {            
             swr.cmd = NAND_NOP;
             swr.xfer_size = LPN_TO_BYTE(1);

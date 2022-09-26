@@ -202,8 +202,8 @@ struct nvmev_proc_table {
 	bool is_completed;
 	bool early_completion;
 
-	bool internal_command;
-	unsigned int pgs_to_release;
+	bool writeback_cmd;
+	unsigned int buffs_to_release;
 
 	unsigned int status;
 	unsigned int result0;

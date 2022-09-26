@@ -392,7 +392,7 @@ static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long lo
 	pi->proc_table[entry].nsecs_target_early =  ret->nsecs_target_early;
 	pi->proc_table[entry].is_early_completed = false;
 
-	pi->proc_table[entry].internal_command = false;
+	pi->proc_table[entry].writeback_cmd = false;
 	mb();	/* IO kthread shall see the updated pe at once */
 
 	// (END) -> (START) order, nsecs target ascending order
@@ -430,7 +430,7 @@ static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long lo
 	}
 }
 
-void enqueue_io_req3(int sqid, unsigned long long nsecs_start, unsigned long long nsecs_target, unsigned int pgs_to_release)
+void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_start, unsigned long long nsecs_target, unsigned int buffs_to_release)
 {
 #if SUPPORT_MULTI_IO_WORKER_BY_SQ
 	unsigned int proc_turn = (sqid - 1) % (vdev->config.nr_io_cpu);
@@ -468,8 +468,8 @@ void enqueue_io_req3(int sqid, unsigned long long nsecs_start, unsigned long lon
 	pi->proc_table[entry].early_completion = false;
 	pi->proc_table[entry].is_early_completed = false;
 
-	pi->proc_table[entry].internal_command = true;
-	pi->proc_table[entry].pgs_to_release = pgs_to_release;
+	pi->proc_table[entry].writeback_cmd = true;
+	pi->proc_table[entry].buffs_to_release = buffs_to_release;
 	mb();	/* IO kthread shall see the updated pe at once */
 
 	// (END) -> (START) order, nsecs target ascending order
@@ -785,7 +785,7 @@ static int nvmev_kthread_io(void *data)
 				continue;
 			}
 
-			if (pe->is_copied == false && pe->internal_command == false) {
+			if (pe->is_copied == false && pe->writeback_cmd == false) {
 #ifdef PERF_DEBUG
 				unsigned long long memcpy_time;
 				pe->nsecs_copy_start = local_clock() + delta;
@@ -816,8 +816,8 @@ static int nvmev_kthread_io(void *data)
 			
 			if (pe->nsecs_target <= curr_nsecs) {
 				
-				if (pe->internal_command) {
-					release_write_buffer(pe->pgs_to_release);
+				if (pe->writeback_cmd) {
+					release_write_buffer(pe->buffs_to_release);
 				} else if (!pe->early_completion)
 					__fill_cq_result(pe);
 				
