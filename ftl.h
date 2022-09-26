@@ -74,7 +74,7 @@
 #define PLNS_PER_LUN         1
 #define SSD_INSTANCE_BITS    2
 #define FLASH_PAGE_SIZE      (32*1024)
-#define BLKS_PER_PLN         1024
+#define BLKS_PER_PLN         10240
 #define MAX_NAND_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
 
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
@@ -82,7 +82,7 @@
 
 #define NAND_4KB_READ_LATENCY (35760)
 #define NAND_READ_LATENCY (36013)
-#define NAND_PROG_LATENCY 185000
+#define NAND_PROG_LATENCY (185000 + 5000)
 //#define NAND_PROG_LATENCY 10000
 #define NAND_ERASE_LATENCY 0
 
