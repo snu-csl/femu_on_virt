@@ -174,7 +174,7 @@ static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 	snprintf(ctrl->sn, sizeof(ctrl->sn), "CSL_Virt_SN_%02d", 1);
 	snprintf(ctrl->mn, sizeof(ctrl->mn), "CSL_Virt_MN_%02d", 1);
 	snprintf(ctrl->fr, sizeof(ctrl->fr), "CSL_%03d", 2);
-	ctrl->mdts = 9;
+	ctrl->mdts = 6;
 	ctrl->sqes = 0x66;
 	ctrl->cqes = 0x44;
 
@@ -239,7 +239,7 @@ static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 	ns->lbaf[6].ds = 12;
 	ns->lbaf[6].rp = NVME_LBAF_RP_BEST;
 
-	ns->nsze = (vdev->config.storage_size >> ns->lbaf[ns->flbas].ds);
+	ns->nsze = (vdev->config.storage_size2 >> ns->lbaf[ns->flbas].ds);
 	ns->ncap = ns->nsze;
 	ns->nuse = ns->nsze;
 	ns->nlbaf = 6;
