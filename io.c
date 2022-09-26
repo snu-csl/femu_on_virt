@@ -135,6 +135,11 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 			if (io_size + mem_offs > PAGE_SIZE)
 				io_size = PAGE_SIZE - mem_offs;
 		}
+		
+		#if SUPPORT_VIRTUAL_CAPACITY
+		offset = offset % vdev->config.storage_size;
+		#endif
+
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			memcpy(vdev->storage_mapped + offset, vaddr + mem_offs, io_size);
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {

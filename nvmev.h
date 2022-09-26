@@ -25,6 +25,7 @@
 
 #define SUPPORT_ZNS 0
 #define SUPPORT_MULTI_IO_WORKER_BY_SQ	1 
+#define SUPPORT_VIRTUAL_CAPACITY		0
 
 #if SUPPORT_ZNS == 0
 #define NS_CSI NVME_CSI_NVM
@@ -152,7 +153,9 @@ struct nvmev_config {
 
 	unsigned long storage_start; //byte
 	unsigned long storage_size;	// byte
-
+#if SUPPORT_VIRTUAL_CAPACITY
+	unsigned long virtual_storage_size;
+#endif	
 	unsigned int read_delay;	// ns
 	unsigned int read_time;		// ns
 	unsigned int read_trailing;	// ns

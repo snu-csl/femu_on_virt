@@ -239,7 +239,11 @@ static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 	ns->lbaf[6].ds = 12;
 	ns->lbaf[6].rp = NVME_LBAF_RP_BEST;
 
-	ns->nsze = (vdev->config.storage_size2 >> ns->lbaf[ns->flbas].ds);
+#if SUPPORT_VIRTUAL_CAPACITY
+	ns->nsze = (vdev->config.virtual_storage_size >> ns->lbaf[ns->flbas].ds);
+#else
+	ns->nsze = (vdev->config.storage_size >> ns->lbaf[ns->flbas].ds);
+#endif
 	ns->ncap = ns->nsze;
 	ns->nuse = ns->nsze;
 	ns->nlbaf = 6;

@@ -538,8 +538,13 @@ static int NVMeV_init(void)
 		goto ret_err;
 	}
 
+#if SUPPORT_VIRTUAL_CAPACITY
+	unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, SUPPORT_VIRTUAL_CAPACITY);
+	vdev->config.virtual_storage_size = tmp_size - (tmp_size % PAGE_SIZE);
+#else
 	unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.storage_size);
 	vdev->config.storage_size = tmp_size - (tmp_size % PAGE_SIZE);
+#endif
 
 #if SUPPORT_ZNS 
 	zns_init();
