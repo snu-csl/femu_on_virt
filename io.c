@@ -145,13 +145,7 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
 			memcpy(vaddr + mem_offs, vdev->storage_mapped + offset, io_size);
 		}
-		#if SUPPORT_ZNS 
-		else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_zone_mgmt_send) {
-			if (((struct nvme_zone_mgmt_send *)&sq_entry(sq_entry))->zsa == ZSA_RESET_ZONE)
-				memset(vdev->storage_mapped + offset, 0, BYTES_PER_ZONE);
-		}
-		#endif
-		
+
 		kunmap_atomic(vaddr);
 
 		remaining -= io_size;
@@ -248,13 +242,7 @@ static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
 			dmatest_submit(vdev->config.storage_start + offset, paddr, io_size);
 		}
-		#if SUPPORT_ZNS 
-		else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_zone_mgmt_send) {
-			if (((struct nvme_zone_mgmt_send *)&sq_entry(sq_entry))->zsa == ZSA_RESET_ZONE)
-				memset(vdev->storage_mapped + offset, 0, BYTES_PER_ZONE);
-		}
-		#endif
-
+	
 		remaining -= io_size;
 		offset += io_size;
 	}

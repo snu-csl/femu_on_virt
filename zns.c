@@ -7,32 +7,6 @@
 struct zone_resource_info res_infos[RES_TYPE_COUNT];
 struct zone_descriptor * zone_descs;
 
-
-bool __acquire_zone_resource(__u32 type)
-{
-	if(IS_ZONE_RESOURCE_AVAIL(type)) {
-		res_infos[type].acquired_cnt++;
-		return true;
-	}
-
-	return false;
-}
-
-void __release_zone_resource(__u32 type)
-{	
-	ASSERT(res_infos[type].acquired_cnt > 0);
-
-	res_infos[type].acquired_cnt--;
-}
-
-void __change_zone_state(__u32 zid, enum zone_state state)
-{
-	NVMEV_ZNS_DEBUG("change state zid %d from %d to %d \n",zid, zone_descs[zid].state, state);
-
-	// check if transition is correct
-	zone_descs[zid].state = state;
-}
-
 void zns_init(void)
 {
 	__u64 zslba = 0;

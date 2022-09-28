@@ -50,10 +50,34 @@ extern __u32 zns_nsid;
 #define IS_ZONE_RESOURCE_AVAIL(type) (res_infos[type].acquired_cnt < res_infos[type].total_cnt)
 
 void * __get_zns_media_addr_from_lba(__u64 lba);
-void * __get_zns_media_addr_from_zid(__u64 zid);
-bool __acquire_zone_resource(__u32 type);
-void __release_zone_resource(__u32 type);
-void __change_zone_state(__u32 zid, enum zone_state state);
+static inline void * __get_zns_media_addr_from_zid(__u64 zid) {
+    return (void *) (vdev->config.storage_start + zid*BYTES_PER_ZONE);
+}
+
+static inline bool __acquire_zone_resource(__u32 type)
+{
+	if(IS_ZONE_RESOURCE_AVAIL(type)) {
+		res_infos[type].acquired_cnt++;
+		return true;
+	}
+
+	return false;
+}
+
+static inline void __release_zone_resource(__u32 type)
+{	
+	ASSERT(res_infos[type].acquired_cnt > 0);
+
+	res_infos[type].acquired_cnt--;
+}
+
+static inline void __change_zone_state(__u32 zid, enum zone_state state)
+{
+	NVMEV_ZNS_DEBUG("change state zid %d from %d to %d \n",zid, zone_descs[zid].state, state);
+
+	// check if transition is correct
+	zone_descs[zid].state = state;
+}
 
 /* zns external interface */
 void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret);

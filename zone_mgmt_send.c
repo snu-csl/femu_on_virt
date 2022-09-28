@@ -140,7 +140,6 @@ void __reset_zone(__u64 zid)
 {
 	NVMEV_ZNS_DEBUG("%s zid %lu\n", __FUNCTION__, zid);
 
-/*	memset in dispatch core
 	__u32 zone_size = BYTES_PER_ZONE;
 
 	NVMEV_ZNS_DEBUG("%s zid %lu start addres 0x%llx zone_size %x \n", 
@@ -148,7 +147,6 @@ void __reset_zone(__u64 zid)
 
 	__u8 * zone_start_addr = (__u8 *)__get_zns_media_addr_from_zid(zid);
 	memset(zone_start_addr, 0, zone_size);
-*/
 
 	zone_descs[zid].wp = zone_descs[zid].zslba;
 	zone_descs[zid].zrwav = 0;
