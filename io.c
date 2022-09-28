@@ -245,7 +245,7 @@ static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
 
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			dmatest_submit(paddr, vdev->config.storage_start + offset, io_size);
-		} else {
+		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
 			dmatest_submit(vdev->config.storage_start + offset, paddr, io_size);
 		}
 		#if SUPPORT_ZNS 

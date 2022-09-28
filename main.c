@@ -87,7 +87,7 @@ unsigned int nr_io_units = 8;
 unsigned int io_unit_shift = 12;
 
 #if SUPPORT_ZNS
-unsigned int zone_size_mb = 96; //MB
+unsigned int zone_size_mb = 128; //MB
 unsigned int nr_active_zones = 0;
 unsigned int nr_open_zones = 0;
 unsigned int nr_zrwa_zones = 0;

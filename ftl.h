@@ -31,7 +31,8 @@
 #define SSD_INSTANCE_BITS    1
 #define FLASH_PAGE_SIZE       (64*1024)
 #define PLNS_PER_LUN         1 /* not used*/
-#define BLKS_PER_PLN         0 /* not used*/
+#define BLKS_PER_PLN         10240 /* not used*/
+#define MAX_NAND_XFER_SIZE  (64*1024) /* to overlap with pcie transfer */
 
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3200ull) //MB/s
@@ -41,32 +42,13 @@
 #define NAND_PROG_LATENCY 1913640
 #define NAND_ERASE_LATENCY 0
 
-#define FW_READ1_LATENCY  (37540 - 7390)
-#define FW_PROG_LATENCY 0
+#define FW_READ0_LATENCY (37540 - 7390)
+#define FW_READ1_LATENCY  (0)
+#define FW_READ0_SIZE (0)
+#define FW_PROG0_LATENCY  (0)
+#define FW_PROG1_LATENCY (0)
 #define FW_XFER_LATENCY 413
-#elif 0
-#define SSD_INSTANCES        4
-#define NAND_CHANNELS        8
-#define LUNS_PER_NAND_CH     2
-#define PLNS_PER_LUN         1
-#define SSD_INSTANCE_BITS    2
-#define FLASH_PAGE_SIZE      (32*1024)
-#define BLKS_PER_PLN         1024
-#define MAX_NAND_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
-
-#define NAND_CHANNEL_BANDWIDTH	(704ull) //MB/s
-#define PCIE_BANDWIDTH			(3360ull) //MB/s
-
-#define NAND_4KB_READ_LATENCY 34785
-#define NAND_READ_LATENCY 34500
-#define NAND_PROG_LATENCY 100000
-#define NAND_ERASE_LATENCY 0
-
-#define FW_READ0_LATENCY 9500
-#define FW_READ1_LATENCY 20000
-#define FW_READ0_SIZE (16*1024)
-#define FW_PROG_LATENCY 0
-#define FW_XFER_LATENCY 0
+#define OP_AREA_PERCENT      (0)
 #else
 #define SSD_INSTANCES        4
 #define NAND_CHANNELS        8
@@ -92,6 +74,7 @@
 #define FW_PROG0_LATENCY  (4000)
 #define FW_PROG1_LATENCY (460)
 #define FW_XFER_LATENCY (0)
+#define OP_AREA_PERCENT      (0.07)
 #endif
 
 #define NAND_CH_PER_SSD_INS  (NAND_CHANNELS/SSD_INSTANCES)
@@ -372,4 +355,5 @@ void adjust_ftl_latency(int target, int lat);
 bool release_write_buffer(uint32_t nr_buffers);
 uint32_t allocate_write_buffer(uint32_t nr_buffers);
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
+uint64_t ssd_advance_pcie(__u64 request_time, __u64 length);
 #endif
