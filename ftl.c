@@ -361,15 +361,20 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
 
     spp->secsz = 512;
     spp->secs_per_pg = 8;
-    spp->blks_per_pl = BLKS_PER_PLN; 
     spp->pls_per_lun = PLNS_PER_LUN;
     spp->luns_per_ch = LUNS_PER_NAND_CH;
     spp->nchs = NAND_CH_PER_SSD_INS;
 
-    //capacity = (unsigned long)(capacity * spp->pba_pcent / 100);
+    if (BLKS_PER_PLN > 0) {
+        /* flash_pgs_per_blk depends on capacity */
+        spp->blks_per_pl = BLKS_PER_PLN; 
+        blk_size = DIV_ROUND_UP(capacity, spp->blks_per_pl * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
+    } else {
+        NVMEV_ASSERT(BLK_SIZE > 0);
+        blk_size = BLK_SIZE;
+        spp->blks_per_pl = DIV_ROUND_UP(capacity, blk_size * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
+    }
 
-    /* flash_pgs_per_blk depends on capacity */
-    blk_size = DIV_ROUND_UP(capacity, spp->blks_per_pl * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     spp->pgs_per_flash_pg = FLASH_PAGE_SIZE / (spp->secsz * spp->secs_per_pg); 
     spp->flash_pgs_per_blk = DIV_ROUND_UP(blk_size, FLASH_PAGE_SIZE);  
     spp->pgs_per_blk = spp->pgs_per_flash_pg * spp->flash_pgs_per_blk;
@@ -418,9 +423,9 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
     spp->secs_per_line = spp->pgs_per_line * spp->secs_per_pg;
     spp->tt_lines = spp->blks_per_lun; /* TODO: to fix under multiplanes */ // lun size is super-block(line) size
 
-    spp->gc_thres_pcent = 0.75;
-    spp->gc_thres_lines = (int)((1 - spp->gc_thres_pcent) * spp->tt_lines);
-    spp->gc_thres_pcent_high = 0.997; /* Mot used */
+    //spp->gc_thres_pcent = 0.75;
+    //spp->gc_thres_lines = (int)((1 - spp->gc_thres_pcent) * spp->tt_lines);
+    //spp->gc_thres_pcent_high = 0.997; /* Mot used */
     spp->gc_thres_lines_high = 2; /* Need only two lines.(host write, gc)*/
     spp->enable_gc_delay = 1;
 
@@ -499,7 +504,7 @@ static void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp)
     ch->perf_model->xfer_lat+=spp->fw_xfer_lat;
 }
 
-static void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
+void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
 {
     pcie->perf_model = kmalloc(sizeof(struct channel_model), GFP_KERNEL);
     chmodel_init(pcie->perf_model, spp->pcie_bandwidth);
@@ -545,9 +550,6 @@ void ssd_init_ftl_instance(struct ssd *ssd, unsigned int cpu_nr_dispatcher, unsi
         ssd_init_ch(&(ssd->ch[i]), spp);
     }
 
-    ssd->pcie = kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
-    ssd_init_pcie(ssd->pcie, spp);
-
     /* initialize maptbl */
     NVMEV_INFO("initialize maptbl\n");
     ssd_init_maptbl(ssd); // mapping table
@@ -572,15 +574,21 @@ void ssd_init_ftl_instance(struct ssd *ssd, unsigned int cpu_nr_dispatcher, unsi
 
 unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size)
 {
-    struct ssdparams *spp;
+    struct ssdparams *spp = &(ssd[0].sp);
     int i;
     unsigned long logical_space;
 
-    for (i = 0; i < SSD_INSTANCES; i++) 
+    struct ssd_pcie * pcie = kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
+    
+    for (i = 0; i < SSD_INSTANCES; i++) { 
         ssd_init_ftl_instance(&ssd[i], cpu_nr_dispatcher, 
                                 DIV_ROUND_UP(memmap_size, SSD_INSTANCES));
 
-    spp = &(ssd[0].sp);
+        if (i == 0)
+            ssd_init_pcie(pcie, spp);
+        /* PCIe is shared by all instances*/
+        ssd[i].pcie = pcie;
+    }
 
     logical_space = (unsigned long)((memmap_size * 100) / spp->pba_pcent);
 
@@ -653,9 +661,9 @@ static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
     return &(blk->pg[ppa->g.pg]);
 }
 
-inline uint64_t ssd_advance_pcie(__u64 request_time, __u64 length) 
+inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length) 
 {
-    struct channel_model * perf_model = ssd[0].pcie->perf_model;
+    struct channel_model * perf_model = ssd->pcie->perf_model;
     return chmodel_request(perf_model, request_time, length);
 }
 
@@ -703,7 +711,7 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
             
             if (ncmd->type == USER_IO) /* overlap pci transfer with nand ch transfer*/
                 completed_time = 
-					ssd_advance_pcie(chnl_etime, xfer_size);
+					ssd_advance_pcie(ssd, chnl_etime, xfer_size);
             else
                 completed_time = chnl_etime;
 
@@ -1214,7 +1222,8 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 
 	swr.stime += spp->fw_wr0_lat;
 	swr.stime += spp->fw_wr1_lat * buffers_allocated;
-    swr.stime = ssd_advance_pcie(swr.stime, LPN_TO_BYTE(buffers_allocated));
+    swr.stime = ssd_advance_pcie(get_ssd_ins_from_lpn(start_lpn), 
+                                        swr.stime, LPN_TO_BYTE(buffers_allocated));
  
     for (lpn = start_lpn; lpn <= end_lpn && buffers_allocated > 0; lpn++, buffers_allocated--) {
         ssd_ins = get_ssd_ins_from_lpn(lpn);

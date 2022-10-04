@@ -6,18 +6,11 @@
 #include "nvme_zns.h"
 
 extern struct nvmev_dev *vdev;
+extern struct zns_ssd g_zns_ssd;
 
 #define NVMEV_ZNS_DEBUG(string, args...) //printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
 
 // Zoned Namespace Command Set Specification Revision 1.1a
-#define NR_MAX_ZONE (vdev->config.nr_zones)
-#define NR_MAX_ACTIVE_ZONE	(vdev->config.nr_active_zones) //0xFFFFFFFF : No limit
-#define NR_MAX_OPEN_ZONE (vdev->config.nr_open_zones) //0xFFFFFFFF : No limit
-#define BYTES_PER_ZONE (vdev->config.zone_size)
-#define LBAS_PER_ZONE (BYTE_TO_LBA(BYTES_PER_ZONE))
-#define LBA_TO_ZONE(lba) ((lba) / LBAS_PER_ZONE)
-#define ZONE_TO_SLBA(zid) ((zid) * LBAS_PER_ZONE)
-
 #define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 
 #define NR_MAX_ZRWA_ZONE (vdev->config.nr_zrwa_zones) //0xFFFFFFFF : No limit
@@ -27,56 +20,80 @@ extern struct nvmev_dev *vdev;
 #define PGM_PAGE_SIZE (192*1024ULL)
 #define READ_PAGE_SIZE (64*1024ULL)
 
-#define CHANNELS_PER_SSD (ssd[0].sp.nchs)
-#define LUNS_PER_CHANNEL (ssd[0].sp.luns_per_ch)
-#define DIES_PER_ZONE (1)
-#define NR_TOTAL_DIES (CHANNELS_PER_SSD * LUNS_PER_CHANNEL)
+struct zns_ssd {
+    struct ssd ssd;
 
-#define ZONE_TO_SDIE(zid) ((zid) % (NR_TOTAL_DIES/DIES_PER_ZONE))
-#define ZONE_TO_DIE(zid, off) (ZONE_TO_SDIE((zid)) + (off / PGM_PAGE_SIZE) % DIES_PER_ZONE) 
-#define DIE_TO_CHANNEL(die) ((die) % CHANNELS_PER_SSD)
-#define DIE_TO_LUN(die) ((die) / CHANNELS_PER_SSD)
+    __u32 nr_zones;
+    __u32 nr_active_zones;
+    __u32 nr_open_zones;
+    __u32 dies_per_zone;
+    __u32 zone_size; //bytes
+    
+    struct zone_resource_info res_infos[RES_TYPE_COUNT];
+    struct zone_descriptor *zone_descs;
+    struct zone_report *report_buffer;
 
-/* zns extern global variables*/
-extern struct zone_resource_info res_infos[RES_TYPE_COUNT];
-extern struct zone_descriptor * zone_descs;
-extern struct zone_report * report_buffer;
-extern __u32 zns_nsid;
+    unsigned int cpu_nr_dispatcher;
+};
 
 /* zns internal functions */
-#define ZONE_CAPACITY(zid) (zone_descs[zid].zone_capacity)
-#define IS_ZONE_SEQUENTIAL(zid) (zone_descs[zid].type == ZONE_TYPE_SEQ_WRITE_REQUIRED)
-#define IS_ZONE_RESOURCE_FULL(type) (res_infos[type].acquired_cnt == res_infos[type].total_cnt)
-#define IS_ZONE_RESOURCE_AVAIL(type) (res_infos[type].acquired_cnt < res_infos[type].total_cnt)
-
-void * __get_zns_media_addr_from_lba(__u64 lba);
-static inline void * __get_zns_media_addr_from_zid(__u64 zid) {
-    return (void *) (vdev->config.storage_start + zid*BYTES_PER_ZONE);
+static inline void * get_zns_media_addr_from_zid(struct zns_ssd *zns_ssd, __u64 zid) {
+    return (void *) (vdev->config.storage_start + zid*zns_ssd->zone_size);
 }
 
-static inline bool __acquire_zone_resource(__u32 type)
+static inline bool is_zone_resource_avail(struct zns_ssd *zns_ssd, __u32 type)
 {
-	if(IS_ZONE_RESOURCE_AVAIL(type)) {
-		res_infos[type].acquired_cnt++;
+	return zns_ssd->res_infos[type].acquired_cnt < zns_ssd->res_infos[type].total_cnt;
+}
+
+static inline bool is_zone_resource_full(struct zns_ssd *zns_ssd, __u32 type)
+{
+	return zns_ssd->res_infos[type].acquired_cnt == zns_ssd->res_infos[type].total_cnt;
+}
+
+static inline bool acquire_zone_resource(struct zns_ssd *zns_ssd, __u32 type)
+{
+	if(is_zone_resource_avail(zns_ssd, type)) {
+		zns_ssd->res_infos[type].acquired_cnt++;
 		return true;
 	}
 
 	return false;
 }
 
-static inline void __release_zone_resource(__u32 type)
+static inline void release_zone_resource(struct zns_ssd *zns_ssd, __u32 type)
 {	
-	ASSERT(res_infos[type].acquired_cnt > 0);
+	ASSERT(zns_ssd->res_infos[type].acquired_cnt > 0);
 
-	res_infos[type].acquired_cnt--;
+	zns_ssd->res_infos[type].acquired_cnt--;
 }
 
-static inline void __change_zone_state(__u32 zid, enum zone_state state)
+static inline void change_zone_state(struct zns_ssd * zns_ssd, __u32 zid, enum zone_state state)
 {
-	NVMEV_ZNS_DEBUG("change state zid %d from %d to %d \n",zid, zone_descs[zid].state, state);
+	NVMEV_ZNS_DEBUG("change state zid %d from %d to %d \n",zid, zns_ssd->zone_descs[zid].state, state);
 
 	// check if transition is correct
-	zone_descs[zid].state = state;
+	zns_ssd->zone_descs[zid].state = state;
+}
+
+static inline __u32 lba_to_zone(struct zns_ssd *zns_ssd, __u64 lba) {
+    return (lba) / (BYTE_TO_LBA(zns_ssd->zone_size));
+}
+
+static inline __u64 zone_to_slba(struct zns_ssd *zns_ssd, __u32 zid) {
+    return (zid) * (BYTE_TO_LBA(zns_ssd->zone_size));
+}
+
+static inline __u32 die_to_channel(struct zns_ssd *zns_ssd, __u32 die) {
+    return (die) % zns_ssd->ssd.sp.nchs;
+}
+
+static inline __u32 die_to_lun(struct zns_ssd *zns_ssd, __u32 die) {
+    return (die) / zns_ssd->ssd.sp.nchs;
+}
+
+static inline struct zns_ssd * get_zns_ssd_instance(void) {
+    return &(g_zns_ssd);
 }
 
 /* zns external interface */
@@ -85,6 +102,6 @@ void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret);
 void zns_write(struct nvme_request * req, struct nvme_result * ret);
 void zns_read(struct nvme_request * req, struct nvme_result * ret);
 
-void zns_init(void);
+void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity);
 void zns_exit(void);
 #endif

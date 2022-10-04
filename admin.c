@@ -301,6 +301,7 @@ static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	struct nvme_id_zns_ns *ns;
+	struct zns_ssd * zns_ssd = get_zns_ssd_instance();
 	NVMEV_DEBUG("%s\n", __func__);
 	
 	ns = prp_address(cmd->prp1);
@@ -314,11 +315,12 @@ static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 	ns->ozcs |= OZCS_ZRWA; //Support ZRWA 
 
 	//Maximum Active Resources
-	ns->mar = NR_MAX_ACTIVE_ZONE - 1; // 0-based
+	ns->mar = zns_ssd->nr_active_zones - 1; // 0-based
 	
 	//Maximum Open Resources
-	ns->mor = NR_MAX_OPEN_ZONE - 1; // 0-based
+	ns->mor = zns_ssd->nr_open_zones - 1; // 0-based
 
+	#if 0
 	//Maximum ZRWA Resources
 	ns->numzrwa = NR_MAX_ZRWA_ZONE - 1;
 
@@ -327,13 +329,14 @@ static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 	
 	// ZRWA Size
 	ns->zrwasz = LBAS_PER_ZRWA;
-	
+	#endif
+
 	// ZRWA Capability
 	ns->zrwacap = 0;
 	ns->zrwacap |= ZRWACAP_EXPFLUSHSUP;
 	
 	//Zone Size
-	ns->lbaf[0].zsze = LBAS_PER_ZONE;
+	ns->lbaf[0].zsze = BYTE_TO_LBA(zns_ssd->zone_size);
 
 	//Zone Descriptor Extension Size 
 	ns->lbaf[0].zdes = 0; // currently not support

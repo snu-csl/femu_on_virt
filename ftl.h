@@ -27,11 +27,10 @@
 #if SUPPORT_ZNS
 #define SSD_INSTANCES        1
 #define NAND_CHANNELS        8
-#define LUNS_PER_NAND_CH     32
+#define LUNS_PER_NAND_CH     16
 #define SSD_INSTANCE_BITS    1
 #define FLASH_PAGE_SIZE       (64*1024)
-#define PLNS_PER_LUN         1 /* not used*/
-#define BLKS_PER_PLN         10240 /* not used*/
+#define PLNS_PER_LUN         1 /* not used*/         
 #define MAX_NAND_XFER_SIZE  (64*1024) /* to overlap with pcie transfer */
 
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
@@ -49,6 +48,13 @@
 #define FW_PROG1_LATENCY (0)
 #define FW_XFER_LATENCY 413
 #define OP_AREA_PERCENT      (0)
+
+#define ZONE_SIZE       (96*1024*1024) //byte
+#define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
+
+/*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
+#define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
+#define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
 #else
 #define SSD_INSTANCES        4
 #define NAND_CHANNELS        8
@@ -57,6 +63,7 @@
 #define SSD_INSTANCE_BITS    2
 #define FLASH_PAGE_SIZE      (32*1024)
 #define BLKS_PER_PLN         10240
+#define BLK_SIZE             0 /*BLKS_PER_PLN should not be 0 */
 #define MAX_NAND_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
 
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
@@ -346,6 +353,8 @@ struct nvme_result {
 extern struct ssd ssd[SSD_INSTANCES];
 
 unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
+void ssd_init_ftl_instance(struct ssd *ssd, unsigned int cpu_nr_dispatcher, unsigned long capacity);
+void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp);
 bool ssd_read(struct nvme_request * req, struct nvme_result * ret);
 bool ssd_write(struct nvme_request * req, struct nvme_result * ret);
 void ssd_gc_bg(void);
@@ -355,5 +364,5 @@ void adjust_ftl_latency(int target, int lat);
 bool release_write_buffer(uint32_t nr_buffers);
 uint32_t allocate_write_buffer(uint32_t nr_buffers);
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
-uint64_t ssd_advance_pcie(__u64 request_time, __u64 length);
+uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length);
 #endif
