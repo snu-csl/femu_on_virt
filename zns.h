@@ -17,9 +17,6 @@ extern struct zns_ssd g_zns_ssd;
 #define LBAS_PER_ZRWAFG	(BYTE_TO_LBA(KB(1))) // ZRWA Flush Granurity 
 #define LBAS_PER_ZRWA (BYTE_TO_LBA(MB(1))) // ZRWA Size
 
-#define PGM_PAGE_SIZE (192*1024ULL)
-#define READ_PAGE_SIZE (64*1024ULL)
-
 struct zns_ssd {
     struct ssd ssd;
 
@@ -99,8 +96,8 @@ static inline struct zns_ssd * get_zns_ssd_instance(void) {
 /* zns external interface */
 void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret);
 void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret);
-void zns_write(struct nvme_request * req, struct nvme_result * ret);
-void zns_read(struct nvme_request * req, struct nvme_result * ret);
+bool zns_write(struct nvme_request * req, struct nvme_result * ret);
+bool zns_read(struct nvme_request * req, struct nvme_result * ret);
 
 void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity);
 void zns_exit(void);

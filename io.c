@@ -589,7 +589,8 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	switch(cmd->common.opcode) {
 	case nvme_cmd_write:
 #if SUPPORT_ZNS
-		zns_write(&req, &ret);
+		if (!zns_write(&req, &ret))
+			return false;
 #else
 		if (!ssd_write(&req, &ret))
 			return false;
@@ -597,7 +598,8 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 		break;
 	case nvme_cmd_read:
 #if SUPPORT_ZNS
-		zns_read(&req, &ret);
+		if (!zns_read(&req, &ret))
+			return false;
 #else
 		if (!ssd_read(&req, &ret))
 			return false;

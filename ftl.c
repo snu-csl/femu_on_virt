@@ -16,12 +16,7 @@ static inline unsigned long long __get_ioclock(struct ssd *ssd)
 
 static inline bool last_pg_in_wordline(struct ssd *ssd, struct ppa *ppa)
 {
-    return ppa->h.pg_offs == (ssd->sp.pgs_per_flash_pg - 1);
-}
-
-static inline bool first_pg_in_wordline(struct ssd *ssd, struct ppa *ppa)
-{
-    return ppa->h.pg_offs == 0;
+    return ppa->h.pg_offs == (ssd->sp.pgs_per_pgm_pg - 1);
 }
 
 uint32_t allocate_write_buffer(uint32_t nr_buffers)
@@ -266,8 +261,8 @@ static void ssd_advance_write_pointer(struct ssd *ssd, uint32_t io_type)
 
     check_addr(wpp->pg, spp->pgs_per_blk);
     wpp->pg++;
-    if ((wpp->pg % spp->pgs_per_flash_pg) == 0) {
-        wpp->pg -= spp->pgs_per_flash_pg;
+    if ((wpp->pg % spp->pgs_per_pgm_pg) == 0) {
+        wpp->pg -= spp->pgs_per_pgm_pg;
             check_addr(wpp->ch, spp->nchs);
             wpp->ch++;
             if (wpp->ch == spp->nchs) {
@@ -278,7 +273,7 @@ static void ssd_advance_write_pointer(struct ssd *ssd, uint32_t io_type)
                 if (wpp->lun == spp->luns_per_ch) {
                     wpp->lun = 0;
                     /* go to next wordline in the block */
-                    wpp->pg += spp->pgs_per_flash_pg;
+                    wpp->pg += spp->pgs_per_pgm_pg;
                     if (wpp->pg == spp->pgs_per_blk) {
                         wpp->pg = 0;
                         /* move current line to {victim,full} line list */
@@ -361,6 +356,7 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
 
     spp->secsz = 512;
     spp->secs_per_pg = 8;
+    spp->pgsz = spp->secsz * spp->secs_per_pg;  
     spp->pls_per_lun = PLNS_PER_LUN;
     spp->luns_per_ch = LUNS_PER_NAND_CH;
     spp->nchs = NAND_CH_PER_SSD_INS;
@@ -375,9 +371,13 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
         spp->blks_per_pl = DIV_ROUND_UP(capacity, blk_size * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     }
 
-    spp->pgs_per_flash_pg = FLASH_PAGE_SIZE / (spp->secsz * spp->secs_per_pg); 
-    spp->flash_pgs_per_blk = DIV_ROUND_UP(blk_size, FLASH_PAGE_SIZE);  
-    spp->pgs_per_blk = spp->pgs_per_flash_pg * spp->flash_pgs_per_blk;
+    spp->pgs_per_pgm_pg = PGM_PAGE_SIZE / (spp->pgsz);
+    spp->pgm_pgs_per_blk = DIV_ROUND_UP(blk_size, PGM_PAGE_SIZE); 
+
+    spp->pgs_per_flash_pg = (PGM_PAGE_SIZE / FLASH_PAGE_SIZE) * spp->pgs_per_pgm_pg;
+    spp->flash_pgs_per_blk = (PGM_PAGE_SIZE / FLASH_PAGE_SIZE) * spp->pgm_pgs_per_blk;  
+   
+    spp->pgs_per_blk = spp->pgs_per_pgm_pg * spp->pgm_pgs_per_blk;
 
     spp->pg_4kb_rd_lat = NAND_4KB_READ_LATENCY;
     spp->pg_rd_lat = NAND_READ_LATENCY;
@@ -584,11 +584,11 @@ unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size
         ssd_init_ftl_instance(&ssd[i], cpu_nr_dispatcher, 
                                 DIV_ROUND_UP(memmap_size, SSD_INSTANCES));
 
-        if (i == 0)
-            ssd_init_pcie(pcie, spp);
         /* PCIe is shared by all instances*/
         ssd[i].pcie = pcie;
     }
+
+    ssd_init_pcie(pcie, spp);
 
     logical_space = (unsigned long)((memmap_size * 100) / spp->pba_pcent);
 
@@ -891,9 +891,9 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
         gcw.cmd = NAND_NOP;
         gcw.stime = 0;
 
-        if (first_pg_in_wordline(ssd, &new_ppa)) {
+        if (last_pg_in_wordline(ssd, &new_ppa)) {
             gcw.cmd = NAND_WRITE;
-            gcw.xfer_size = LPN_TO_BYTE(ssd->sp.pgs_per_flash_pg);
+            gcw.xfer_size = LPN_TO_BYTE(ssd->sp.pgs_per_pgm_pg);
         }
 
         ssd_advance_status(ssd, &new_ppa, &gcw);
@@ -1202,7 +1202,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     struct ppa ppa;
     uint64_t lpn, local_lpn;
     uint64_t curlat = 0, maxlat = 0;
-    uint32_t pgs_to_pgm = spp->pgs_per_flash_pg;
+    uint32_t pgs_to_pgm = spp->pgs_per_pgm_pg;
     uint32_t buffers_allocated = 0;
     struct nand_cmd swr;
     swr.type = USER_IO;
@@ -1223,7 +1223,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 	swr.stime += spp->fw_wr0_lat;
 	swr.stime += spp->fw_wr1_lat * buffers_allocated;
     swr.stime = ssd_advance_pcie(get_ssd_ins_from_lpn(start_lpn), 
-                                        swr.stime, LPN_TO_BYTE(buffers_allocated));
+                                        swr.stime, LBA_TO_BYTE(nr_lba));
  
     for (lpn = start_lpn; lpn <= end_lpn && buffers_allocated > 0; lpn++, buffers_allocated--) {
         ssd_ins = get_ssd_ins_from_lpn(lpn);
@@ -1270,13 +1270,13 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
         check_and_refill_write_credit(ssd_ins);
     }
     
-        ret->nsecs_target = maxlat;
-        ret->early_completion = true;
-        ret->nsecs_target_early = swr.stime;
-        ret->status = NVME_SC_SUCCESS;
+    ret->nsecs_target = maxlat;
+    ret->early_completion = true;
+    ret->nsecs_target_early = swr.stime;
+    ret->status = NVME_SC_SUCCESS;
 
-        NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
-        return true;
+    NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
+    return true;
     
 }
 

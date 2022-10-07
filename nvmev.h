@@ -75,12 +75,6 @@
 #define LBA_TO_BYTE(lba) ((lba) << 9)
 #define BYTE_TO_LBA(byte) ((byte) >> 9)
 
-#define LPN_TO_BYTE(lpn) ((lpn) << 12)
-#define BYTE_TO_LPN(byte) ((byte) >> 12)
-
-
-#define LBA_TO_LPN(lba) (BYTE_TO_LPN(LBA_TO_BYTE(lba)))
-
 #define INVALID32 (0xFFFFFFFF)
 #define INVALID64 (0xFFFFFFFFFFFFFFFF)
 #define ASSERT(X)
