@@ -41,9 +41,9 @@ enum {
     SEC_INVALID = 1,
     SEC_VALID = 2,
 
-    PG_FREE = 0,
-    PG_INVALID = 1,
-    PG_VALID = 2
+    CHUNK_FREE = 0,
+    CHUNK_INVALID = 1,
+    CHUNK_VALID = 2
 };
 
 enum {
@@ -60,23 +60,23 @@ enum {
 
 
 #define BLK_BITS    (16)
-#define PG_BITS     (16)
+#define CHUNK_BITS  (16)
 #define SEC_BITS    (8)
 #define PL_BITS     (8)
 #define LUN_BITS    (8)
 #define CH_BITS     (7)
 
-#if (FLASH_PAGE_SIZE == (64*1024))
-#define PG_OFFS_BITS   (4) // 16 pages -> 1 wordline
-#elif (FLASH_PAGE_SIZE == (32*1024))
-#define PG_OFFS_BITS   (3) // 8 pages -> 1 wordline
+#if (READ_PAGE_SIZE == (64*1024))
+#define CHUNK_OFFS_BITS   (4) // 16 pages -> 1 wordline
+#elif (READ_PAGE_SIZE == (32*1024))
+#define CHUNK_OFFS_BITS   (3) // 8 pages -> 1 wordline
 #endif
-#define WORDLINE_BITS  (PG_BITS - PG_OFFS_BITS)
+#define WORDLINE_BITS  (CHUNK_BITS - CHUNK_OFFS_BITS)
 /* describe a physical page addr */
 struct ppa {
     union {
         struct {
-            uint64_t pg  : PG_BITS;
+            uint64_t chunk  : CHUNK_BITS;
             uint64_t blk : BLK_BITS;
             uint64_t pl  : PL_BITS;
             uint64_t lun : LUN_BITS;
@@ -85,7 +85,7 @@ struct ppa {
         } g;
 
         struct {
-            uint64_t pg_offs : PG_OFFS_BITS;
+            uint64_t chunk_offs : CHUNK_OFFS_BITS;
             uint64_t wordline : WORDLINE_BITS;
             uint64_t blk_in_die : BLK_BITS + PL_BITS + LUN_BITS + CH_BITS;
             uint64_t rsv : 1;
@@ -97,15 +97,15 @@ struct ppa {
 
 typedef int nand_sec_status_t;
 
-struct nand_page {
+struct nand_chunk {
     nand_sec_status_t *sec;
     int nsecs;
     int status;
 };
 
 struct nand_block {
-    struct nand_page *pg;
-    int npgs;
+    struct nand_chunk *chunk;
+    int nchunks;
     int ipc; /* invalid page count */
     int vpc; /* valid page count */
     int erase_cnt;
@@ -139,13 +139,13 @@ struct ssd_pcie {
 
 struct ssdparams {
     int secsz;        /* sector size in bytes */
-    int secs_per_pg;  /* # of sectors per page */
-    int pgsz;
-    int pgs_per_flash_pg; /* # of pgs per flash page */
-    int flash_pgs_per_blk; /* # of flash pages per block */
-    int pgs_per_pgm_pg; /* # of pgs per oneshot program page */
+    int secs_per_chunk;  /* # of sectors per page */
+    int chunksz;
+    int chunks_per_read_pg; /* # of pgs per flash page */
+    int read_pgs_per_blk; /* # of flash pages per block */
+    int chunks_per_pgm_pg; /* # of pgs per oneshot program page */
     int pgm_pgs_per_blk; /* # of pgm page pages per block */
-    int pgs_per_blk;  /* # of NAND pages per block */
+    int chunks_per_blk;  /* # of NAND pages per block */
     int blks_per_pl;  /* # of blocks per plane */
     int pls_per_lun;  /* # of planes per LUN (Die) */
     int luns_per_ch;  /* # of LUNs per channel */
@@ -185,17 +185,17 @@ struct ssdparams {
     unsigned long secs_per_ch;  /* # of sectors per channel */
     unsigned long tt_secs;      /* # of sectors in the SSD */
 
-    unsigned long pgs_per_pl;   /* # of pages per plane */
-    unsigned long pgs_per_lun;  /* # of pages per LUN (Die) */
-    unsigned long pgs_per_ch;   /* # of pages per channel */
-    unsigned long tt_pgs;       /* total # of pages in the SSD */
+    unsigned long chunks_per_pl;   /* # of pages per plane */
+    unsigned long chunks_per_lun;  /* # of pages per LUN (Die) */
+    unsigned long chunks_per_ch;   /* # of pages per channel */
+    unsigned long tt_chunks;       /* total # of pages in the SSD */
 
     unsigned long blks_per_lun; /* # of blocks per LUN */
     unsigned long blks_per_ch;  /* # of blocks per channel */
     unsigned long tt_blks;      /* total # of blocks in the SSD */
 
     unsigned long secs_per_line;
-    unsigned long pgs_per_line;
+    unsigned long chunks_per_line;
     unsigned long blks_per_line;
     unsigned long tt_lines;
 
@@ -221,7 +221,7 @@ struct write_pointer {
     struct line *curline;
     int ch;
     int lun;
-    int pg;
+    int chunk;
     int blk;
     int pl;
 };

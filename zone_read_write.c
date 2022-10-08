@@ -48,7 +48,7 @@ static inline struct ppa __lba_to_ppa(struct zns_ssd *zns_ssd, uint64_t lba)
 	__u64 off = LBA_TO_LPN(lba - zone_to_slba(zns_ssd, zone)); 
 	
 	__u32 sdie = (zone * zns_ssd->dies_per_zone) % zns_ssd->ssd.sp.tt_luns;
-	__u32 die = sdie + ((off / zns_ssd->ssd.sp.pgs_per_pgm_pg) % zns_ssd->dies_per_zone);
+	__u32 die = sdie + ((off / zns_ssd->ssd.sp.chunks_per_pgm_pg) % zns_ssd->dies_per_zone);
 
 	__u32 channel = die_to_channel(zns_ssd, die);
 	__u32 lun = die_to_lun(zns_ssd, die);
@@ -244,7 +244,7 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 		
 		while (remaining) {
 			ppa = __lba_to_ppa(zns_ssd, lba); 
-			swr.xfer_size = min(remaining, spp->pgs_per_pgm_pg * spp->pgsz);
+			swr.xfer_size = min(remaining, spp->chunks_per_pgm_pg * spp->chunksz);
 			nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
 			nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 			remaining -= swr.xfer_size;
@@ -305,7 +305,7 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 
 	while (remaining)
 	{
-		swr.xfer_size = min(remaining, spp->pgs_per_flash_pg * spp->pgsz);
+		swr.xfer_size = min(remaining, spp->chunks_per_read_pg * spp->chunksz);
 		ppa = __lba_to_ppa(zns_ssd, lba); 
 		nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
 		nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
