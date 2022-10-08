@@ -379,12 +379,14 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
    
     spp->chunks_per_blk = spp->chunks_per_pgm_pg * spp->pgm_pgs_per_blk;
 
+    spp->write_unit_size = WRITE_UNIT_SIZE;
+
     spp->pg_4kb_rd_lat = NAND_4KB_READ_LATENCY;
     spp->pg_rd_lat = NAND_READ_LATENCY;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
     spp->blk_er_lat = NAND_ERASE_LATENCY;
     spp->ch_xfer_lat = 0;
-    spp->ch_max_xfer_size = MAX_NAND_XFER_SIZE;
+    spp->ch_max_xfer_size = CH_MAX_XFER_SIZE;
 
     spp->fw_rd0_lat = FW_READ0_LATENCY;
     spp->fw_rd1_lat = FW_READ1_LATENCY;
@@ -862,7 +864,7 @@ static void gc_read_page(struct ssd *ssd, struct ppa *ppa)
         gcr.type = GC_IO;
         gcr.cmd = NAND_READ;
         gcr.stime = 0;
-        gcr.xfer_size = LPN_TO_BYTE(1);
+        gcr.xfer_size = ssd->sp.chunksz;
         ssd_advance_status(ssd, ppa, &gcr);
     }
 }
@@ -870,6 +872,7 @@ static void gc_read_page(struct ssd *ssd, struct ppa *ppa)
 /* move valid page data (already in DRAM) from victim line to a new page */
 static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
 {
+    struct ssdparams *spp = &ssd->sp;
     struct ppa new_ppa;
     uint64_t lpn = get_rmap_ent(ssd, old_ppa);
 
@@ -893,7 +896,7 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
 
         if (last_chunk_in_wordline(ssd, &new_ppa)) {
             gcw.cmd = NAND_WRITE;
-            gcw.xfer_size = LPN_TO_BYTE(ssd->sp.chunks_per_pgm_pg);
+            gcw.xfer_size = spp->chunksz * ssd->sp.chunks_per_pgm_pg;
         }
 
         ssd_advance_status(ssd, &new_ppa, &gcw);
@@ -981,7 +984,7 @@ static void clean_one_flash_page(struct ssd *ssd, struct ppa *ppa)
             gcr.type = GC_IO;
             gcr.cmd = NAND_READ;
             gcr.stime = 0;
-            gcr.xfer_size = LPN_TO_BYTE(cnt);
+            gcr.xfer_size = spp->chunksz * cnt;
             completed_time = ssd_advance_status(ssd, ppa, &gcr);
         }
 
@@ -1160,7 +1163,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
 
             // aggregate read io in same flash page
             if (mapped_ppa(&prev_ppa) && is_same_flash_page(cur_ppa, prev_ppa)) {
-                xfer_size += LPN_TO_BYTE(1);
+                xfer_size += spp->chunksz;
                 continue;
             }
 
@@ -1170,7 +1173,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
                 maxlat = (sublat > maxlat) ? sublat : maxlat;
             }
             
-            xfer_size = LPN_TO_BYTE(1);
+            xfer_size = spp->chunksz;
             prev_ppa = cur_ppa;
         }
 
@@ -1252,7 +1255,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
         /* Aggregate write io in flash page */
         if (last_chunk_in_wordline(ssd_ins, &ppa)) {
             swr.cmd = NAND_WRITE;
-            swr.xfer_size = LPN_TO_BYTE(pgs_to_pgm);
+            swr.xfer_size = spp->chunksz * pgs_to_pgm;
 
             curlat = ssd_advance_status(ssd_ins, &ppa, &swr);
             maxlat = (curlat > maxlat) ? curlat : maxlat;
@@ -1260,7 +1263,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
             enqueue_writeback_io_req(req->sq_id, curlat, pgs_to_pgm);
         } else {            
             swr.cmd = NAND_NOP;
-            swr.xfer_size = LPN_TO_BYTE(1);
+            swr.xfer_size = spp->chunksz;
 
             curlat = ssd_advance_status(ssd_ins, &ppa, &swr);
             maxlat = (curlat > maxlat) ? curlat : maxlat;   

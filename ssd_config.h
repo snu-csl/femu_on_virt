@@ -15,8 +15,10 @@
 #define SSD_INSTANCE_BITS    1
 #define READ_PAGE_SIZE      (64*1024)
 #define PGM_PAGE_SIZE        (READ_PAGE_SIZE * 3)
-#define PLNS_PER_LUN         1 /* not used*/         
-#define MAX_NAND_XFER_SIZE  (64*1024) /* to overlap with pcie transfer */
+#define PLNS_PER_LUN         1 /* not used*/
+
+#define CH_MAX_XFER_SIZE  (64*1024) /* to overlap with pcie transfer */
+#define WRITE_UNIT_SIZE     (192*1024)
 
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3200ull) //MB/s
@@ -50,7 +52,9 @@
 #define PGM_PAGE_SIZE        (READ_PAGE_SIZE * 1)
 #define BLKS_PER_PLN         10240
 #define BLK_SIZE             0 /*BLKS_PER_PLN should not be 0 */
-#define MAX_NAND_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
+
+#define CH_MAX_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
+#define WRITE_UNIT_SIZE     (512) 
 
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3360ull) //MB/s
@@ -88,11 +92,6 @@
 #define NAND_CH_PER_SSD_INS  (NAND_CHANNELS/SSD_INSTANCES)
 #define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_INSTANCES)     
 #define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_INSTANCE_BITS)
-
-#define LPN_TO_BYTE(lpn) ((lpn) << 12)
-#define BYTE_TO_LPN(byte) ((byte) >> 12)
-
-#define LBA_TO_LPN(lba) (BYTE_TO_LPN(LBA_TO_BYTE(lba)))
 
 #define WRITE_BUFFER_SIZE 4096
 

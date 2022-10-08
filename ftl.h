@@ -60,17 +60,13 @@ enum {
 
 
 #define BLK_BITS    (16)
-#define CHUNK_BITS  (16)
+#define CHUNK_BITS  (20)
 #define SEC_BITS    (8)
-#define PL_BITS     (8)
+#define PL_BITS     (4)
 #define LUN_BITS    (8)
 #define CH_BITS     (7)
 
-#if (READ_PAGE_SIZE == (64*1024))
-#define CHUNK_OFFS_BITS   (4) // 16 pages -> 1 wordline
-#elif (READ_PAGE_SIZE == (32*1024))
-#define CHUNK_OFFS_BITS   (3) // 8 pages -> 1 wordline
-#endif
+#define CHUNK_OFFS_BITS   (6) 
 #define WORDLINE_BITS  (CHUNK_BITS - CHUNK_OFFS_BITS)
 /* describe a physical page addr */
 struct ppa {
@@ -150,6 +146,10 @@ struct ssdparams {
     int pls_per_lun;  /* # of planes per LUN (Die) */
     int luns_per_ch;  /* # of LUNs per channel */
     int nchs;         /* # of channels in the SSD */
+
+    /* Unit size of NVMe write command 
+       Transfer size should be multiple of it */
+    int write_unit_size;  
 
     int pg_4kb_rd_lat;/* NAND page 4KB read latency in nanoseconds */
     int pg_rd_lat;    /* NAND page read latency in nanoseconds */

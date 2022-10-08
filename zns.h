@@ -73,6 +73,14 @@ static inline void change_zone_state(struct zns_ssd * zns_ssd, __u32 zid, enum z
 	zns_ssd->zone_descs[zid].state = state;
 }
 
+static inline __u32 lpn_to_zone(struct zns_ssd *zns_ssd, __u64 lpn) {
+    return (lpn) / (zns_ssd->zone_size / zns_ssd->ssd.sp.chunksz);
+}
+
+static inline __u64 zone_to_slpn(struct zns_ssd *zns_ssd, __u32 zid) {
+    return (zid) * (zns_ssd->zone_size / zns_ssd->ssd.sp.chunksz);
+}
+
 static inline __u32 lba_to_zone(struct zns_ssd *zns_ssd, __u64 lba) {
     return (lba) / (BYTE_TO_LBA(zns_ssd->zone_size));
 }

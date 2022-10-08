@@ -63,6 +63,9 @@ void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity)
 	zns_ssd->nr_active_zones = zns_ssd->nr_zones; // max
 	zns_ssd->nr_open_zones = zns_ssd->nr_zones; // max
 	
+	/* It should be 4KB aligned, according to lpn size */
+	NVMEV_ASSERT((zns_ssd->zone_size % zns_ssd->ssd.sp.chunksz) == 0); 
+	
 	zns_init_descriptor(zns_ssd);
 	zns_init_resource(zns_ssd);
 }
