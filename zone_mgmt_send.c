@@ -140,14 +140,13 @@ __u32 __zmgmt_send_open_zone(struct zns_ssd *zns_ssd, __u64 zid, __u32 select_al
 
 void __reset_zone(struct zns_ssd * zns_ssd, __u64 zid)
 {
-	NVMEV_ZNS_DEBUG("%s zid %lu\n", __FUNCTION__, zid);
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	__u32 zone_size = zns_ssd->zone_size;
+	__u8 * zone_start_addr = (__u8 *)get_zns_media_addr_from_zid(zns_ssd, zid);
 	
 	NVMEV_ZNS_DEBUG("%s zid %lu start addres 0x%llx zone_size %x \n", 
 			__FUNCTION__, zid,  (__u64)zone_start_addr, zone_size);
 
-	__u8 * zone_start_addr = (__u8 *)get_zns_media_addr_from_zid(zns_ssd,  zid);
 	memset(zone_start_addr, 0, zone_size);
 
 	zone_descs[zid].wp = zone_descs[zid].zslba;

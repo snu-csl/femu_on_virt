@@ -298,6 +298,8 @@ void ssd_init_ftl_instance(struct ssd *ssd, unsigned int cpu_nr_dispatcher, unsi
 void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp);
 bool ssd_read(struct nvme_request * req, struct nvme_result * ret);
 bool ssd_write(struct nvme_request * req, struct nvme_result * ret);
+bool ssd_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
+void ssd_flush(struct nvme_request * req, struct nvme_result * ret);
 void ssd_gc_bg(void);
 void ssd_gc(void);
 void ssd_gc2(struct ssd *ssd);

@@ -23,14 +23,35 @@
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
-#define SUPPORT_ZNS 0
+#define SUPPORT_ZNS 1
 #define SUPPORT_MULTI_IO_WORKER_BY_SQ	1 
 #define SUPPORT_VIRTUAL_CAPACITY		0
 
-#if SUPPORT_ZNS == 0
-#define NS_CSI NVME_CSI_NVM
-#else
-#define NS_CSI NVME_CSI_ZNS
+/* Modify configuration  */
+#define NR_NAMESPACE	2
+
+/* NVME_CSI_NVM : Conv
+   NVME_CSI_ZNS : ZNS
+   NS_CAPACITY : MB (0 -> Full capacity) */
+
+#define NS_CSI_0 NVME_CSI_ZNS
+#define NS_CAPACITY_0 (8ULL*1024*1024*1024) 
+#define NS_CSI_1 NVME_CSI_NVM  
+#define NS_CAPACITY_1 (96*1024*1024)
+
+/*************************/
+static const __u32 ns_csi[] = {NS_CSI_0, NS_CSI_1};
+static const __u64 ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
+
+#define NS_CSI(ns) (ns_csi[ns])
+#define NS_CAPACITY(ns) (ns_capacity[ns])
+
+#if NR_NAMESPACE >= 3
+	#error "ONLY SUPPORT NR_NAMESPACE <= 2"
+#elif NR_NAMESPACE == 2
+	#if NS_CSI_0 != NVME_CSI_ZNS || NS_CSI_1 != NVME_CSI_NVM
+		#error "ONLY SUPPORT 1 ZNS Namepsace, 1 Conv Namespace"
+	#endif
 #endif 
 
 #define NVMEV_DRV_NAME "NVMeVirt"
@@ -150,6 +171,9 @@ struct nvmev_config {
 #if SUPPORT_VIRTUAL_CAPACITY
 	unsigned long virtual_storage_size;
 #endif	
+
+	unsigned long ns_size[NR_NAMESPACE];  // byte
+
 	unsigned int read_delay;	// ns
 	unsigned int read_time;		// ns
 	unsigned int read_trailing;	// ns
@@ -239,6 +263,7 @@ struct nvmev_dev {
 	struct task_struct *nvmev_manager;
 
 	void *storage_mapped;
+	void * ns_mapped[NR_NAMESPACE];
 
 	struct nvmev_proc_info *proc_info;
 	unsigned int proc_turn;

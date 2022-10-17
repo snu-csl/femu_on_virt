@@ -1310,3 +1310,55 @@ void adjust_ftl_latency(int target, int lat)
         printk("After latency: %d %d %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat);
     }
 }
+
+/*TODO*/
+void ssd_flush(struct nvme_request * req, struct nvme_result * ret)
+{   
+	unsigned long long latest = 0;
+
+	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
+
+    latest = local_clock();
+    #if 0
+	for (i = 0; i < vdev->config.nr_io_units; i++) {
+		latest = max(latest, vdev->io_unit_stat[i]);
+	}
+    #endif
+
+	ret->status = NVME_SC_SUCCESS;
+	ret->nsecs_target = latest;
+	return;
+}
+
+bool ssd_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
+{
+    struct nvme_command *cmd = req->cmd;
+    size_t csi = NS_CSI(cmd->common.nsid - 1);
+    NVMEV_ASSERT(csi == NVME_CSI_NVM);
+    switch(cmd->common.opcode) {
+        case nvme_cmd_write:
+            if (!ssd_write(req, ret))
+                return false;
+            break;
+        case nvme_cmd_read:
+            if (!ssd_read(req, ret))
+                return false;
+            break;
+        case nvme_cmd_flush:
+            ssd_flush(req, ret);
+            break;
+        case nvme_cmd_write_uncor:
+        case nvme_cmd_compare:
+        case nvme_cmd_write_zeroes:
+        case nvme_cmd_dsm:
+        case nvme_cmd_resv_register:
+        case nvme_cmd_resv_report:
+        case nvme_cmd_resv_acquire:
+        case nvme_cmd_resv_release:
+            break;
+        default:
+            break;
+    }
+
+    return true;
+}

@@ -624,12 +624,9 @@ enum{
 	NVME_NIDT_CSI	= 0x4, /*Command Set Identifier*/
 };
 
-enum{
-	NVME_CSI_NVM	= 0x0, /*NVM Command Set*/
-	NVME_CSI_KV		= 0x1, /*Key Value Command Set*/
-	NVME_CSI_ZNS	= 0x2, /*Zoned Namespace Command Set*/
-};
-
+#define NVME_CSI_NVM	0x0 /*NVM Command Set*/
+#define NVME_CSI_KV		0x1 /*Key Value Command Set*/
+#define NVME_CSI_ZNS	0x2 /*Zoned Namespace Command Set*/
 #define NVME_VS(major, minor) (((major) << 16) | ((minor) << 8))
 
 #endif /* _LINUX_NVME_H */

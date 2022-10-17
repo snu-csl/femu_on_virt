@@ -104,6 +104,7 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 	u64 paddr;
 	u64 *paddr_list = NULL;
 	size_t mem_offs = 0;
+	size_t nsid = sq_entry(sq_entry).rw.nsid - 1; // 0-based
 
 	offset = sq_entry(sq_entry).rw.slba << 9;
 	length = (sq_entry(sq_entry).rw.length + 1) << 9;
@@ -141,9 +142,9 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 		#endif
 
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
-			memcpy(vdev->storage_mapped + offset, vaddr + mem_offs, io_size);
+			memcpy(vdev->ns_mapped[nsid] + offset, vaddr + mem_offs, io_size);
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
-			memcpy(vaddr + mem_offs, vdev->storage_mapped + offset, io_size);
+			memcpy(vaddr + mem_offs, vdev->ns_mapped[nsid] + offset, io_size);
 		}
 
 		kunmap_atomic(vaddr);
@@ -545,31 +546,15 @@ static void __reclaim_completed_reqs(void)
 	}
 }
 
-static void __nvmev_proc_flush(struct nvme_request * req, struct nvme_result * ret)
-{
-	unsigned long long latest = 0;
-	int i;
-
-	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
-
-	for (i = 0; i < vdev->config.nr_io_units; i++) {
-		latest = max(latest, vdev->io_unit_stat[i]);
-	}
-
-	ret->status = NVME_SC_SUCCESS;
-	ret->nsecs_target = latest;
-	return;
-}
 static size_t __nvmev_proc_io(int sqid, int sq_entry)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	unsigned long long nsecs_target = 0;
 	unsigned long long nsecs_start = __get_wallclock();
-	size_t io_len = 0;
-	uint64_t max_lat = 0;
 	struct nvme_command *cmd = &sq_entry(sq_entry);
 	struct nvme_request req;
 	struct nvme_result ret = {0,};
+	size_t csi = NS_CSI(cmd->common.nsid - 1);
+
 	req.cmd = cmd;
 	req.nsecs_start = nsecs_start;
 	req.sq_id = sqid;
@@ -586,48 +571,17 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	static unsigned long long clock3 = 0;
 	static unsigned long long counter = 0;
 #endif
-	switch(cmd->common.opcode) {
-	case nvme_cmd_write:
-#if SUPPORT_ZNS
-		if (!zns_write(&req, &ret))
-			return false;
-#else
-		if (!ssd_write(&req, &ret))
-			return false;
-#endif
-		break;
-	case nvme_cmd_read:
-#if SUPPORT_ZNS
-		if (!zns_read(&req, &ret))
-			return false;
-#else
-		if (!ssd_read(&req, &ret))
-			return false;
-#endif 
-		break;
-	case nvme_cmd_flush:
-		__nvmev_proc_flush(&req, &ret);
-		break;
-	case nvme_cmd_write_uncor:
-	case nvme_cmd_compare:
-	case nvme_cmd_write_zeroes:
-	case nvme_cmd_dsm:
-	case nvme_cmd_resv_register:
-	case nvme_cmd_resv_report:
-	case nvme_cmd_resv_acquire:
-	case nvme_cmd_resv_release:
-	#if SUPPORT_ZNS
-	case nvme_cmd_zone_mgmt_send:
-		zns_zmgmt_send(&req, &ret);
-		break;
-	case nvme_cmd_zone_mgmt_recv:
-		zns_zmgmt_recv(&req, &ret);
-		break;
-	case nvme_cmd_zone_append:
-	#endif
-	default:
-		break;
+
+	if (csi == NVME_CSI_NVM) {
+		if (!ssd_proc_nvme_io_cmd(&req, &ret))
+			return false; 
 	}
+	else if (csi == NVME_CSI_ZNS) {
+		if (!zns_proc_nvme_io_cmd(&req, &ret))
+			return false; 
+	}
+	else
+		NVMEV_ASSERT(0);
 
 #ifdef PERF_DEBUG
 	prev_clock2 = local_clock();

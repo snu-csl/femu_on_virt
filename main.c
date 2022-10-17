@@ -408,6 +408,9 @@ static const struct file_operations proc_file_fops = {
 
 void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 {
+	int i;
+	char * ns_addr;
+
 	NVMEV_INFO("Storage : %lx + %lx\n",
 			vdev->config.storage_start, vdev->config.storage_size);
 
@@ -416,6 +419,14 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 
 	vdev->storage_mapped = memremap(vdev->config.storage_start,
 			vdev->config.storage_size, MEMREMAP_WB);
+	
+	ns_addr = (char*)vdev->storage_mapped;  
+	for (i = 0; i < NR_NAMESPACE; i++) {
+		vdev->ns_mapped[i] = (void*)ns_addr;
+		memset(ns_addr, 0, 64*1024*1024);
+		ns_addr += vdev->config.ns_size[i];
+	}
+
 	if (vdev->storage_mapped == NULL)
 		NVMEV_ERROR("Failed to map storage memory.\n");
 
@@ -531,6 +542,9 @@ static bool __load_configs(struct nvmev_config *config)
 
 static int NVMeV_init(void)
 {
+	int i;
+	unsigned long long remaining_capacity;	// byte
+	
 	vdev = VDEV_INIT();
 	if (!vdev) return -EINVAL;
 
@@ -538,20 +552,30 @@ static int NVMeV_init(void)
 		goto ret_err;
 	}
 
-#if SUPPORT_ZNS
-	zns_init(vdev->config.cpu_nr_dispatcher, vdev->config.storage_size);
-#else
-
 #if SUPPORT_VIRTUAL_CAPACITY
 	unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, SUPPORT_VIRTUAL_CAPACITY);
 	vdev->config.virtual_storage_size = tmp_size - (tmp_size % PAGE_SIZE);
 #else
-	unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.storage_size);
-	vdev->config.storage_size = tmp_size - (tmp_size % PAGE_SIZE);
-#endif
-#endif
+	remaining_capacity = vdev->config.storage_size;
+	for (i = 0; i < NR_NAMESPACE; i++){
 
+		if (NS_CAPACITY(i) == 0)
+			vdev->config.ns_size[i] = remaining_capacity; 
+		else
+			vdev->config.ns_size[i] = min(NS_CAPACITY(i), remaining_capacity);
 
+		if (NS_CSI(i) == NVME_CSI_NVM) {
+			unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.ns_size[i]);
+			vdev->config.ns_size[i] = tmp_size - (tmp_size % PAGE_SIZE);
+		}
+		else if (NS_CSI(i) == NVME_CSI_ZNS)
+			zns_init(vdev->config.cpu_nr_dispatcher, vdev->config.ns_size[i], i); 
+		else
+			NVMEV_ASSERT(0);
+
+		remaining_capacity -= vdev->config.ns_size[i];
+	}
+#endif
 	dmatest_chan_set("dma7chan0");
 
 	NVMEV_STORAGE_INIT(vdev);

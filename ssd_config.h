@@ -79,7 +79,7 @@
     #undef OP_AREA_PERCENT
 
     #define SSD_INSTANCES        1
-    #define ZONE_SIZE       (128*1024*1024) //byte
+    #define ZONE_SIZE       (8*1024*1024) //byte
     #define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
 
     /*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/

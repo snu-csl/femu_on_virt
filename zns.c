@@ -48,12 +48,12 @@ void zns_init_resource(struct zns_ssd *zns_ssd)
 
 }
 
-void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity)
+void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity, unsigned int namespace)
 {
 	struct zns_ssd *zns_ssd = get_zns_ssd_instance();
-	ssd_init_ftl_instance(&(zns_ssd->ssd), cpu_nr_dispatcher, capacity);
-	
 	struct ssd_pcie *pcie = kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
+
+	ssd_init_ftl_instance(&(zns_ssd->ssd), cpu_nr_dispatcher, capacity);
     ssd_init_pcie(pcie, &(zns_ssd->ssd.sp));
 
 	zns_ssd->ssd.pcie = pcie;
@@ -62,6 +62,7 @@ void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity)
 	zns_ssd->dies_per_zone = DIES_PER_ZONE;
 	zns_ssd->nr_active_zones = zns_ssd->nr_zones; // max
 	zns_ssd->nr_open_zones = zns_ssd->nr_zones; // max
+	zns_ssd->ns = namespace;
 	
 	/* It should be 4KB aligned, according to lpn size */
 	NVMEV_ASSERT((zns_ssd->zone_size % zns_ssd->ssd.sp.chunksz) == 0); 
@@ -78,4 +79,44 @@ void zns_exit(void)
 	kfree(zns_ssd->zone_descs);
 	kfree(zns_ssd->report_buffer);
 }
+
+ bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
+ {
+    struct nvme_command *cmd = req->cmd;
+    size_t csi = NS_CSI(cmd->common.nsid - 1);
+    NVMEV_ASSERT(csi == NVME_CSI_ZNS);
+    switch(cmd->common.opcode) {
+        case nvme_cmd_write:
+            if (!zns_write(req, ret))
+                return false;
+            break;
+        case nvme_cmd_read:
+            if (!zns_read(req, ret))
+                return false;
+            break;
+        case nvme_cmd_flush:
+            ssd_flush(req, ret);
+            break;
+        case nvme_cmd_write_uncor:
+        case nvme_cmd_compare:
+        case nvme_cmd_write_zeroes:
+        case nvme_cmd_dsm:
+        case nvme_cmd_resv_register:
+        case nvme_cmd_resv_report:
+        case nvme_cmd_resv_acquire:
+        case nvme_cmd_resv_release:
+            break;
+        case nvme_cmd_zone_mgmt_send:
+			zns_zmgmt_send(req, ret);
+			break;
+		case nvme_cmd_zone_mgmt_recv:
+			zns_zmgmt_recv(req, ret);
+			break;
+		case nvme_cmd_zone_append:
+		default:
+            break;
+	}
+
+    return true;
+ }
 #endif

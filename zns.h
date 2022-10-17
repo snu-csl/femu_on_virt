@@ -25,6 +25,7 @@ struct zns_ssd {
     __u32 nr_open_zones;
     __u32 dies_per_zone;
     __u32 zone_size; //bytes
+    __u32 ns;
     
     struct zone_resource_info res_infos[RES_TYPE_COUNT];
     struct zone_descriptor *zone_descs;
@@ -35,7 +36,7 @@ struct zns_ssd {
 
 /* zns internal functions */
 static inline void * get_zns_media_addr_from_zid(struct zns_ssd *zns_ssd, __u64 zid) {
-    return (void *) (vdev->config.storage_start + zid*zns_ssd->zone_size);
+    return (void *) (vdev->ns_mapped[zns_ssd->ns] + zid*zns_ssd->zone_size);
 }
 
 static inline bool is_zone_resource_avail(struct zns_ssd *zns_ssd, __u32 type)
@@ -106,7 +107,8 @@ void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret);
 void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret);
 bool zns_write(struct nvme_request * req, struct nvme_result * ret);
 bool zns_read(struct nvme_request * req, struct nvme_result * ret);
+bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
 
-void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity);
+void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity, unsigned int namespace);
 void zns_exit(void);
 #endif
