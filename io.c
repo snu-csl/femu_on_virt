@@ -418,7 +418,7 @@ static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long lo
 	}
 }
 
-void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_start, unsigned long long nsecs_target, unsigned int buffs_to_release)
+void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, unsigned int buffs_to_release)
 {
 #if SUPPORT_MULTI_IO_WORKER_BY_SQ
 	unsigned int proc_turn = (sqid - 1) % (vdev->config.nr_io_cpu);
@@ -445,7 +445,7 @@ void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_start, unsigned
 
 	/////////////////////////////////
 	pi->proc_table[entry].sqid = sqid;
-	pi->proc_table[entry].nsecs_start = nsecs_start;
+	pi->proc_table[entry].nsecs_start = local_clock();
 	pi->proc_table[entry].nsecs_enqueue = local_clock();
 	pi->proc_table[entry].nsecs_target =  nsecs_target;
 	pi->proc_table[entry].is_completed = false;

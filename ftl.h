@@ -58,15 +58,19 @@ enum {
     FEMU_DISABLE_LOG = 7,
 };
 
-
+#define TOTAL_PPA_BITS (64)
 #define BLK_BITS    (16)
-#define CHUNK_BITS  (20)
-#define SEC_BITS    (8)
-#define PL_BITS     (4)
+#define CHUNK_BITS  (16)
+#define PL_BITS     (8)
 #define LUN_BITS    (8)
-#define CH_BITS     (7)
+#define CH_BITS     (8)
+#define RSB_BITS    (TOTAL_PPA_BITS - (BLK_BITS + CHUNK_BITS + PL_BITS + LUN_BITS + CH_BITS))
 
-#define CHUNK_OFFS_BITS   (6) 
+#if (READ_PAGE_SIZE == (64*1024))
+#define CHUNK_OFFS_BITS   (4) // 16 pages -> 1 wordline
+#elif (READ_PAGE_SIZE == (32*1024))
+#define CHUNK_OFFS_BITS   (3) // 8 pages -> 1 wordline
+#endif
 #define WORDLINE_BITS  (CHUNK_BITS - CHUNK_OFFS_BITS)
 /* describe a physical page addr */
 struct ppa {
@@ -77,7 +81,7 @@ struct ppa {
             uint64_t pl  : PL_BITS;
             uint64_t lun : LUN_BITS;
             uint64_t ch  : CH_BITS;
-            uint64_t rsv : 1;
+            uint64_t rsv : RSB_BITS;
         } g;
 
         struct {

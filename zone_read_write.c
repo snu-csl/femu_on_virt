@@ -251,7 +251,7 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 			if ((ppa.h.chunk_offs + chunks) == spp->chunks_per_pgm_pg) {	
 				swr.type = USER_IO;
 				swr.cmd = NAND_WRITE;
-				swr.stime = nsecs_latest;
+				swr.stime = nsecs_xfer_completed;
 				swr.xfer_size = spp->chunks_per_pgm_pg * spp->chunksz;
 
 				nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
