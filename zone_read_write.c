@@ -221,7 +221,6 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 	__u64 nsecs_start = req->nsecs_start;
 	__u64 nsecs_completed = 0, nsecs_latest;
 	__u64 nsecs_xfer_completed;
-	__u64 buffers_to_write = end_lpn - start_lpn + 1;
 	__u64 chunks;
 	__u32 status;
 
@@ -231,7 +230,7 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 	NVMEV_DEBUG("%s slba 0x%llx nr_lba 0x%lx zone_id %d\n",__FUNCTION__, cmd->slba, nr_lba, zid);
 	
 	if (zone_descs[zid].zrwav == 0) {
-		if (allocate_write_buffer(buffers_to_write) < buffers_to_write)
+		if (allocate_write_buffer(LBA_TO_BYTE(nr_lba)) < LBA_TO_BYTE(nr_lba))
 			return false;
 			
 		status = __proc_zns_write(zns_ssd, cmd);
@@ -239,7 +238,7 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 		// get delay from nand model
 		nsecs_latest = nsecs_start;
 		nsecs_latest += spp->fw_wr0_lat;
-		nsecs_latest += spp->fw_wr1_lat * buffers_to_write;
+		nsecs_latest += spp->fw_wr1_lat * (end_lpn - start_lpn + 1);
 		nsecs_latest = ssd_advance_pcie(&(zns_ssd->ssd), nsecs_latest, LBA_TO_BYTE(nr_lba));
 		nsecs_xfer_completed = nsecs_latest;
 
@@ -257,7 +256,7 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 				nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
 				nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
-				enqueue_writeback_io_req(req->sq_id, nsecs_completed, spp->chunks_per_pgm_pg);
+				enqueue_writeback_io_req(req->sq_id, nsecs_completed, spp->chunks_per_pgm_pg * spp->chunksz);
 			} 
 		} 
 	} else {

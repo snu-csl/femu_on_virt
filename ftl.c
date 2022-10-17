@@ -6,7 +6,7 @@
 #include "channel.h"
 
 struct ssd ssd[SSD_INSTANCES];
-uint32_t nr_write_buffers = 256;
+uint32_t remaining_buf_size = 256*4096;
 spinlock_t buffer_lock;
 
 static inline unsigned long long __get_ioclock(struct ssd *ssd)
@@ -19,25 +19,25 @@ static inline bool last_chunk_in_wordline(struct ssd *ssd, struct ppa *ppa)
     return ppa->h.chunk_offs == (ssd->sp.chunks_per_pgm_pg - 1);
 }
 
-uint32_t allocate_write_buffer(uint32_t nr_buffers)
+uint32_t allocate_write_buffer(uint32_t size)
 {
     #if 1
     while(!spin_trylock(&buffer_lock));
     
-    if (nr_write_buffers < nr_buffers) {
+    if (remaining_buf_size < size) {
         spin_unlock(&buffer_lock);
         return 0;
     } 
 
-    nr_write_buffers-=nr_buffers;
+    remaining_buf_size-=size;
     spin_unlock(&buffer_lock);
-    return nr_buffers;
+    return size;
     #elif 0
     uint32_t num;
     while(!spin_trylock(&buffer_lock));
-    num = min(nr_write_buffers, nr_buffers);
+    num = min(remaining_buf_size, nr_buffers);
     num = min(num, 16);
-    nr_write_buffers -= num;
+    remaining_buf_size -= num;
     spin_unlock(&buffer_lock);
     return num;
     #else 
@@ -45,11 +45,11 @@ uint32_t allocate_write_buffer(uint32_t nr_buffers)
     #endif
 }
 
-bool release_write_buffer(uint32_t nr_buffers)
+bool release_write_buffer(uint32_t size)
 {
     #if 1
     while(!spin_trylock(&buffer_lock));
-    nr_write_buffers += nr_buffers;
+    remaining_buf_size += size;
     spin_unlock(&buffer_lock);
     #endif
     return true;
@@ -1123,7 +1123,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     uint64_t start_lpn = lba / spp->secs_per_chunk;
     uint64_t end_lpn = (lba + nr_lba - 1) / spp->secs_per_chunk;
     uint64_t lpn, local_lpn;
-    uint64_t sublat, maxlat = nsecs_start;
+    uint64_t nsecs_completed, nsecs_latest = nsecs_start;
     uint32_t xfer_size, i;
     struct nand_cmd srd;
     srd.type = USER_IO;
@@ -1169,8 +1169,8 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
 
             if (xfer_size > 0) {
                 srd.xfer_size = xfer_size;
-                sublat = ssd_advance_status(ssd_ins, &prev_ppa, &srd);
-                maxlat = (sublat > maxlat) ? sublat : maxlat;
+                nsecs_completed = ssd_advance_status(ssd_ins, &prev_ppa, &srd);
+                nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
             }
             
             xfer_size = spp->chunksz;
@@ -1180,13 +1180,13 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
         // issue remaining io
         if (xfer_size > 0) {
             srd.xfer_size = xfer_size;
-            sublat = ssd_advance_status(ssd_ins, &prev_ppa, &srd);
-            maxlat = (sublat > maxlat) ? sublat : maxlat;
+            nsecs_completed = ssd_advance_status(ssd_ins, &prev_ppa, &srd);
+            nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
         }
     }
 
     ret->early_completion = false;
-    ret->nsecs_target = maxlat;
+    ret->nsecs_target = nsecs_latest;
     ret->status = NVME_SC_SUCCESS; 
     return true;
 }
@@ -1204,12 +1204,10 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     uint64_t end_lpn = (lba + nr_lba - 1) / spp->secs_per_chunk;
     struct ppa ppa;
     uint64_t lpn, local_lpn;
-    uint64_t curlat = 0, maxlat = 0;
-    uint32_t pgs_to_pgm = spp->chunks_per_pgm_pg;
-    uint32_t buffers_allocated = 0;
+    uint64_t nsecs_completed = 0, nsecs_latest;
+    uint64_t nsecs_xfer_completed;
+    uint32_t allocated_buf_size;
     struct nand_cmd swr;
-    swr.type = USER_IO;
-    swr.stime = nsecs_start;
 
     NVMEV_DEBUG("ssd_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_chunks) {
@@ -1218,17 +1216,23 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     }
     
     //swr.stime = swr.stime > temp_latest_early_completed[req->sq_id] ? swr.stime : temp_latest_early_completed[req->sq_id];  
-    buffers_allocated = allocate_write_buffer(end_lpn - start_lpn + 1); 
+    allocated_buf_size = allocate_write_buffer(LBA_TO_BYTE(nr_lba)); 
 	
-	if (buffers_allocated < (end_lpn - start_lpn + 1))
+	if (allocated_buf_size < LBA_TO_BYTE(nr_lba))
 		return false;
 
-	swr.stime += spp->fw_wr0_lat;
-	swr.stime += spp->fw_wr1_lat * buffers_allocated;
-    swr.stime = ssd_advance_pcie(get_ssd_ins_from_lpn(start_lpn), 
-                                        swr.stime, LBA_TO_BYTE(nr_lba));
- 
-    for (lpn = start_lpn; lpn <= end_lpn && buffers_allocated > 0; lpn++, buffers_allocated--) {
+    nsecs_latest = nsecs_start;
+	nsecs_latest += spp->fw_wr0_lat;
+	nsecs_latest += spp->fw_wr1_lat * (end_lpn - start_lpn + 1);
+    nsecs_latest = ssd_advance_pcie(get_ssd_ins_from_lpn(start_lpn), 
+                                        nsecs_latest, LBA_TO_BYTE(nr_lba));
+    nsecs_xfer_completed = nsecs_latest;
+
+    swr.type = USER_IO;
+    swr.cmd = NAND_WRITE;
+    swr.stime = nsecs_latest;
+
+    for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
         ssd_ins = get_ssd_ins_from_lpn(lpn);
         local_lpn = LPN_TO_LOCAL_LPN(lpn); 
         ppa = get_maptbl_ent(ssd_ins, local_lpn); // 현재 LPN에 대해 전에 이미 쓰인 PPA가 있는지 확인
@@ -1254,28 +1258,21 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 
         /* Aggregate write io in flash page */
         if (last_chunk_in_wordline(ssd_ins, &ppa)) {
-            swr.cmd = NAND_WRITE;
-            swr.xfer_size = spp->chunksz * pgs_to_pgm;
+            swr.xfer_size = spp->chunksz * spp->chunks_per_pgm_pg;
 
-            curlat = ssd_advance_status(ssd_ins, &ppa, &swr);
-            maxlat = (curlat > maxlat) ? curlat : maxlat;
+            nsecs_completed = ssd_advance_status(ssd_ins, &ppa, &swr);
+            nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
-            enqueue_writeback_io_req(req->sq_id, curlat, pgs_to_pgm);
-        } else {            
-            swr.cmd = NAND_NOP;
-            swr.xfer_size = spp->chunksz;
-
-            curlat = ssd_advance_status(ssd_ins, &ppa, &swr);
-            maxlat = (curlat > maxlat) ? curlat : maxlat;   
-        }
+            enqueue_writeback_io_req(req->sq_id, nsecs_completed, spp->chunks_per_pgm_pg * spp->chunksz);
+        } 
         
         consume_write_credit(ssd_ins);
         check_and_refill_write_credit(ssd_ins);
     }
     
-    ret->nsecs_target = maxlat;
+    ret->nsecs_target = nsecs_latest;
     ret->early_completion = true;
-    ret->nsecs_target_early = swr.stime;
+    ret->nsecs_target_early = nsecs_xfer_completed;
     ret->status = NVME_SC_SUCCESS;
 
     NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
