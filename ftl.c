@@ -6,7 +6,7 @@
 #include "channel.h"
 
 struct ssd ssd[SSD_INSTANCES];
-uint32_t remaining_buf_size = 256*4096;
+uint32_t remaining_buf_size = WRITE_BUFFER_SIZE;
 spinlock_t buffer_lock;
 
 static inline unsigned long long __get_ioclock(struct ssd *ssd)
