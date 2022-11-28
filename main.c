@@ -419,13 +419,6 @@ void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 
 	vdev->storage_mapped = memremap(vdev->config.storage_start,
 			vdev->config.storage_size, MEMREMAP_WB);
-	
-	ns_addr = (char*)vdev->storage_mapped;  
-	for (i = 0; i < NR_NAMESPACE; i++) {
-		vdev->ns_mapped[i] = (void*)ns_addr;
-		memset(ns_addr, 0, 64*1024*1024);
-		ns_addr += vdev->config.ns_size[i];
-	}
 
 	if (vdev->storage_mapped == NULL)
 		NVMEV_ERROR("Failed to map storage memory.\n");
@@ -540,23 +533,16 @@ static bool __load_configs(struct nvmev_config *config)
 	return true;
 }
 
-static int NVMeV_init(void)
+void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 {
-	int i;
-	unsigned long long remaining_capacity;	// byte
-	
-	vdev = VDEV_INIT();
-	if (!vdev) return -EINVAL;
-
-	if (!__load_configs(&vdev->config)) {
-		goto ret_err;
-	}
-
 #if SUPPORT_VIRTUAL_CAPACITY
 	unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, SUPPORT_VIRTUAL_CAPACITY);
 	vdev->config.virtual_storage_size = tmp_size - (tmp_size % PAGE_SIZE);
 #else
-	remaining_capacity = vdev->config.storage_size;
+	unsigned long long remaining_capacity = vdev->config.storage_size;	// byte
+	void * ns_addr = (void*)vdev->storage_mapped;
+	int i;
+
 	for (i = 0; i < NR_NAMESPACE; i++){
 
 		if (NS_CAPACITY(i) == 0)
@@ -568,18 +554,46 @@ static int NVMeV_init(void)
 			unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.ns_size[i]);
 			vdev->config.ns_size[i] = tmp_size - (tmp_size % PAGE_SIZE);
 		}
-		else if (NS_CSI(i) == NVME_CSI_ZNS)
-			zns_init(vdev->config.cpu_nr_dispatcher, vdev->config.ns_size[i], i); 
+		else if (NS_CSI(i) == NVME_CSI_ZNS) {
+			zns_init(vdev->config.cpu_nr_dispatcher, ns_addr, vdev->config.ns_size[i], i); 
+		}
 		else
 			NVMEV_ASSERT(0);
 
 		remaining_capacity -= vdev->config.ns_size[i];
+		vdev->ns_mapped[i] = ns_addr;
+		/*Workaround*/
+		memset(ns_addr, 0, 64*1024*1024);
+		ns_addr += vdev->config.ns_size[i];
 	}
 #endif
-	dmatest_chan_set("dma7chan0");
+}
+
+void NVMEV_NAMESPACE_FINAL(struct nvmev_dev *vdev)
+{
+	//TODO : should free memory allocated in ssd_init, zns_init
+}
+
+static int NVMeV_init(void)
+{
+	int i;
+	unsigned long long remaining_capacity;	// byte
+	void * ns_addr;
+
+	vdev = VDEV_INIT();
+	if (!vdev) return -EINVAL;
+
+	if (!__load_configs(&vdev->config)) {
+		goto ret_err;
+	}
 
 	NVMEV_STORAGE_INIT(vdev);
 
+	NVMEV_NAMESPACE_INIT(vdev);
+
+	dmatest_chan_set("dma7chan0");
+
+	
 	if (!NVMEV_PCI_INIT(vdev)) {
 		goto ret_err;
 	}
@@ -603,6 +617,7 @@ static void NVMeV_exit(void)
 	NVMEV_REG_PROC_FINAL(vdev);
 	NVMEV_IO_PROC_FINAL(vdev);
 
+	NVMEV_NAMESPACE_FINAL(vdev);
 	NVMEV_STORAGE_FINAL(vdev);
 
 	if (vdev->virt_bus != NULL) {

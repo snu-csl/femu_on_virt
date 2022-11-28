@@ -5,7 +5,6 @@
 #include "nvmev.h"
 #include "nvme_zns.h"
 
-extern struct nvmev_dev *vdev;
 extern struct zns_ssd g_zns_ssd;
 
 #define NVMEV_ZNS_DEBUG(string, args...) //printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
@@ -26,6 +25,7 @@ struct zns_ssd {
     __u32 dies_per_zone;
     __u32 zone_size; //bytes
     __u32 ns;
+    void * storage_base_addr;
     
     struct zone_resource_info res_infos[RES_TYPE_COUNT];
     struct zone_descriptor *zone_descs;
@@ -35,8 +35,8 @@ struct zns_ssd {
 };
 
 /* zns internal functions */
-static inline void * get_zns_media_addr_from_zid(struct zns_ssd *zns_ssd, __u64 zid) {
-    return (void *) (vdev->ns_mapped[zns_ssd->ns] + zid*zns_ssd->zone_size);
+static inline void * get_storage_addr_from_zid(struct zns_ssd *zns_ssd, __u64 zid) {
+    return (void *) ((char*)zns_ssd->storage_base_addr + zid*zns_ssd->zone_size);
 }
 
 static inline bool is_zone_resource_avail(struct zns_ssd *zns_ssd, __u32 type)
@@ -109,6 +109,6 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret);
 bool zns_read(struct nvme_request * req, struct nvme_result * ret);
 bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
 
-void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity, unsigned int namespace);
+void zns_init(unsigned int cpu_nr_dispatcher, void * storage_base_addr, unsigned long capacity, unsigned int namespace);
 void zns_exit(void);
 #endif

@@ -48,7 +48,7 @@ void zns_init_resource(struct zns_ssd *zns_ssd)
 
 }
 
-void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity, unsigned int namespace)
+void zns_init(unsigned int cpu_nr_dispatcher, void * storage_base_addr, unsigned long capacity, unsigned int namespace)
 {
 	struct zns_ssd *zns_ssd = get_zns_ssd_instance();
 	struct ssd_pcie *pcie = kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
@@ -63,6 +63,7 @@ void zns_init(unsigned int cpu_nr_dispatcher, unsigned long capacity, unsigned i
 	zns_ssd->nr_active_zones = zns_ssd->nr_zones; // max
 	zns_ssd->nr_open_zones = zns_ssd->nr_zones; // max
 	zns_ssd->ns = namespace;
+	zns_ssd->storage_base_addr = storage_base_addr;
 	
 	/* It should be 4KB aligned, according to lpn size */
 	NVMEV_ASSERT((zns_ssd->zone_size % zns_ssd->ssd.sp.chunksz) == 0); 

@@ -142,10 +142,10 @@ void __reset_zone(struct zns_ssd * zns_ssd, __u64 zid)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	__u32 zone_size = zns_ssd->zone_size;
-	__u8 * zone_start_addr = (__u8 *)get_zns_media_addr_from_zid(zns_ssd, zid);
+	__u8 * zone_start_addr = (__u8 *)get_storage_addr_from_zid(zns_ssd, zid);
 	
-	NVMEV_ZNS_DEBUG("%s zid %lu start addres 0x%llx zone_size %x \n", 
-			__FUNCTION__, zid,  (__u64)zone_start_addr, zone_size);
+	NVMEV_ZNS_DEBUG("%s ns %d zid %lu  0x%llx, start addres 0x%llx zone_size %x \n", 
+			__FUNCTION__, zns_ssd->ns, zid, (void*)vdev->ns_mapped[zns_ssd->ns], (__u64)zone_start_addr, zone_size);
 
 	memset(zone_start_addr, 0, zone_size);
 
