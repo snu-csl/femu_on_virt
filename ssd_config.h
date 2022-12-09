@@ -110,15 +110,14 @@
 #define FW_XFER_LATENCY (0)
 #define OP_AREA_PERCENT      (0.07)
 
-#define ZONE_SIZE       (8*1024*1024) //byte
+#define ZONE_SIZE       (32*1024*1024) //byte
 #define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
 
 /*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
 #define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
-#define OP_AREA_PERCENT      (0)
 
-#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 2)
+#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 4)
 #endif // BASE_SSD == SAMSUNG_970_PRO
 
 #define NAND_CH_PER_SSD_INS  (NAND_CHANNELS/SSD_INSTANCES)

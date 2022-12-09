@@ -542,29 +542,29 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 	unsigned long long remaining_capacity = vdev->config.storage_size;	// byte
 	void * ns_addr = (void*)vdev->storage_mapped;
 	int i;
-
+	
 	for (i = 0; i < NR_NAMESPACE; i++){
-
+		
 		if (NS_CAPACITY(i) == 0)
 			vdev->config.ns_size[i] = remaining_capacity; 
 		else
 			vdev->config.ns_size[i] = min(NS_CAPACITY(i), remaining_capacity);
+		
+		remaining_capacity -= vdev->config.ns_size[i];
+		vdev->ns_mapped[i] = ns_addr;
+		memset(ns_addr, 0, 64*1024*1024);
+		ns_addr += vdev->config.ns_size[i];
 
 		if (NS_CSI(i) == NVME_CSI_NVM) {
 			unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.ns_size[i]);
 			vdev->config.ns_size[i] = tmp_size - (tmp_size % PAGE_SIZE);
 		}
 		else if (NS_CSI(i) == NVME_CSI_ZNS) {
-			zns_init(vdev->config.cpu_nr_dispatcher, ns_addr, vdev->config.ns_size[i], i); 
+			zns_init(vdev->config.cpu_nr_dispatcher, vdev->ns_mapped[i], vdev->config.ns_size[i], i); 
 		}
 		else
 			NVMEV_ASSERT(0);
-
-		remaining_capacity -= vdev->config.ns_size[i];
-		vdev->ns_mapped[i] = ns_addr;
-		/*Workaround*/
-		memset(ns_addr, 0, 64*1024*1024);
-		ns_addr += vdev->config.ns_size[i];
+		NVMEV_DEBUG("ns_addr 0x%llx ns_size %lld \n", vdev->ns_mapped[i], vdev->config.ns_size[i]/1024/1024);	
 	}
 #endif
 }
