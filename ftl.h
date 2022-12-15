@@ -277,18 +277,9 @@ struct ssd {
     // QemuThread ftl_thread;
 };
 
-struct nvme_request {
-    struct nvme_command * cmd;
-    __u32 sq_id;
-    __u64 nsecs_start;
-};
-
-struct nvme_result {
-    __u32 status;
-    __u64 nsecs_target;
-    __u32 early_completion;
-    __u64 nsecs_target_early;
-    __u64 wp; // only for zone append
+struct buffer {
+    __u32 remaining;
+    spinlock_t lock;
 };
 
 extern struct ssd ssd[SSD_INSTANCES];
@@ -304,8 +295,11 @@ void ssd_gc_bg(void);
 void ssd_gc(void);
 void ssd_gc2(struct ssd *ssd);
 void adjust_ftl_latency(int target, int lat);
-bool release_write_buffer(uint32_t nr_buffers);
-uint32_t allocate_write_buffer(uint32_t nr_buffers);
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
 uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length);
+
+void buffer_init(struct buffer * buf, __u32 size);
+uint32_t buffer_allocate(struct buffer * buf, __u32 size);
+bool buffer_release(struct buffer * buf, __u32 size);
+
 #endif

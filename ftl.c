@@ -6,8 +6,7 @@
 #include "channel.h"
 
 struct ssd ssd[SSD_INSTANCES];
-uint32_t remaining_buf_size = WRITE_BUFFER_SIZE;
-spinlock_t buffer_lock;
+struct buffer global_write_buffer;
 
 static inline unsigned long long __get_ioclock(struct ssd *ssd)
 {
@@ -19,18 +18,24 @@ static inline bool last_chunk_in_wordline(struct ssd *ssd, struct ppa *ppa)
     return ppa->h.chunk_offs == (ssd->sp.chunks_per_pgm_pg - 1);
 }
 
-uint32_t allocate_write_buffer(uint32_t size)
+void buffer_init(struct buffer * buf, __u32 size)
+{
+    spin_lock_init(&buf->lock);
+    buf->remaining = size;
+}
+
+uint32_t buffer_allocate(struct buffer * buf, __u32 size)
 {
     #if 1
-    while(!spin_trylock(&buffer_lock));
+    while(!spin_trylock(&buf->lock));
     
-    if (remaining_buf_size < size) {
-        spin_unlock(&buffer_lock);
+    if (buf->remaining < size) {
+        spin_unlock(&buf->lock);
         return 0;
     } 
 
-    remaining_buf_size-=size;
-    spin_unlock(&buffer_lock);
+    buf->remaining-=size;
+    spin_unlock(&buf->lock);
     return size;
     #elif 0
     uint32_t num;
@@ -45,13 +50,12 @@ uint32_t allocate_write_buffer(uint32_t size)
     #endif
 }
 
-bool release_write_buffer(uint32_t size)
+bool buffer_release(struct buffer * buf, __u32 size)
 {
-    #if 1
-    while(!spin_trylock(&buffer_lock));
-    remaining_buf_size += size;
-    spin_unlock(&buffer_lock);
-    #endif
+    while(!spin_trylock(&buf->lock));
+    buf->remaining += size;
+    spin_unlock(&buf->lock);
+
     return true;
 }
 
@@ -596,7 +600,7 @@ unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size
 
     NVMEV_INFO("FTL physical space: %ld, logical space: %ld (physical/logical * 100 = %d)\n", memmap_size, logical_space, spp->pba_pcent);
 
-    spin_lock_init(&buffer_lock);
+    buffer_init(&global_write_buffer, WRITE_BUFFER_SIZE);
 
     return logical_space;
 }
@@ -1191,7 +1195,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     return true;
 }
 
-void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, unsigned int buffs_to_release);
+void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release);
 bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 {
     struct nvme_command * cmd = req->cmd;
@@ -1216,7 +1220,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     }
     
     //swr.stime = swr.stime > temp_latest_early_completed[req->sq_id] ? swr.stime : temp_latest_early_completed[req->sq_id];  
-    allocated_buf_size = allocate_write_buffer(LBA_TO_BYTE(nr_lba)); 
+    allocated_buf_size = buffer_allocate(&global_write_buffer, LBA_TO_BYTE(nr_lba)); 
 	
 	if (allocated_buf_size < LBA_TO_BYTE(nr_lba))
 		return false;
@@ -1263,7 +1267,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
             nsecs_completed = ssd_advance_status(ssd_ins, &ppa, &swr);
             nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
-            enqueue_writeback_io_req(req->sq_id, nsecs_completed, spp->chunks_per_pgm_pg * spp->chunksz);
+            enqueue_writeback_io_req(req->sq_id, nsecs_completed, &global_write_buffer, spp->chunks_per_pgm_pg * spp->chunksz);
         } 
         
         consume_write_credit(ssd_ins);

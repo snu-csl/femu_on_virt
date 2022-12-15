@@ -323,29 +323,30 @@ static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 
 	//Optional Zoned Command Support (Read Across Zone Boundaries, ZRWA) 
 	ns->ozcs = 0;
-	ns->ozcs |= OZCS_ZRWA; //Support ZRWA 
-
+	
 	//Maximum Active Resources
 	ns->mar = zns_ssd->nr_active_zones - 1; // 0-based
 	
 	//Maximum Open Resources
 	ns->mor = zns_ssd->nr_open_zones - 1; // 0-based
 
-	#if 0
-	//Maximum ZRWA Resources
-	ns->numzrwa = NR_MAX_ZRWA_ZONE - 1;
+	/*zrwa enabled*/
+	if (zns_ssd->nr_zrwa_zones > 0) {
+		ns->ozcs |= OZCS_ZRWA; //Support ZRWA 
 
-	// ZRWA Flush Granurarity
-	ns->zrwafg = LBAS_PER_ZRWAFG;
-	
-	// ZRWA Size
-	ns->zrwasz = LBAS_PER_ZRWA;
-	#endif
+		//Maximum ZRWA Resources
+		ns->numzrwa = zns_ssd->nr_zrwa_zones - 1;
 
-	// ZRWA Capability
-	ns->zrwacap = 0;
-	ns->zrwacap |= ZRWACAP_EXPFLUSHSUP;
-	
+		// ZRWA Flush Granurarity
+		ns->zrwafg = zns_ssd->zrwafg_size;
+		
+		// ZRWA Size
+		ns->zrwasz = zns_ssd->zrwa_size;
+
+		// ZRWA Capability
+		ns->zrwacap = 0;
+		ns->zrwacap |= ZRWACAP_EXPFLUSHSUP;
+	}
 	//Zone Size
 	ns->lbaf[0].zsze = BYTE_TO_LBA(zns_ssd->zone_size);
 

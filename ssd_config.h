@@ -6,7 +6,7 @@
 #define SAMSUNG_ZNS_970PRO 1
 #define SKHYNIX_ZNS_PROTOTYPE 2
 
-#define BASE_SSD   (SAMSUNG_970PRO)
+#define BASE_SSD   (SAMSUNG_ZNS_970PRO)
 
 /* Macros for specific setting. Modify these macros for your target */
 #if (BASE_SSD == SKHYNIX_ZNS_PROTOTYPE)
@@ -39,6 +39,10 @@
 
 #define ZONE_SIZE       (96*1024*1024) //byte
 #define DIES_PER_ZONE   (1)//NAND_CHANNELS*LUNS_PER_NAND_CH)
+
+#define MAX_ZRWA_ZONES (0) /* 0 : Not support ZRWA */
+#define ZRWAFG_SIZE (0)
+#define ZRWA_SIZE   (0)
 
 /*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
@@ -80,6 +84,10 @@
 #define ZONE_SIZE       (0) //byte
 #define DIES_PER_ZONE   (0)
 
+#define MAX_ZRWA_ZONES (0) /* 0 : Not support ZRWA */
+#define ZRWAFG_SIZE (0)
+#define ZRWA_SIZE   (0)
+
 #define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 2)
 
 #elif  (BASE_SSD == SAMSUNG_ZNS_970PRO)
@@ -112,6 +120,10 @@
 
 #define ZONE_SIZE       (32*1024*1024) //byte
 #define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
+
+#define MAX_ZRWA_ZONES (0xFFFFFFFF) // No limit
+#define ZRWAFG_SIZE (KB(1))
+#define ZRWA_SIZE   (MB(1))
 
 /*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */

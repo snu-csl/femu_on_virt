@@ -5,6 +5,7 @@
 #if SUPPORT_ZNS
 
 struct zns_ssd g_zns_ssd;
+extern struct buffer global_write_buffer;
 
 void zns_init_descriptor(struct zns_ssd *zns_ssd)
 {
@@ -13,9 +14,11 @@ void zns_init_descriptor(struct zns_ssd *zns_ssd)
 	__u32 nr_zones = zns_ssd->nr_zones;
 	__u64 zslba = 0;
 	__u32 i = 0;
+	__u32 zrwa_size = zns_ssd->zrwa_size;
 	
 	zns_ssd->zone_descs = (struct zone_descriptor *) kmalloc(sizeof(struct zone_descriptor) * nr_zones, GFP_ATOMIC);
 	zns_ssd->report_buffer = (struct zone_report *) kmalloc(sizeof(struct zone_report) + sizeof(struct zone_descriptor) * (nr_zones - 1), GFP_ATOMIC);
+	zns_ssd->zwra_buffer = (struct buffer *) kmalloc(sizeof(struct buffer) * nr_zones, GFP_ATOMIC);
 	
 	zone_descs = zns_ssd->zone_descs;
 	memset(zone_descs, 0, sizeof(struct zone_descriptor) * zns_ssd->nr_zones);
@@ -28,6 +31,8 @@ void zns_init_descriptor(struct zns_ssd *zns_ssd)
 		zns_ssd->zone_descs[i].wp = zslba;
 		zslba += BYTE_TO_LBA(zone_size);
 		zone_descs[i].zone_capacity = BYTE_TO_LBA(zone_size);
+		
+		buffer_init(&(zns_ssd->zwra_buffer[i]), zrwa_size + zrwa_size/2); 
 
 		NVMEV_ZNS_DEBUG("[i] zslba 0x%llx zone capacity 0x%llx\n", zone_descs[i].zslba, zone_descs[i].zone_capacity);
 	}
@@ -62,6 +67,12 @@ void zns_init(unsigned int cpu_nr_dispatcher, void * storage_base_addr, unsigned
 	zns_ssd->dies_per_zone = DIES_PER_ZONE;
 	zns_ssd->nr_active_zones = zns_ssd->nr_zones; // max
 	zns_ssd->nr_open_zones = zns_ssd->nr_zones; // max
+	zns_ssd->nr_zrwa_zones = MAX_ZRWA_ZONES;
+	zns_ssd->zrwa_size = ZRWA_SIZE;
+	zns_ssd->zrwafg_size = ZRWAFG_SIZE;
+	zns_ssd->lbas_per_zrwa = zns_ssd->zrwa_size / zns_ssd->ssd.sp.secsz;
+	zns_ssd->lbas_per_zrwafg = zns_ssd->zrwafg_size / zns_ssd->ssd.sp.secsz;
+
 	zns_ssd->ns = namespace;
 	zns_ssd->storage_base_addr = storage_base_addr;
 	
@@ -70,6 +81,8 @@ void zns_init(unsigned int cpu_nr_dispatcher, void * storage_base_addr, unsigned
 	
 	zns_init_descriptor(zns_ssd);
 	zns_init_resource(zns_ssd);
+
+	buffer_init(&global_write_buffer, WRITE_BUFFER_SIZE);
 }
 
 void zns_exit(void)

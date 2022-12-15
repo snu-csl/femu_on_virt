@@ -419,7 +419,7 @@ static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long lo
 	}
 }
 
-void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, unsigned int buffs_to_release)
+void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release)
 {
 #if SUPPORT_MULTI_IO_WORKER_BY_SQ
 	unsigned int proc_turn = (sqid - 1) % (vdev->config.nr_io_cpu);
@@ -459,6 +459,7 @@ void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, unsigne
 
 	pi->proc_table[entry].writeback_cmd = true;
 	pi->proc_table[entry].buffs_to_release = buffs_to_release;
+	pi->proc_table[entry].write_buffer = (void*)write_buffer;
 	mb();	/* IO kthread shall see the updated pe at once */
 
 	// (END) -> (START) order, nsecs target ascending order
@@ -761,7 +762,7 @@ static int nvmev_kthread_io(void *data)
 			if (pe->nsecs_target <= curr_nsecs) {
 				
 				if (pe->writeback_cmd) {
-					release_write_buffer(pe->buffs_to_release);
+					buffer_release((struct buffer *)pe->write_buffer, pe->buffs_to_release);
 				} else if (!pe->early_completion)
 					__fill_cq_result(pe);
 				

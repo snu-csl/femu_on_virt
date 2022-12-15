@@ -12,10 +12,6 @@ extern struct zns_ssd g_zns_ssd;
 // Zoned Namespace Command Set Specification Revision 1.1a
 #define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 
-#define NR_MAX_ZRWA_ZONE (vdev->config.nr_zrwa_zones) //0xFFFFFFFF : No limit
-#define LBAS_PER_ZRWAFG	(BYTE_TO_LBA(KB(1))) // ZRWA Flush Granurity 
-#define LBAS_PER_ZRWA (BYTE_TO_LBA(MB(1))) // ZRWA Size
-
 struct zns_ssd {
     struct ssd ssd;
 
@@ -24,12 +20,21 @@ struct zns_ssd {
     __u32 nr_open_zones;
     __u32 dies_per_zone;
     __u32 zone_size; //bytes
+
+    /*related to zrwa*/
+    __u32 nr_zrwa_zones;
+    __u32 zrwafg_size;
+    __u32 zrwa_size;
+    __u32 lbas_per_zrwafg;
+    __u32 lbas_per_zrwa;
+    
     __u32 ns;
     void * storage_base_addr;
     
     struct zone_resource_info res_infos[RES_TYPE_COUNT];
     struct zone_descriptor *zone_descs;
     struct zone_report *report_buffer;
+    struct buffer * zwra_buffer;
 
     unsigned int cpu_nr_dispatcher;
 };

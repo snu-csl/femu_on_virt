@@ -34,7 +34,7 @@
    NVME_CSI_ZNS : ZNS
    NS_CAPACITY : MB (0 -> Full capacity) */
 
-#define NS_CSI_0 NVME_CSI_NVM
+#define NS_CSI_0 NVME_CSI_ZNS
 #define NS_CAPACITY_0 (0) 
 #define NS_CSI_1 NVME_CSI_NVM  
 #define NS_CAPACITY_1 (96*1024*1024)
@@ -221,6 +221,7 @@ struct nvmev_proc_table {
 	bool early_completion;
 
 	bool writeback_cmd;
+	void * write_buffer;
 	unsigned int buffs_to_release;
 
 	unsigned int status;
@@ -291,6 +292,20 @@ struct nvmev_dev {
 	struct proc_dir_entry *proc_stat;
 
 	unsigned long long *io_unit_stat;
+};
+
+struct nvme_request {
+    struct nvme_command * cmd;
+    __u32 sq_id;
+    __u64 nsecs_start;
+};
+
+struct nvme_result {
+    __u32 status;
+    __u64 nsecs_target;
+    __u32 early_completion;
+    __u64 nsecs_target_early;
+    __u64 wp; // only for zone append
 };
 
 // VDEV Init, Final Function

@@ -228,10 +228,13 @@ __u32 __proc_zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, __u64 slba)
 	enum zone_state cur_state = zone_descs[zid].state;	
 	__u64 zone_capacity = zone_descs[zid].zone_capacity;
 
-	__u64 zrwa_start = wp;
-	__u64 zrwa_end = min(zrwa_start + LBAS_PER_ZRWA - 1, (size_t)zone_to_slba(zns_ssd, zid) + zone_capacity - 1); 
-	__u64 nr_lbas_flush = slba - wp + 1;
+	const __u32 lbas_per_zrwafg = zns_ssd->lbas_per_zrwafg;
+	const __u32 lbas_per_zrwa = zns_ssd->lbas_per_zrwa;
 
+	__u64 zrwa_start = wp;
+	__u64 zrwa_end = min(zrwa_start + lbas_per_zrwa - 1, (size_t)zone_to_slba(zns_ssd, zid) + zone_capacity - 1); 
+	__u64 nr_lbas_flush = slba - wp + 1;
+	
 	NVMEV_ZNS_DEBUG("%s slba 0x%llx zrwa_start 0x%llx zrwa_end 0x%llx zone_descs[zid].zrwav %d\n", 
 			__FUNCTION__, slba, zrwa_start, zrwa_end, zone_descs[zid].zrwav);
 
@@ -241,7 +244,7 @@ __u32 __proc_zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, __u64 slba)
 	if (!(slba >= zrwa_start && slba <= zrwa_end))
 		return NVME_SC_ZNS_INVALID_ZONE_OPERATION; 
 
-	if ((nr_lbas_flush % LBAS_PER_ZRWAFG) != 0)
+	if ((nr_lbas_flush % lbas_per_zrwafg) != 0)
 		return NVME_SC_INVALID_FIELD;
 
 	switch(cur_state) {
