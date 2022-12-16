@@ -1197,7 +1197,6 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
         }
     }
 
-    ret->early_completion = false;
     ret->nsecs_target = nsecs_latest;
     ret->status = NVME_SC_SUCCESS; 
     return true;
@@ -1282,12 +1281,12 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
         check_and_refill_write_credit(ssd_ins);
     }
     
-    ret->nsecs_target = nsecs_latest;
-    ret->early_completion = true;
-    ret->nsecs_target_early = nsecs_xfer_completed;
+    if (cmd->rw.control & NVME_RW_FUA) /*Wait all flash operations*/
+		ret->nsecs_target = nsecs_latest;
+	else /*Early completion*/
+		ret->nsecs_target = nsecs_xfer_completed;
     ret->status = NVME_SC_SUCCESS;
 
-    NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
     return true;
     
 }

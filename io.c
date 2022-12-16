@@ -259,84 +259,7 @@ static size_t __cmd_io_size(struct nvme_rw_command *cmd)
 	return (cmd->length + 1) << 9;
 }
 
-static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long long nsecs_start, unsigned long long nsecs_target)
-{
-	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-
-#if SUPPORT_MULTI_IO_WORKER_BY_SQ
-	unsigned int proc_turn = (sqid - 1) % (vdev->config.nr_io_cpu);
-#else
-	unsigned int proc_turn = vdev->proc_turn;
-#endif
-	struct nvmev_proc_info *pi = &vdev->proc_info[proc_turn];
-	unsigned int entry = pi->free_seq;
-
-	if (pi->proc_table[entry].next >= NR_MAX_PARALLEL_IO) {
-		WARN_ON_ONCE("IO queue is almost full");
-		pi->free_seq = entry;
-		return;
-	}
-
-	if (++proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
-	vdev->proc_turn = proc_turn;
-	pi->free_seq = pi->proc_table[entry].next;
-	BUG_ON(pi->free_seq >= NR_MAX_PARALLEL_IO);
-
-	NVMEV_DEBUG("%s/%u[%d], sq %d cq %d, entry %d %llu + %llu\n",
-			pi->thread_name, entry, sq_entry(sq_entry).rw.opcode,
-			sqid, cqid, sq_entry, nsecs_start, nsecs_target - nsecs_start);
-
-	/////////////////////////////////
-	pi->proc_table[entry].sqid = sqid;
-	pi->proc_table[entry].cqid = cqid;
-	pi->proc_table[entry].sq_entry = sq_entry;
-	pi->proc_table[entry].command_id = sq_entry(sq_entry).common.command_id;
-	pi->proc_table[entry].nsecs_start = nsecs_start;
-	pi->proc_table[entry].nsecs_enqueue = local_clock();
-	pi->proc_table[entry].nsecs_target = nsecs_target;
-	pi->proc_table[entry].is_completed = false;
-	pi->proc_table[entry].is_copied = false;
-	pi->proc_table[entry].prev = -1;
-	pi->proc_table[entry].next = -1;
-
-	mb();	/* IO kthread shall see the updated pe at once */
-
-	// (END) -> (START) order, nsecs target ascending order
-	if (pi->io_seq == -1) {
-		pi->io_seq = entry;
-		pi->io_seq_end = entry;
-	} else {
-		unsigned int curr = pi->io_seq_end;
-
-		while (curr != -1) {
-			if (pi->proc_table[curr].nsecs_target <= pi->proc_io_nsecs)
-				break;
-
-			if (pi->proc_table[curr].nsecs_target <= nsecs_target)
-				break;
-
-			curr = pi->proc_table[curr].prev;
-		}
-
-		if (curr == -1) { /* Head inserted */
-			pi->proc_table[pi->io_seq].prev = entry;
-			pi->proc_table[entry].next = pi->io_seq;
-			pi->io_seq = entry;
-		} else if (pi->proc_table[curr].next == -1) { /* Tail */
-			pi->proc_table[entry].prev = curr;
-			pi->io_seq_end = entry;
-			pi->proc_table[curr].next = entry;
-		} else { /* In between */
-			pi->proc_table[entry].prev = curr;
-			pi->proc_table[entry].next = pi->proc_table[curr].next;
-
-			pi->proc_table[pi->proc_table[entry].next].prev = entry;
-			pi->proc_table[curr].next = entry;
-		}
-	}
-}
-
-static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long long nsecs_start, struct nvme_result * ret)
+static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long long nsecs_start, struct nvme_result * ret)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
@@ -377,10 +300,6 @@ static void __enqueue_io_req2(int sqid, int cqid, int sq_entry, unsigned long lo
 	pi->proc_table[entry].prev = -1;
 	pi->proc_table[entry].next = -1;
 	
-	pi->proc_table[entry].early_completion = ret->early_completion;
-	pi->proc_table[entry].nsecs_target_early =  ret->nsecs_target_early;
-	pi->proc_table[entry].is_early_completed = false;
-
 	pi->proc_table[entry].writeback_cmd = false;
 	mb();	/* IO kthread shall see the updated pe at once */
 
@@ -453,9 +372,6 @@ void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct 
 	pi->proc_table[entry].is_copied = true;
 	pi->proc_table[entry].prev = -1;
 	pi->proc_table[entry].next = -1;
-	
-	pi->proc_table[entry].early_completion = false;
-	pi->proc_table[entry].is_early_completed = false;
 
 	pi->proc_table[entry].writeback_cmd = true;
 	pi->proc_table[entry].buffs_to_release = buffs_to_release;
@@ -559,7 +475,6 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	req.cmd = cmd;
 	req.nsecs_start = nsecs_start;
 	req.sq_id = sqid;
-	ret.early_completion = false;
 	ret.nsecs_target = nsecs_start;
 	ret.status = NVME_SC_SUCCESS;
 #ifdef PERF_DEBUG
@@ -588,9 +503,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	prev_clock2 = local_clock();
 #endif
 
-	__enqueue_io_req2(sqid, sq->cqid, sq_entry, nsecs_start, &ret);
-	//__check_gc_and_run(sqid, sq_entry);
-	
+	__enqueue_io_req(sqid, sq->cqid, sq_entry, nsecs_start, &ret);
 	
 #ifdef PERF_DEBUG
 	prev_clock3 = local_clock();
@@ -730,12 +643,14 @@ static int nvmev_kthread_io(void *data)
 				continue;
 			}
 
-			if (pe->is_copied == false && pe->writeback_cmd == false) {
+			if (pe->is_copied == false) {
 #ifdef PERF_DEBUG
 				unsigned long long memcpy_time;
 				pe->nsecs_copy_start = local_clock() + delta;
 #endif
-				if (dma_flag)
+				if (pe->writeback_cmd) 
+					;
+				else if (dma_flag)
 					__do_perform_io_using_dma(pe->sqid, pe->sq_entry);
 				else
 					__do_perform_io(pe->sqid, pe->sq_entry);
@@ -751,20 +666,12 @@ static int nvmev_kthread_io(void *data)
 						pe->sqid, pe->cqid, pe->sq_entry);
 			}
 
-			if (pe->early_completion && pe->is_early_completed == false) {
-				if (pe->nsecs_target_early <= curr_nsecs) {
-
-					__fill_cq_result(pe);
-					pe->is_early_completed = true;
-				} 
-			}
-			
 			if (pe->nsecs_target <= curr_nsecs) {
-				
 				if (pe->writeback_cmd) {
 					buffer_release((struct buffer *)pe->write_buffer, pe->buffs_to_release);
-				} else if (!pe->early_completion)
+				} else  {
 					__fill_cq_result(pe);
+				}
 				
 #if SUPPORT_ZNS == 0
 				//__check_gc_and_run(pe->sqid, pe->sq_entry);

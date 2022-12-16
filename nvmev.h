@@ -207,7 +207,6 @@ struct nvmev_proc_table {
 	unsigned int command_id;
 
 	unsigned long long nsecs_start;
-	unsigned long long nsecs_target_early;
 	unsigned long long nsecs_target;
 
 	unsigned long long nsecs_enqueue;
@@ -216,17 +215,15 @@ struct nvmev_proc_table {
 	unsigned long long nsecs_cq_filled;
 
 	bool is_copied;
-	bool is_early_completed;
 	bool is_completed;
-	bool early_completion;
+	
+	unsigned int status;
+	unsigned int result0;
+	unsigned int result1;
 
 	bool writeback_cmd;
 	void * write_buffer;
 	unsigned int buffs_to_release;
-
-	unsigned int status;
-	unsigned int result0;
-	unsigned int result1;
 
 	unsigned int next, prev;
 };
@@ -304,7 +301,6 @@ struct nvme_result {
     __u32 status;
     __u64 nsecs_target;
     __u32 early_completion;
-    __u64 nsecs_target_early;
     __u64 wp; // only for zone append
 };
 

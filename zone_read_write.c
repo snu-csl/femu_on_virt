@@ -283,9 +283,11 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 
 out : 
 	ret->status = status;
-	ret->early_completion = true;
-	ret->nsecs_target_early = nsecs_xfer_completed;
-	ret->nsecs_target = nsecs_latest;
+
+	if (cmd->control & NVME_RW_FUA) /*Wait all flash operations*/
+		ret->nsecs_target = nsecs_latest;
+	else /*Early completion*/
+		ret->nsecs_target = nsecs_xfer_completed;
 
 	return true;
 }
@@ -349,16 +351,15 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 		}
 
 		ret->status = status;
-		ret->early_completion = true;
-		ret->nsecs_target_early = nsecs_xfer_completed;
-		ret->nsecs_target = nsecs_latest;
+		if (cmd->control & NVME_RW_FUA) /*Wait all flash operations*/
+			ret->nsecs_target = nsecs_latest;
+		else /*Early completion*/
+			ret->nsecs_target = nsecs_xfer_completed;
 		
 	} else {
 		if (!__proc_zns_write_zrwa(zns_ssd, req, ret))
 			return false;
 	}
-
-	NVMEV_ASSERT(ret->nsecs_target_early <= ret->nsecs_target); 
 
 	return true;
 }
@@ -410,7 +411,6 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 	} 
 
 	ret->status = status;
-	ret->early_completion = false;
 	ret->nsecs_target = nsecs_latest; 
 	return true;
 }
