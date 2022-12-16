@@ -151,6 +151,8 @@ void __reset_zone(struct zns_ssd * zns_ssd, __u64 zid)
 
 	zone_descs[zid].wp = zone_descs[zid].zslba;
 	zone_descs[zid].zrwav = 0;
+
+	buffer_refill(&zns_ssd->zwra_buffer[zid]);
 }
 
 __u32 __proc_zmgmt_send_reset_zone(struct zns_ssd *zns_ssd, __u64 zid)

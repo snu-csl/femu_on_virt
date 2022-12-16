@@ -21,6 +21,7 @@ static inline bool last_chunk_in_wordline(struct ssd *ssd, struct ppa *ppa)
 void buffer_init(struct buffer * buf, __u32 size)
 {
     spin_lock_init(&buf->lock);
+    buf->initial = size;
     buf->remaining = size;
 }
 
@@ -57,6 +58,13 @@ bool buffer_release(struct buffer * buf, __u32 size)
     spin_unlock(&buf->lock);
 
     return true;
+}
+
+void buffer_refill(struct buffer * buf) 
+{
+    while(!spin_trylock(&buf->lock));
+    buf->remaining = buf->initial;
+    spin_unlock(&buf->lock);
 }
 
 bool should_gc(struct ssd *ssd)

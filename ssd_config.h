@@ -43,6 +43,7 @@
 #define MAX_ZRWA_ZONES (0) /* 0 : Not support ZRWA */
 #define ZRWAFG_SIZE (0)
 #define ZRWA_SIZE   (0)
+#define ZRWA_BUFFER_SIZE   (0)
 
 /*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
@@ -87,6 +88,7 @@
 #define MAX_ZRWA_ZONES (0) /* 0 : Not support ZRWA */
 #define ZRWAFG_SIZE (0)
 #define ZRWA_SIZE   (0)
+#define ZRWA_BUFFER_SIZE   (0)
 
 #define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 2)
 
@@ -122,9 +124,9 @@
 #define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
 
 #define MAX_ZRWA_ZONES (0xFFFFFFFF) // No limit
-#define ZRWAFG_SIZE (KB(1))
+#define ZRWAFG_SIZE (PGM_PAGE_SIZE)
 #define ZRWA_SIZE   (MB(1))
-
+#define ZRWA_BUFFER_SIZE   (ZRWA_SIZE * 2)
 /*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
 #define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)

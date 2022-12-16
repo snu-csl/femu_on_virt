@@ -14,8 +14,8 @@ void zns_init_descriptor(struct zns_ssd *zns_ssd)
 	__u32 nr_zones = zns_ssd->nr_zones;
 	__u64 zslba = 0;
 	__u32 i = 0;
-	__u32 zrwa_size = zns_ssd->zrwa_size;
-	
+	const __u32 zrwa_buffer_size = zns_ssd->zrwa_buffer_size;
+
 	zns_ssd->zone_descs = (struct zone_descriptor *) kmalloc(sizeof(struct zone_descriptor) * nr_zones, GFP_ATOMIC);
 	zns_ssd->report_buffer = (struct zone_report *) kmalloc(sizeof(struct zone_report) + sizeof(struct zone_descriptor) * (nr_zones - 1), GFP_ATOMIC);
 	zns_ssd->zwra_buffer = (struct buffer *) kmalloc(sizeof(struct buffer) * nr_zones, GFP_ATOMIC);
@@ -32,7 +32,7 @@ void zns_init_descriptor(struct zns_ssd *zns_ssd)
 		zslba += BYTE_TO_LBA(zone_size);
 		zone_descs[i].zone_capacity = BYTE_TO_LBA(zone_size);
 		
-		buffer_init(&(zns_ssd->zwra_buffer[i]), zrwa_size + zrwa_size/2); 
+		buffer_init(&(zns_ssd->zwra_buffer[i]), zrwa_buffer_size); 
 
 		NVMEV_ZNS_DEBUG("[i] zslba 0x%llx zone capacity 0x%llx\n", zone_descs[i].zslba, zone_descs[i].zone_capacity);
 	}
@@ -70,6 +70,7 @@ void zns_init(unsigned int cpu_nr_dispatcher, void * storage_base_addr, unsigned
 	zns_ssd->nr_zrwa_zones = MAX_ZRWA_ZONES;
 	zns_ssd->zrwa_size = ZRWA_SIZE;
 	zns_ssd->zrwafg_size = ZRWAFG_SIZE;
+	zns_ssd->zrwa_buffer_size = ZRWA_BUFFER_SIZE;
 	zns_ssd->lbas_per_zrwa = zns_ssd->zrwa_size / zns_ssd->ssd.sp.secsz;
 	zns_ssd->lbas_per_zrwafg = zns_ssd->zrwafg_size / zns_ssd->ssd.sp.secsz;
 

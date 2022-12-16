@@ -278,6 +278,7 @@ struct ssd {
 };
 
 struct buffer {
+    __u32 initial;
     __u32 remaining;
     spinlock_t lock;
 };
@@ -301,5 +302,5 @@ uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length);
 void buffer_init(struct buffer * buf, __u32 size);
 uint32_t buffer_allocate(struct buffer * buf, __u32 size);
 bool buffer_release(struct buffer * buf, __u32 size);
-
+void buffer_refill(struct buffer * buf);
 #endif

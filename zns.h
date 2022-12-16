@@ -25,6 +25,7 @@ struct zns_ssd {
     __u32 nr_zrwa_zones;
     __u32 zrwafg_size;
     __u32 zrwa_size;
+    __u32 zrwa_buffer_size;
     __u32 lbas_per_zrwafg;
     __u32 lbas_per_zrwa;
     
