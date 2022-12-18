@@ -28,7 +28,7 @@
 #define SUPPORT_VIRTUAL_CAPACITY		0
 
 /* Modify configuration  */
-#define NR_NAMESPACE	1
+#define NR_NAMESPACE	1 // Still.. only support single namespace.
 
 /* NVME_CSI_NVM : Conv
    NVME_CSI_ZNS : ZNS
