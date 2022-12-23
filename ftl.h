@@ -248,8 +248,8 @@ struct line_mgmt {
 struct nand_cmd {
     int type;
     int cmd;
-    int64_t xfer_size; // byte
-    int64_t stime; /* Coperd: request arrival time */
+    uint64_t xfer_size; // byte
+    uint64_t stime; /* Coperd: request arrival time */
 };
 
 struct write_flow_control {
