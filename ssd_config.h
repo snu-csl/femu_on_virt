@@ -5,8 +5,9 @@
 #define SAMSUNG_970PRO 0
 #define SAMSUNG_ZNS_970PRO 1
 #define SKHYNIX_ZNS_PROTOTYPE 2
+#define SKHYNIX_ZNS_PROTOTYPE2 3
 
-#define BASE_SSD   (SAMSUNG_ZNS_970PRO)
+#define BASE_SSD   (SKHYNIX_ZNS_PROTOTYPE2)
 
 /* Macros for specific setting. Modify these macros for your target */
 #if (BASE_SSD == SKHYNIX_ZNS_PROTOTYPE)
@@ -50,6 +51,50 @@
 #define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
 
 #define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 2)
+
+/* Macros for specific setting. Modify these macros for your target */
+#elif (BASE_SSD == SKHYNIX_ZNS_PROTOTYPE2)
+#define SSD_INSTANCES        1
+#define NAND_CHANNELS        8
+#define LUNS_PER_NAND_CH     16
+#define SSD_INSTANCE_BITS    1
+#define READ_PAGE_SIZE      (64*1024)
+#define PGM_PAGE_SIZE        (READ_PAGE_SIZE)
+#define PLNS_PER_LUN         1 /* not used*/
+
+#define CH_MAX_XFER_SIZE  (64*1024) /* to overlap with pcie transfer */
+#define WRITE_UNIT_SIZE     (512)
+
+#define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
+#define PCIE_BANDWIDTH			(3200ull) //MB/s
+
+#define NAND_4KB_READ_LATENCY 25485
+#define NAND_READ_LATENCY 40950
+#define NAND_PROG_LATENCY (1913640/3)
+#define NAND_ERASE_LATENCY 0
+
+#define FW_READ0_LATENCY (37540 - 7390)
+#define FW_READ1_LATENCY  (0)
+#define FW_READ0_SIZE (0)
+#define FW_PROG0_LATENCY  (0)
+#define FW_PROG1_LATENCY (0)
+#define FW_XFER_LATENCY 413
+#define OP_AREA_PERCENT      (0.7)
+
+#define ZONE_SIZE       (512*1024*1024) //byte
+#define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
+
+#define MAX_ZRWA_ZONES (0) /* 0 : Not support ZRWA */
+#define ZRWAFG_SIZE (0)
+#define ZRWA_SIZE   (0)
+#define ZRWA_BUFFER_SIZE   (0)
+
+/*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
+#define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
+#define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
+
+#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 4)
+
 
 #elif  (BASE_SSD == SAMSUNG_970PRO)
 #define SSD_INSTANCES        4 
