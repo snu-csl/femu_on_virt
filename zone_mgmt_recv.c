@@ -82,7 +82,7 @@ void __fill_zone_report(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cm
 	__u64 nr_zone_to_report; 
 
 	if (cmd->zra_specific_features == 0) // all
-		nr_zone_to_report = zns_ssd->nr_zones - start_zid;
+		nr_zone_to_report = zns_ssd->zp.nr_zones - start_zid;
 	else // partial. # of zone desc transferred
 		nr_zone_to_report = (bytes_transfer / sizeof(struct zone_descriptor))  - 1;
 
@@ -93,7 +93,7 @@ void __fill_zone_report(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cm
 
 bool __check_zmgmt_rcv_option_supported(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cmd)
 {
-	if (lba_to_zone(zns_ssd, cmd->slba) >= zns_ssd->nr_zones) {
+	if (lba_to_zone(zns_ssd, cmd->slba) >= zns_ssd->zp.nr_zones) {
 		NVMEV_ERROR("Invalid lba range\n");
 	}
 
@@ -112,7 +112,7 @@ bool __check_zmgmt_rcv_option_supported(struct zns_ssd *zns_ssd, struct nvme_zon
 
 void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret)
 {
-	struct zns_ssd *zns_ssd = get_zns_ssd_instance(); 
+	struct zns_ssd *zns_ssd = zns_ssd_instance(); 
 	struct zone_report * buffer = zns_ssd->report_buffer;
 	struct nvme_zone_mgmt_recv * cmd = (struct nvme_zone_mgmt_recv *) req->cmd;
 	

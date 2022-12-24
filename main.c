@@ -408,9 +408,6 @@ static const struct file_operations proc_file_fops = {
 
 void NVMEV_STORAGE_INIT(struct nvmev_dev *vdev)
 {
-	int i;
-	char * ns_addr;
-
 	NVMEV_INFO("Storage : %lx + %lx\n",
 			vdev->config.storage_start, vdev->config.storage_size);
 
@@ -576,10 +573,6 @@ void NVMEV_NAMESPACE_FINAL(struct nvmev_dev *vdev)
 
 static int NVMeV_init(void)
 {
-	int i;
-	unsigned long long remaining_capacity;	// byte
-	void * ns_addr;
-
 	vdev = VDEV_INIT();
 	if (!vdev) return -EINVAL;
 

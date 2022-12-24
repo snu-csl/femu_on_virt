@@ -4,8 +4,6 @@
 #include "channel.h"
 
 #if SUPPORT_ZNS 
-
-extern struct buffer global_write_buffer;
 void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release);
 
 inline __u32 __nr_lbas_from_rw_cmd(struct nvme_rw_command * cmd)
@@ -52,11 +50,13 @@ void __increase_write_ptr(struct zns_ssd *zns_ssd, __u32 zid, __u32 nr_lba)
 
 static inline struct ppa __lpn_to_ppa(struct zns_ssd *zns_ssd, uint64_t lpn) 
 {
+	struct ssdparams *spp = &(zns_ssd->sp);
+	struct znsparams *zpp = &(zns_ssd->zp);
 	__u64 zone = lpn_to_zone(zns_ssd, lpn); // find corresponding zone
 	__u64 off = lpn - zone_to_slpn(zns_ssd, zone); 
 	
-	__u32 sdie = (zone * zns_ssd->dies_per_zone) % zns_ssd->ssd.sp.tt_luns;
-	__u32 die = sdie + ((off / zns_ssd->ssd.sp.chunks_per_pgm_pg) % zns_ssd->dies_per_zone);
+	__u32 sdie = (zone * zpp->dies_per_zone) % spp->tt_luns;
+	__u32 die = sdie + ((off / spp->chunks_per_pgm_pg) % zpp->dies_per_zone);
 
 	__u32 channel = die_to_channel(zns_ssd, die);
 	__u32 lun = die_to_lun(zns_ssd, die);
@@ -64,7 +64,7 @@ static inline struct ppa __lpn_to_ppa(struct zns_ssd *zns_ssd, uint64_t lpn)
 
 	ppa.g.lun = lun;
 	ppa.g.ch = channel;
-	ppa.h.chunk_offs = off % zns_ssd->ssd.sp.chunks_per_pgm_pg;
+	ppa.h.chunk_offs = off % spp->chunks_per_pgm_pg;
 
     return ppa;
 }
@@ -72,7 +72,7 @@ static inline struct ppa __lpn_to_ppa(struct zns_ssd *zns_ssd, uint64_t lpn)
 __u32 __proc_zns_write(struct zns_ssd *zns_ssd, struct nvme_rw_command * cmd)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
-	struct ssdparams *spp = &(zns_ssd->ssd.sp);
+	struct ssdparams *spp = &(zns_ssd->sp);
 	__u64 slba = cmd->slba;
 	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
 	
@@ -147,7 +147,8 @@ __u32 __proc_zns_write(struct zns_ssd *zns_ssd, struct nvme_rw_command * cmd)
 __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, struct nvme_result * ret)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
-	struct ssdparams *spp = &(zns_ssd->ssd.sp);
+	struct ssdparams *spp = &(zns_ssd->sp);
+	struct znsparams *zpp = &(zns_ssd->zp);
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	__u64 slba = cmd->slba;
 	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
@@ -158,8 +159,8 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 	enum zone_state state = zone_descs[zid].state;	
 	
 	__u64 cur_wp, prev_wp = zone_descs[zid].wp;
-	const __u32 lbas_per_zrwa = zns_ssd->lbas_per_zrwa;
-	const __u32 lbas_per_zrwafg = zns_ssd->lbas_per_zrwafg;
+	const __u32 lbas_per_zrwa = zpp->lbas_per_zrwa;
+	const __u32 lbas_per_zrwafg = zpp->lbas_per_zrwafg;
 	__u64 zrwa_impl_start = prev_wp + lbas_per_zrwa;
 	__u64 zrwa_impl_end = prev_wp + (2*lbas_per_zrwa) - 1;
 	
@@ -204,7 +205,7 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 				goto out;
 			}
 			
-			if (!buffer_allocate(&zns_ssd->zwra_buffer[zid], zns_ssd->zrwa_size)) 
+			if (!buffer_allocate(&zns_ssd->zwra_buffer[zid], zpp->zrwa_size)) 
 				NVMEV_ASSERT(0);
 
 			// change to ZSIO
@@ -255,7 +256,7 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 	nsecs_latest = nsecs_start;
 	nsecs_latest += spp->fw_wr0_lat;
 	nsecs_latest += spp->fw_wr1_lat * DIV_ROUND_UP(elba - slba + 1, spp->secs_per_chunk);
-	nsecs_latest = ssd_advance_pcie(&(zns_ssd->ssd), nsecs_latest, LBA_TO_BYTE(nr_lba));
+	nsecs_latest = ssd_advance_pcie((struct ssd *)zns_ssd, nsecs_latest, LBA_TO_BYTE(nr_lba));
 	nsecs_xfer_completed = nsecs_latest;
 
 	lpn = prev_wp / spp->secs_per_chunk;
@@ -271,7 +272,7 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 			swr.stime = nsecs_xfer_completed;
 			swr.xfer_size = spp->chunks_per_pgm_pg * spp->chunksz;
 
-			nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
+			nsecs_completed = ssd_advance_status((struct ssd*)zns_ssd, &ppa, &swr);
 			nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
 			enqueue_writeback_io_req(req->sq_id, nsecs_completed, &zns_ssd->zwra_buffer[zid], spp->chunks_per_pgm_pg * spp->chunksz);
@@ -294,8 +295,8 @@ out :
 
 bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 {
-	struct zns_ssd *zns_ssd = get_zns_ssd_instance();
-	struct ssdparams *spp = &(zns_ssd->ssd.sp);
+	struct zns_ssd *zns_ssd = zns_ssd_instance();
+	struct ssdparams *spp = &(zns_ssd->sp);
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	
@@ -317,7 +318,7 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 	NVMEV_DEBUG("%s slba 0x%llx nr_lba 0x%lx zone_id %d \n",__FUNCTION__, cmd->slba, nr_lba, zid);
 	
 	if (zone_descs[zid].zrwav == 0) {
-		if (buffer_allocate(&global_write_buffer, LBA_TO_BYTE(nr_lba)) < LBA_TO_BYTE(nr_lba))
+		if (buffer_allocate(zns_ssd->write_buffer, LBA_TO_BYTE(nr_lba)) < LBA_TO_BYTE(nr_lba))
 			return false;
 		
 		if (zid != 0)
@@ -329,7 +330,7 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 		nsecs_latest = nsecs_start;
 		nsecs_latest += spp->fw_wr0_lat;
 		nsecs_latest += spp->fw_wr1_lat * (end_lpn - start_lpn + 1);
-		nsecs_latest = ssd_advance_pcie(&(zns_ssd->ssd), nsecs_latest, LBA_TO_BYTE(nr_lba));
+		nsecs_latest = ssd_advance_pcie((struct ssd *)zns_ssd, nsecs_latest, LBA_TO_BYTE(nr_lba));
 		nsecs_xfer_completed = nsecs_latest;
 
 		for (lpn = start_lpn; lpn <= end_lpn; lpn+=chunks) {
@@ -343,10 +344,10 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 				swr.stime = nsecs_xfer_completed;
 				swr.xfer_size = spp->chunks_per_pgm_pg * spp->chunksz;
 
-				nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
+				nsecs_completed = ssd_advance_status((struct ssd*)zns_ssd, &ppa, &swr);
 				nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
-				enqueue_writeback_io_req(req->sq_id, nsecs_completed, &global_write_buffer, spp->chunks_per_pgm_pg * spp->chunksz);
+				enqueue_writeback_io_req(req->sq_id, nsecs_completed, zns_ssd->write_buffer, spp->chunks_per_pgm_pg * spp->chunksz);
 			} 
 		}
 
@@ -366,8 +367,8 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 
 bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 {
-	struct zns_ssd *zns_ssd= get_zns_ssd_instance();
-	struct ssdparams *spp = &(zns_ssd->ssd.sp);
+	struct zns_ssd *zns_ssd= zns_ssd_instance();
+	struct ssdparams *spp = &(zns_ssd->sp);
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
@@ -406,7 +407,7 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
 		chunks = min(end_lpn - lpn + 1, (__u64)(spp->chunks_per_read_pg - ppa.h.chunk_offs));
 		swr.xfer_size = chunks * spp->chunksz;
-		nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
+		nsecs_completed = ssd_advance_status((struct ssd *)zns_ssd, &ppa, &swr);
 		nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 	} 
 

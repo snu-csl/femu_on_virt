@@ -11,10 +11,10 @@
 
 /* Macros for specific setting. Modify these macros for your target */
 #if (BASE_SSD == SKHYNIX_ZNS_PROTOTYPE)
-#define SSD_INSTANCES        1
+#define SSD_PARTITIONS        1
 #define NAND_CHANNELS        8
 #define LUNS_PER_NAND_CH     16
-#define SSD_INSTANCE_BITS    1
+#define SSD_PARTITION_BITS    1
 #define READ_PAGE_SIZE      (64*1024)
 #define PGM_PAGE_SIZE        (READ_PAGE_SIZE * 3)
 #define PLNS_PER_LUN         1 /* not used*/
@@ -54,10 +54,10 @@
 
 /* Macros for specific setting. Modify these macros for your target */
 #elif (BASE_SSD == SKHYNIX_ZNS_PROTOTYPE2)
-#define SSD_INSTANCES        1
+#define SSD_PARTITIONS        1
 #define NAND_CHANNELS        8
 #define LUNS_PER_NAND_CH     4
-#define SSD_INSTANCE_BITS    1
+#define SSD_PARTITION_BITS    1
 #define READ_PAGE_SIZE      (64*1024)
 #define PGM_PAGE_SIZE        (READ_PAGE_SIZE)
 #define PLNS_PER_LUN         1 /* not used*/
@@ -97,11 +97,11 @@
 
 
 #elif  (BASE_SSD == SAMSUNG_970PRO)
-#define SSD_INSTANCES        4 
+#define SSD_PARTITIONS        4 
 #define NAND_CHANNELS        8
 #define LUNS_PER_NAND_CH     2
 #define PLNS_PER_LUN         1
-#define SSD_INSTANCE_BITS    2
+#define SSD_PARTITION_BITS    2
 #define READ_PAGE_SIZE      (32*1024)
 #define PGM_PAGE_SIZE        (READ_PAGE_SIZE * 1)
 #define BLKS_PER_PLN         10240
@@ -138,11 +138,11 @@
 #define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 2)
 
 #elif  (BASE_SSD == SAMSUNG_ZNS_970PRO)
-#define SSD_INSTANCES        1
+#define SSD_PARTITIONS        1
+#define SSD_PARTITION_BITS    1
 #define NAND_CHANNELS        8
 #define LUNS_PER_NAND_CH     2
 #define PLNS_PER_LUN         1
-#define SSD_INSTANCE_BITS    2
 #define READ_PAGE_SIZE      (32*1024)
 #define PGM_PAGE_SIZE        (READ_PAGE_SIZE * 1)
 
@@ -179,7 +179,7 @@
 #define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 4)
 #endif // BASE_SSD == SAMSUNG_970_PRO
 
-#define NAND_CH_PER_SSD_INS  (NAND_CHANNELS/SSD_INSTANCES)
-#define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_INSTANCES)     
-#define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_INSTANCE_BITS)
+#define NCHS_PER_PARTITON  (NAND_CHANNELS/SSD_PARTITIONS)
+#define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_PARTITIONS)     
+#define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_PARTITION_BITS)
 #endif

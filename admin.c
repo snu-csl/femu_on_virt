@@ -312,7 +312,7 @@ static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	struct nvme_id_zns_ns *ns;
-	struct zns_ssd * zns_ssd = get_zns_ssd_instance();
+	struct zns_ssd * zns_ssd = zns_ssd_instance();
 	NVMEV_DEBUG("%s\n", __func__);
 	
 	ns = prp_address(cmd->prp1);
@@ -325,30 +325,30 @@ static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 	ns->ozcs = 0;
 	
 	//Maximum Active Resources
-	ns->mar = zns_ssd->nr_active_zones - 1; // 0-based
+	ns->mar = zns_ssd->zp.nr_active_zones - 1; // 0-based
 	
 	//Maximum Open Resources
-	ns->mor = zns_ssd->nr_open_zones - 1; // 0-based
+	ns->mor = zns_ssd->zp.nr_open_zones - 1; // 0-based
 
 	/*zrwa enabled*/
-	if (zns_ssd->nr_zrwa_zones > 0) {
+	if (zns_ssd->zp.nr_zrwa_zones > 0) {
 		ns->ozcs |= OZCS_ZRWA; //Support ZRWA 
 
 		//Maximum ZRWA Resources
-		ns->numzrwa = zns_ssd->nr_zrwa_zones - 1;
+		ns->numzrwa = zns_ssd->zp.nr_zrwa_zones - 1;
 
 		// ZRWA Flush Granurarity
-		ns->zrwafg = zns_ssd->zrwafg_size;
+		ns->zrwafg = zns_ssd->zp.zrwafg_size;
 		
 		// ZRWA Size
-		ns->zrwasz = zns_ssd->zrwa_size;
+		ns->zrwasz = zns_ssd->zp.zrwa_size;
 
 		// ZRWA Capability
 		ns->zrwacap = 0;
 		ns->zrwacap |= ZRWACAP_EXPFLUSHSUP;
 	}
 	//Zone Size
-	ns->lbaf[0].zsze = BYTE_TO_LBA(zns_ssd->zone_size);
+	ns->lbaf[0].zsze = BYTE_TO_LBA(zns_ssd->zp.zone_size);
 
 	//Zone Descriptor Extension Size 
 	ns->lbaf[0].zdes = 0; // currently not support

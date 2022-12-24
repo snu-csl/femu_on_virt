@@ -141,7 +141,7 @@ __u32 __zmgmt_send_open_zone(struct zns_ssd *zns_ssd, __u64 zid, __u32 select_al
 void __reset_zone(struct zns_ssd * zns_ssd, __u64 zid)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
-	__u32 zone_size = zns_ssd->zone_size;
+	__u32 zone_size = zns_ssd->zp.zone_size;
 	__u8 * zone_start_addr = (__u8 *)get_storage_addr_from_zid(zns_ssd, zid);
 	
 	NVMEV_ZNS_DEBUG("%s ns %d zid %lu  0x%llx, start addres 0x%llx zone_size %x \n", 
@@ -230,8 +230,8 @@ __u32 __proc_zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, __u64 slba)
 	enum zone_state cur_state = zone_descs[zid].state;	
 	__u64 zone_capacity = zone_descs[zid].zone_capacity;
 
-	const __u32 lbas_per_zrwafg = zns_ssd->lbas_per_zrwafg;
-	const __u32 lbas_per_zrwa = zns_ssd->lbas_per_zrwa;
+	const __u32 lbas_per_zrwafg = zns_ssd->zp.lbas_per_zrwafg;
+	const __u32 lbas_per_zrwa = zns_ssd->zp.lbas_per_zrwa;
 
 	__u64 zrwa_start = wp;
 	__u64 zrwa_end = min(zrwa_start + lbas_per_zrwa - 1, (size_t)zone_to_slba(zns_ssd, zid) + zone_capacity - 1); 
@@ -320,7 +320,7 @@ __u32 __proc_zmgmt_send(struct zns_ssd *zns_ssd, __u64 slba, __u32 action, __u32
 void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 {
 	struct nvme_zone_mgmt_send * cmd = (struct nvme_zone_mgmt_send *)req->cmd;
-	struct zns_ssd *zns_ssd= get_zns_ssd_instance();
+	struct zns_ssd *zns_ssd= zns_ssd_instance();
 	__u32 select_all = cmd->select_all;
 	__u32 status = NVME_SC_SUCCESS;
 	
@@ -329,7 +329,7 @@ void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 	__u64 slba = cmd->slba;
 	__u64 zid = lba_to_zone(zns_ssd, slba);
 	if (select_all) {
-		for (zid = 0; zid < zns_ssd->nr_zones; zid++)
+		for (zid = 0; zid < zns_ssd->zp.nr_zones; zid++)
 			__proc_zmgmt_send(zns_ssd, zone_to_slba(zns_ssd, zid), action, true, option);
 	} else {
 		status = __proc_zmgmt_send(zns_ssd, slba, action, false, option);

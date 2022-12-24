@@ -261,6 +261,8 @@ struct ssd {
     struct ssdparams sp;
     struct ssd_channel *ch;
     struct ssd_pcie *pcie;
+    struct buffer *write_buffer;
+    unsigned int cpu_nr_dispatcher;
 
     struct ppa *maptbl; /* page level mapping table */
     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
@@ -268,7 +270,7 @@ struct ssd {
     struct write_pointer gc_wp;
     struct line_mgmt lm;
     struct write_flow_control wfc;
-    unsigned int cpu_nr_dispatcher;
+    
 
     // /* lockless ring for communication with NVMe IO thread */
     // struct rte_ring **to_ftl;
@@ -283,11 +285,12 @@ struct buffer {
     spinlock_t lock;
 };
 
-extern struct ssd ssd[SSD_INSTANCES];
+extern struct ssd g_conv_ssd[SSD_PARTITIONS];
 
 unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
-void ssd_init_ftl_instance(struct ssd *ssd, unsigned int cpu_nr_dispatcher, unsigned long capacity);
+void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp);
 void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp);
+void ssd_init_params(struct ssdparams *spp, __u32 nchs, __u64 capacity);
 bool ssd_read(struct nvme_request * req, struct nvme_result * ret);
 bool ssd_write(struct nvme_request * req, struct nvme_result * ret);
 bool ssd_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
