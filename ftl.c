@@ -576,7 +576,7 @@ static void ssd_init_ftl(struct ssd *ssd)
 unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size)
 {
     struct ssdparams *spp;
-    int i;
+    int i, j;
     unsigned long long logical_space, partioned_space;
    
     struct ssd_pcie * pcie = kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
@@ -594,8 +594,8 @@ unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size
         
          /* initialize ssd internal layout architecture */
         parted_ssd->ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320
-        for (i = 0; i < spp->nchs; i++) {
-            ssd_init_ch(&(parted_ssd->ch[i]), spp);
+        for (j = 0; j < spp->nchs; j++) {
+            ssd_init_ch(&(parted_ssd->ch[j]), spp);
         }
 
         ssd_init_ftl(parted_ssd);
