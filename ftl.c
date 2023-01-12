@@ -374,8 +374,10 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
     spp->flash_pgs_per_blk = DIV_ROUND_UP(blk_size, FLASH_PAGE_SIZE);  
     spp->pgs_per_blk = spp->pgs_per_flash_pg * spp->flash_pgs_per_blk;
 
-    spp->pg_4kb_rd_lat = NAND_4KB_READ_LATENCY;
-    spp->pg_rd_lat = NAND_READ_LATENCY;
+    spp->pg_4kb_rd_lat_lsb = NAND_4KB_READ_LATENCY_LSB;
+    spp->pg_4kb_rd_lat_msb = NAND_4KB_READ_LATENCY_MSB;
+    spp->pg_rd_lat_lsb = NAND_READ_LATENCY_LSB;
+    spp->pg_rd_lat_msb = NAND_READ_LATENCY_MSB;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
     spp->blk_er_lat = NAND_ERASE_LATENCY;
     spp->ch_xfer_lat = 0;
@@ -688,10 +690,16 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
                     lun->next_lun_avail_time;
 
         if (ncmd->xfer_size == 4096)
-            nand_etime = nand_stime + spp->pg_4kb_rd_lat;
-        else       
-            nand_etime = nand_stime + spp->pg_rd_lat;
-   
+            if ((ppa->h.wordline % 2) == 0)
+                nand_etime = nand_stime + spp->pg_4kb_rd_lat_lsb;
+            else
+                nand_etime = nand_stime + spp->pg_4kb_rd_lat_msb;
+        else {
+            if ((ppa->h.wordline % 2) == 0)
+                nand_etime = nand_stime + spp->pg_rd_lat_lsb;
+            else       
+                nand_etime = nand_stime + spp->pg_rd_lat_msb;
+        }
         /* read: then data transfer through channel */
         chnl_stime = nand_etime;
 
@@ -1280,10 +1288,10 @@ void adjust_ftl_latency(int target, int lat)
 
     for (i = 0; i < SSD_INSTANCES; i++) {
         spp = &(ssd[i].sp); 
-        printk("Before latency: %d %d %d, change to %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat, lat);
+        printk("Before latency: %d %d %d, change to %d\n", spp->pg_rd_lat_lsb, spp->pg_wr_lat, spp->blk_er_lat, lat);
         switch (target) {
             case NAND_READ:
-                spp->pg_rd_lat = lat;
+                spp->pg_rd_lat_lsb = lat;
                 break;
 
             case NAND_WRITE:
@@ -1297,6 +1305,6 @@ void adjust_ftl_latency(int target, int lat)
             default:
                 NVMEV_ERROR("Unsupported NAND command\n");
         }
-        printk("After latency: %d %d %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat);
+        printk("After latency: %d %d %d\n", spp->pg_rd_lat_lsb, spp->pg_wr_lat, spp->blk_er_lat);
     }
 }

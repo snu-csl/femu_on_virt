@@ -44,29 +44,6 @@
 #define FW_READ1_LATENCY  (37540 - 7390)
 #define FW_PROG_LATENCY 0
 #define FW_XFER_LATENCY 413
-#elif 0
-#define SSD_INSTANCES        4
-#define NAND_CHANNELS        8
-#define LUNS_PER_NAND_CH     2
-#define PLNS_PER_LUN         1
-#define SSD_INSTANCE_BITS    2
-#define FLASH_PAGE_SIZE      (32*1024)
-#define BLKS_PER_PLN         1024
-#define MAX_NAND_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
-
-#define NAND_CHANNEL_BANDWIDTH	(704ull) //MB/s
-#define PCIE_BANDWIDTH			(3360ull) //MB/s
-
-#define NAND_4KB_READ_LATENCY 34785
-#define NAND_READ_LATENCY 34500
-#define NAND_PROG_LATENCY 100000
-#define NAND_ERASE_LATENCY 0
-
-#define FW_READ0_LATENCY 9500
-#define FW_READ1_LATENCY 20000
-#define FW_READ0_SIZE (16*1024)
-#define FW_PROG_LATENCY 0
-#define FW_XFER_LATENCY 0
 #else
 #define SSD_INSTANCES        4
 #define NAND_CHANNELS        8
@@ -80,14 +57,16 @@
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3360ull) //MB/s
 
-#define NAND_4KB_READ_LATENCY (35760)
-#define NAND_READ_LATENCY (36013)
+#define NAND_4KB_READ_LATENCY_LSB (35760 - 6000)
+#define NAND_4KB_READ_LATENCY_MSB (35760 + 6000)
+#define NAND_READ_LATENCY_LSB (36013 - 6000)
+#define NAND_READ_LATENCY_MSB (36013 + 6000)
 #define NAND_PROG_LATENCY (185000 + 5000)
 //#define NAND_PROG_LATENCY 10000
 #define NAND_ERASE_LATENCY 0
 
-#define FW_READ0_LATENCY (25510 - 17010)
-#define FW_READ1_LATENCY (30326 - 19586)
+#define FW_READ0_LATENCY (25510 - 17010 + 13000)
+#define FW_READ1_LATENCY (30326 - 19586 + 15750 + 2000)
 #define FW_READ0_SIZE (16*1024)
 #define FW_PROG0_LATENCY  (4000)
 #define FW_PROG1_LATENCY (460)
@@ -224,8 +203,10 @@ struct ssdparams {
     int luns_per_ch;  /* # of LUNs per channel */
     int nchs;         /* # of channels in the SSD */
 
-    int pg_4kb_rd_lat;/* NAND page 4KB read latency in nanoseconds */
-    int pg_rd_lat;    /* NAND page read latency in nanoseconds */
+    int pg_4kb_rd_lat_lsb;/* NAND page 4KB read latency in nanoseconds */
+    int pg_4kb_rd_lat_msb;/* NAND page 4KB read latency in nanoseconds */
+    int pg_rd_lat_lsb;    /* NAND page read latency in nanoseconds */
+    int pg_rd_lat_msb;    /* NAND page read latency in nanoseconds */
     int pg_wr_lat;    /* NAND page program latency in nanoseconds */
     int blk_er_lat;   /* NAND block erase latency in nanoseconds */
     int ch_xfer_lat;  /* channel transfer latency for one page in nanoseconds
