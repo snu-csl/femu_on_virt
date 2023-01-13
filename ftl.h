@@ -66,12 +66,6 @@ enum {
 #define CH_BITS     (8)
 #define RSB_BITS    (TOTAL_PPA_BITS - (BLK_BITS + CHUNK_BITS + PL_BITS + LUN_BITS + CH_BITS))
 
-#if (READ_PAGE_SIZE == (64*1024))
-#define CHUNK_OFFS_BITS   (4) // 16 pages -> 1 wordline
-#elif (READ_PAGE_SIZE == (32*1024))
-#define CHUNK_OFFS_BITS   (3) // 8 pages -> 1 wordline
-#endif
-#define WORDLINE_BITS  (CHUNK_BITS - CHUNK_OFFS_BITS)
 /* describe a physical page addr */
 struct ppa {
     union {
@@ -85,10 +79,9 @@ struct ppa {
         } g;
 
         struct {
-            uint64_t chunk_offs : CHUNK_OFFS_BITS;
-            uint64_t wordline : WORDLINE_BITS;
+            uint64_t : CHUNK_BITS;
             uint64_t blk_in_ssd : BLK_BITS + PL_BITS + LUN_BITS + CH_BITS;
-            uint64_t rsv : 1;
+            uint64_t rsv : RSB_BITS;
         } h;
 
         uint64_t ppa;
@@ -141,10 +134,10 @@ struct ssdparams {
     int secsz;        /* sector size in bytes */
     int secs_per_chunk;  /* # of sectors per page */
     int chunksz;
-    int chunks_per_read_pg; /* # of pgs per flash page */
-    int read_pgs_per_blk; /* # of flash pages per block */
-    int chunks_per_pgm_pg; /* # of pgs per oneshot program page */
-    int pgm_pgs_per_blk; /* # of pgm page pages per block */
+    int chunks_per_page; /* # of pgs per flash page */
+    int pages_per_blk; /* # of flash pages per block */
+    int chunks_per_wordline; /* # of pgs per oneshot program page */
+    int wordlines_per_blk; /* # of pgm page pages per block */
     int chunks_per_blk;  /* # of NAND pages per block */
     int blks_per_pl;  /* # of blocks per plane */
     int pls_per_lun;  /* # of planes per LUN (Die) */

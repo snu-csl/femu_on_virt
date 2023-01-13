@@ -14,7 +14,7 @@ static inline unsigned long long __get_ioclock(struct ssd *ssd)
 
 static inline bool last_chunk_in_wordline(struct ssd *ssd, struct ppa *ppa)
 {
-    return ppa->h.chunk_offs == (ssd->sp.chunks_per_pgm_pg - 1);
+    return (ppa->g.chunk % ssd->sp.chunks_per_wordline)== (ssd->sp.chunks_per_wordline - 1);
 }
 
 void buffer_init(struct buffer * buf, __u32 size)
@@ -272,8 +272,8 @@ static void ssd_advance_write_pointer(struct ssd *ssd, uint32_t io_type)
 
     check_addr(wpp->chunk, spp->chunks_per_blk);
     wpp->chunk++;
-    if ((wpp->chunk % spp->chunks_per_pgm_pg) == 0) {
-        wpp->chunk -= spp->chunks_per_pgm_pg;
+    if ((wpp->chunk % spp->chunks_per_wordline) == 0) {
+        wpp->chunk -= spp->chunks_per_wordline;
             check_addr(wpp->ch, spp->nchs);
             wpp->ch++;
             if (wpp->ch == spp->nchs) {
@@ -284,7 +284,7 @@ static void ssd_advance_write_pointer(struct ssd *ssd, uint32_t io_type)
                 if (wpp->lun == spp->luns_per_ch) {
                     wpp->lun = 0;
                     /* go to next wordline in the block */
-                    wpp->chunk += spp->chunks_per_pgm_pg;
+                    wpp->chunk += spp->chunks_per_wordline;
                     if (wpp->chunk == spp->chunks_per_blk) {
                         wpp->chunk = 0;
                         /* move current line to {victim,full} line list */
@@ -373,7 +373,7 @@ void ssd_init_params(struct ssdparams *spp, __u32 nchs, __u64 capacity)
     spp->luns_per_ch = LUNS_PER_NAND_CH;
     
     if (BLKS_PER_PLN > 0) {
-        /* read_pgs_per_blk depends on capacity */
+        /* pages_per_blk depends on capacity */
         spp->blks_per_pl = BLKS_PER_PLN; 
         blk_size = DIV_ROUND_UP(capacity, spp->blks_per_pl * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     } else {
@@ -382,13 +382,13 @@ void ssd_init_params(struct ssdparams *spp, __u32 nchs, __u64 capacity)
         spp->blks_per_pl = DIV_ROUND_UP(capacity, blk_size * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     }
 
-    spp->chunks_per_pgm_pg = PGM_PAGE_SIZE / (spp->chunksz);
-    spp->pgm_pgs_per_blk = DIV_ROUND_UP(blk_size, PGM_PAGE_SIZE); 
+    spp->chunks_per_wordline = WORDLINE_SIZE / (spp->chunksz);
+    spp->wordlines_per_blk = DIV_ROUND_UP(blk_size, WORDLINE_SIZE); 
 
-    spp->chunks_per_read_pg = READ_PAGE_SIZE / (spp->chunksz);
-    spp->read_pgs_per_blk = (PGM_PAGE_SIZE / READ_PAGE_SIZE) * spp->pgm_pgs_per_blk;  
+    spp->chunks_per_page = FLASH_PAGE_SIZE / (spp->chunksz);
+    spp->pages_per_blk = (WORDLINE_SIZE / FLASH_PAGE_SIZE) * spp->wordlines_per_blk;  
    
-    spp->chunks_per_blk = spp->chunks_per_pgm_pg * spp->pgm_pgs_per_blk;
+    spp->chunks_per_blk = spp->chunks_per_wordline * spp->wordlines_per_blk;
 
     spp->write_unit_size = WRITE_UNIT_SIZE;
 
@@ -915,7 +915,7 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
 
         if (last_chunk_in_wordline(ssd, &new_ppa)) {
             gcw.cmd = NAND_WRITE;
-            gcw.xfer_size = spp->chunksz * ssd->sp.chunks_per_pgm_pg;
+            gcw.xfer_size = spp->chunksz * ssd->sp.chunks_per_wordline;
         }
 
         ssd_advance_status(ssd, &new_ppa, &gcw);
@@ -980,22 +980,26 @@ static void clean_one_block(struct ssd *ssd, struct ppa *ppa)
 }
 
 /* here ppa identifies the block we want to clean */
-static void clean_one_flash_page(struct ssd *ssd, struct ppa *ppa)
+static void clean_one_page(struct ssd *ssd, struct ppa *ppa)
 {
     struct ssdparams *spp = &ssd->sp;
     struct nand_chunk *chunk_iter = NULL;
-    int cnt = 0;
-    int chunk;
+    int cnt = 0, i = 0;
     uint64_t completed_time = 0;
+    int start_chunk = ppa->g.chunk;
+    struct ppa ppa_copy = *ppa;
 
-    for (chunk = 0; chunk < spp->chunks_per_read_pg; chunk++) {
-        ppa->h.chunk_offs = chunk;
-        chunk_iter = get_pg(ssd, ppa);
+    for (i = 0; i < spp->chunks_per_page; i++) {
+        chunk_iter = get_pg(ssd, &ppa_copy);
         /* there shouldn't be any free page in victim blocks */
         NVMEV_ASSERT(chunk_iter->status != CHUNK_FREE);
         if (chunk_iter->status == CHUNK_VALID) 
             cnt++;
+        
+        ppa_copy.g.chunk++;
     }
+
+    ppa_copy = *ppa;
 
     if (cnt > 0) {
         if (ssd->sp.enable_gc_delay) {
@@ -1005,17 +1009,18 @@ static void clean_one_flash_page(struct ssd *ssd, struct ppa *ppa)
             gcr.stime = 0;
             gcr.xfer_size = spp->chunksz * cnt;
             gcr.interleave_pci_dma = false;
-            completed_time = ssd_advance_status(ssd, ppa, &gcr);
+            completed_time = ssd_advance_status(ssd, &ppa_copy, &gcr);
         }
 
-        for (chunk = 0; chunk < spp->chunks_per_read_pg; chunk++) {
-            ppa->h.chunk_offs = chunk;
-            chunk_iter = get_pg(ssd, ppa);
+        for (i = 0; i < spp->chunks_per_page; i++) {
+            chunk_iter = get_pg(ssd, &ppa_copy);
 
             /* there shouldn't be any free page in victim blocks */
             if (chunk_iter->status == CHUNK_VALID) 
                 /* delay the maptbl update until "write" happens */
-                gc_write_page(ssd, ppa);
+                gc_write_page(ssd, &ppa_copy);
+            
+            ppa_copy.g.chunk++;
         }
     }
 }
@@ -1037,7 +1042,7 @@ int do_gc(struct ssd *ssd, bool force)
     struct ssdparams *spp = &(ssd->sp);
     struct nand_lun *lunp;
     struct ppa ppa;
-    int ch, lun, flash_pg;
+    int ch, lun, page;
 
     victim_line = select_victim_line(ssd, force);
     if (!victim_line) {
@@ -1052,17 +1057,17 @@ int do_gc(struct ssd *ssd, bool force)
     ssd->wfc.credits_to_refill = victim_line->ipc;
 
     /* copy back valid data */
-    for (flash_pg = 0; flash_pg < spp->read_pgs_per_blk; flash_pg++) {
-        ppa.h.wordline = flash_pg; 
+    for (page = 0; page < spp->pages_per_blk; page++) {
+        ppa.g.chunk = page * spp->chunks_per_page; 
         for (ch = 0; ch < spp->nchs; ch++) {
             for (lun = 0; lun < spp->luns_per_ch; lun++) {
                 ppa.g.ch = ch;
                 ppa.g.lun = lun;
                 ppa.g.pl = 0;
                 lunp = get_lun(ssd, &ppa);
-                clean_one_flash_page(ssd, &ppa);
+                clean_one_page(ssd, &ppa);
 
-                if (flash_pg == (spp->read_pgs_per_blk - 1)){
+                if (page == (spp->pages_per_blk - 1)){
                     mark_block_free(ssd, &ppa);
 
                     if (spp->enable_gc_delay) {
@@ -1125,10 +1130,13 @@ void ssd_gc2(struct ssd *ssd) {
     }
 }
 
-bool is_same_flash_page(struct ppa ppa1, struct ppa ppa2) 
-{
+bool is_same_page(struct ssd * ssd, struct ppa ppa1, struct ppa ppa2) 
+{   
+    uint32_t ppa1_page = ppa1.g.chunk / ssd->sp.chunks_per_page;
+    uint32_t ppa2_page = ppa2.g.chunk / ssd->sp.chunks_per_page;
+    
     return (ppa1.h.blk_in_ssd == ppa2.h.blk_in_ssd) &&
-           (ppa1.h.wordline == ppa2.h.wordline);
+           (ppa1_page == ppa2_page);
 }
 
 bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
@@ -1184,7 +1192,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
             }
 
             // aggregate read io in same flash page
-            if (mapped_ppa(&prev_ppa) && is_same_flash_page(cur_ppa, prev_ppa)) {
+            if (mapped_ppa(&prev_ppa) && is_same_page(ssd, cur_ppa, prev_ppa)) {
                 xfer_size += spp->chunksz;
                 continue;
             }
@@ -1282,12 +1290,12 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
 
         /* Aggregate write io in flash page */
         if (last_chunk_in_wordline(ssd, &ppa)) {
-            swr.xfer_size = spp->chunksz * spp->chunks_per_pgm_pg;
+            swr.xfer_size = spp->chunksz * spp->chunks_per_wordline;
 
             nsecs_completed = ssd_advance_status(ssd, &ppa, &swr);
             nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
-            enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuffer, spp->chunks_per_pgm_pg * spp->chunksz);
+            enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuffer, spp->chunks_per_wordline * spp->chunksz);
         } 
         
         consume_write_credit(ssd);
