@@ -20,24 +20,13 @@
 #include <asm/apic.h>
 
 #include "nvme.h"
+#include "ssd_config.h"
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
 #define SUPPORT_ZNS 1
 #define SUPPORT_MULTI_IO_WORKER_BY_SQ	1 
 #define SUPPORT_VIRTUAL_CAPACITY		0
-
-/* Modify configuration  */
-#define NR_NAMESPACE	1 // Still.. only support single namespace.
-
-/* NVME_CSI_NVM : Conv
-   NVME_CSI_ZNS : ZNS
-   NS_CAPACITY : MB (0 -> Full capacity) */
-
-#define NS_CSI_0 NVME_CSI_ZNS
-#define NS_CAPACITY_0 (0) 
-#define NS_CSI_1 NVME_CSI_NVM  
-#define NS_CAPACITY_1 (96*1024*1024)
 
 /*************************/
 static const __u32 ns_csi[] = {NS_CSI_0, NS_CSI_1};

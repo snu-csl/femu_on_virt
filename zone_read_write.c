@@ -64,61 +64,81 @@ static inline struct ppa __lpn_to_ppa(struct zns_ssd *zns_ssd, uint64_t lpn)
 
 	ppa.g.lun = lun;
 	ppa.g.ch = channel;
-	ppa.h.chunk_offs = off % spp->chunks_per_pgm_pg;
+	ppa.g.chunk = off % spp->chunks_per_pgm_pg;
 
     return ppa;
 }
 
-__u32 __proc_zns_write(struct zns_ssd *zns_ssd, struct nvme_rw_command * cmd)
+bool __zns_write(struct zns_ssd *zns_ssd, struct nvme_request * req, struct nvme_result * ret)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	struct ssdparams *spp = &(zns_ssd->sp);
+	struct nvme_rw_command * cmd = &(req->cmd->rw);
+
 	__u64 slba = cmd->slba;
 	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
-	
+	__u64 lpn, start_lpn = cmd->slba / spp->secs_per_chunk;
+	__u64 end_lpn = (cmd->slba + nr_lba - 1) / spp->secs_per_chunk;
+
 	// get zone from start_lbai
 	__u32 zid = lba_to_zone(zns_ssd, slba);
 	enum zone_state state = zone_descs[zid].state;	
 
+	__u64 nsecs_start = req->nsecs_start;
+	__u64 nsecs_completed = nsecs_start, nsecs_latest;
+	__u64 nsecs_xfer_completed = nsecs_start;
+	__u32 status = NVME_SC_SUCCESS;
+	
+	struct ppa ppa;
+	struct nand_cmd swr;
+
+	__u64 chunks = 0, chunk_off;
+
 	NVMEV_ZNS_DEBUG("%s slba 0x%llx nr_lba 0x%lx zone_id %d state %d\n",__FUNCTION__, slba, nr_lba, zid, state);
 	
-	if ((LBA_TO_BYTE(nr_lba) % spp->write_unit_size) != 0)
-		return NVME_SC_ZNS_INVALID_WRITE;
+	if ((LBA_TO_BYTE(nr_lba) % spp->write_unit_size) != 0) {
+		status = NVME_SC_ZNS_INVALID_WRITE;
+		goto out;
+	}
 
 	if (__check_boundary_error(zns_ssd, slba, nr_lba) == false) {
 		// return boundary error
-		return NVME_SC_ZNS_ERR_BOUNDARY;
+		status = NVME_SC_ZNS_ERR_BOUNDARY;
+		goto out;
 	}
 	
 	// check if slba == current write pointer
 	if (slba != zone_descs[zid].wp) {
 		NVMEV_ERROR("%s WP error slba 0x%llx nr_lba 0x%llx zone_id %d wp %llx state %d\n",__FUNCTION__, slba, nr_lba, zid,  zns_ssd->zone_descs[zid].wp,  state);
-		return NVME_SC_ZNS_INVALID_WRITE;
+		status = NVME_SC_ZNS_INVALID_WRITE;
+		goto out;
 	}
 	
 	switch (state) {
 		case ZONE_STATE_EMPTY:
 		{
 			// check if slba == start lba in zone
-			if (slba != zone_descs[zid].zslba)
-			{
-				return NVME_SC_ZNS_INVALID_WRITE;
+			if (slba != zone_descs[zid].zslba) {
+				status =  NVME_SC_ZNS_INVALID_WRITE;
+				goto out;
 			}	
 			
-			if (is_zone_resource_full(zns_ssd, ACTIVE_ZONE))
-				return NVME_SC_ZNS_NO_ACTIVE_ZONE;
-
-			if (is_zone_resource_full(zns_ssd, OPEN_ZONE))
-				return NVME_SC_ZNS_NO_OPEN_ZONE;
-
+			if (is_zone_resource_full(zns_ssd, ACTIVE_ZONE)) {
+				status =  NVME_SC_ZNS_NO_ACTIVE_ZONE;
+				goto out;
+			}
+			if (is_zone_resource_full(zns_ssd, OPEN_ZONE)) {
+				status =  NVME_SC_ZNS_NO_OPEN_ZONE;
+				goto out;
+			}
 			acquire_zone_resource(zns_ssd, ACTIVE_ZONE);
 			// go through
 		}
 		case ZONE_STATE_CLOSED:
 		{
-			if (acquire_zone_resource(zns_ssd, OPEN_ZONE) == false)
-			{
-				return NVME_SC_ZNS_NO_OPEN_ZONE;
+			if (acquire_zone_resource(zns_ssd, OPEN_ZONE) == false) {
+				status = NVME_SC_ZNS_NO_OPEN_ZONE;
+				goto out;
 			}
 			
 			// change to ZSIO
@@ -132,19 +152,55 @@ __u32 __proc_zns_write(struct zns_ssd *zns_ssd, struct nvme_rw_command * cmd)
 		
 		}
 		case ZONE_STATE_FULL :
-			return NVME_SC_ZNS_ERR_FULL;
+			status = NVME_SC_ZNS_ERR_FULL;
 		case ZONE_STATE_READ_ONLY :
-			return NVME_SC_ZNS_ERR_READ_ONLY;
+			status = NVME_SC_ZNS_ERR_READ_ONLY;
 		case ZONE_STATE_OFFLINE : 
-			return NVME_SC_ZNS_ERR_OFFLINE;
+			status = NVME_SC_ZNS_ERR_OFFLINE;
+			goto out;
 	}
 	
 	__increase_write_ptr(zns_ssd, zid, nr_lba);
 
-	return NVME_SC_SUCCESS;
+	// get delay from nand model
+	nsecs_latest = nsecs_start;
+	nsecs_latest += spp->fw_wr0_lat;
+	nsecs_latest += spp->fw_wr1_lat * (end_lpn - start_lpn + 1);
+	nsecs_latest = ssd_advance_pcie((struct ssd *)zns_ssd, nsecs_latest, LBA_TO_BYTE(nr_lba));
+	nsecs_xfer_completed = nsecs_latest;
+
+	for (lpn = start_lpn; lpn <= end_lpn; lpn+=chunks) {
+		ppa = __lpn_to_ppa(zns_ssd, lpn);
+		chunk_off = ppa.g.chunk % spp->chunks_per_pgm_pg;
+		chunks = min(end_lpn - lpn + 1, (__u64)(spp->chunks_per_pgm_pg - chunk_off));
+
+		/* Aggregate write io in flash page */
+		if ((chunk_off + chunks) == spp->chunks_per_pgm_pg) {	
+			swr.type = USER_IO;
+			swr.cmd = NAND_WRITE;
+			swr.stime = nsecs_xfer_completed;
+			swr.xfer_size = spp->chunks_per_pgm_pg * spp->chunksz;
+			swr.interleave_pci_dma = false;
+
+			nsecs_completed = ssd_advance_status((struct ssd*)zns_ssd, &ppa, &swr);
+			nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
+			NVMEV_ZNS_DEBUG("%s Flush slba 0x%llx nr_lba 0x%lx zone_id %d state %d\n",__FUNCTION__, slba, nr_lba, zid, state);
+	
+			enqueue_writeback_io_req(req->sq_id, nsecs_completed, zns_ssd->write_buffer, spp->chunks_per_pgm_pg * spp->chunksz);
+		} 
+	}
+
+out :
+	ret->status = status;
+	if (cmd->control & NVME_RW_FUA) /*Wait all flash operations*/
+		ret->nsecs_target = nsecs_latest;
+	else /*Early completion*/
+		ret->nsecs_target = nsecs_xfer_completed;
+
+	return true;
 }
 
-__u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, struct nvme_result * ret)
+bool __zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, struct nvme_result * ret)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	struct ssdparams *spp = &(zns_ssd->sp);
@@ -158,7 +214,7 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 	__u32 zid = lba_to_zone(zns_ssd, slba);
 	enum zone_state state = zone_descs[zid].state;	
 	
-	__u64 cur_wp, prev_wp = zone_descs[zid].wp;
+	__u64 prev_wp = zone_descs[zid].wp;
 	const __u32 lbas_per_zrwa = zpp->lbas_per_zrwa;
 	const __u32 lbas_per_zrwafg = zpp->lbas_per_zrwafg;
 	__u64 zrwa_impl_start = prev_wp + lbas_per_zrwa;
@@ -172,7 +228,7 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 	struct ppa ppa;
 	struct nand_cmd swr;
 
-	__u64 lba, nr_lbas_flush = 0, lpn, remaining, chunks = 0;
+	__u64 nr_lbas_flush = 0, lpn, remaining, chunks = 0, chunk_off;
 	
 	NVMEV_DEBUG("%s slba 0x%llx nr_lba 0x%llx zone_id %d state %d wp 0x%llx zrwa_impl_start 0x%llx zrwa_impl_end 0x%llx  buffer %d\n",
 														__FUNCTION__, slba, nr_lba, zid, state, prev_wp, zrwa_impl_start, zrwa_impl_end, zns_ssd->zwra_buffer[zid].remaining);
@@ -264,13 +320,15 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 	/* Aggregate write io in flash page */
 	while (remaining > 0) {
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
-		chunks = min(remaining, (__u64)(spp->chunks_per_pgm_pg - ppa.h.chunk_offs));
+		chunk_off = ppa.g.chunk % spp->chunks_per_pgm_pg;
+		chunks = min(remaining, (__u64)(spp->chunks_per_pgm_pg - chunk_off));
 
-		if ((ppa.h.chunk_offs + chunks) == spp->chunks_per_pgm_pg) {	
+		if ((chunk_off + chunks) == spp->chunks_per_pgm_pg) {	
 			swr.type = USER_IO;
 			swr.cmd = NAND_WRITE;
 			swr.stime = nsecs_xfer_completed;
 			swr.xfer_size = spp->chunks_per_pgm_pg * spp->chunksz;
+			swr.interleave_pci_dma = false;
 
 			nsecs_completed = ssd_advance_status((struct ssd*)zns_ssd, &ppa, &swr);
 			nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
@@ -301,68 +359,20 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	
 	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
-	__u64 lpn, start_lpn = cmd->slba / spp->secs_per_chunk;
-	__u64 end_lpn = (cmd->slba + nr_lba - 1) / spp->secs_per_chunk;
-	
+	__u64 start_lpn = cmd->slba / spp->secs_per_chunk;
+
 	// get zone from start_lba
 	__u32 zid = lpn_to_zone(zns_ssd, start_lpn);
-	__u64 nsecs_start = req->nsecs_start;
-	__u64 nsecs_completed = 0, nsecs_latest;
-	__u64 nsecs_xfer_completed;
-	__u64 chunks;
-	__u32 status;
 
-	struct ppa ppa;
-	struct nand_cmd swr;
-	
 	NVMEV_DEBUG("%s slba 0x%llx nr_lba 0x%lx zone_id %d \n",__FUNCTION__, cmd->slba, nr_lba, zid);
 	
-	if (zone_descs[zid].zrwav == 0) {
-		if (buffer_allocate(zns_ssd->write_buffer, LBA_TO_BYTE(nr_lba)) < LBA_TO_BYTE(nr_lba))
+	if (buffer_allocate(zns_ssd->write_buffer, LBA_TO_BYTE(nr_lba)) < LBA_TO_BYTE(nr_lba))
 			return false;
-		
-		if (zid != 0)
-			status = __proc_zns_write(zns_ssd, cmd);
-		else
-			status = NVME_SC_SUCCESS;
 
-		// get delay from nand model
-		nsecs_latest = nsecs_start;
-		nsecs_latest += spp->fw_wr0_lat;
-		nsecs_latest += spp->fw_wr1_lat * (end_lpn - start_lpn + 1);
-		nsecs_latest = ssd_advance_pcie((struct ssd *)zns_ssd, nsecs_latest, LBA_TO_BYTE(nr_lba));
-		nsecs_xfer_completed = nsecs_latest;
-
-		for (lpn = start_lpn; lpn <= end_lpn; lpn+=chunks) {
-			ppa = __lpn_to_ppa(zns_ssd, lpn);
-			chunks = min(end_lpn - lpn + 1, (__u64)(spp->chunks_per_pgm_pg - ppa.h.chunk_offs));
-
-			/* Aggregate write io in flash page */
-			if ((ppa.h.chunk_offs + chunks) == spp->chunks_per_pgm_pg) {	
-				swr.type = USER_IO;
-				swr.cmd = NAND_WRITE;
-				swr.stime = nsecs_xfer_completed;
-				swr.xfer_size = spp->chunks_per_pgm_pg * spp->chunksz;
-
-				nsecs_completed = ssd_advance_status((struct ssd*)zns_ssd, &ppa, &swr);
-				nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
-
-				enqueue_writeback_io_req(req->sq_id, nsecs_completed, zns_ssd->write_buffer, spp->chunks_per_pgm_pg * spp->chunksz);
-			} 
-		}
-
-		ret->status = status;
-		if (cmd->control & NVME_RW_FUA) /*Wait all flash operations*/
-			ret->nsecs_target = nsecs_latest;
-		else /*Early completion*/
-			ret->nsecs_target = nsecs_xfer_completed;
-		
-	} else {
-		if (!__proc_zns_write_zrwa(zns_ssd, req, ret))
-			return false;
-	}
-
-	return true;
+	if (zone_descs[zid].zrwav == 0) 
+		return __zns_write(zns_ssd, req, ret);
+	else 
+		return __zns_write_zrwa(zns_ssd, req, ret);
 }
 
 bool zns_read(struct nvme_request * req, struct nvme_result * ret)
@@ -380,8 +390,8 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 	__u32 zid = lpn_to_zone(zns_ssd, start_lpn);
 	__u32 status = NVME_SC_SUCCESS;
 	__u64 nsecs_start = req->nsecs_start;
-	__u64 nsecs_completed = 0, nsecs_latest = 0;	
-	__u64 chunks;
+	__u64 nsecs_completed = nsecs_start, nsecs_latest = 0;	
+	__u64 chunks = 0, chunk_off;
 	struct ppa ppa;
 	struct nand_cmd swr;
 
@@ -402,14 +412,21 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 	swr.type = USER_IO;
 	swr.cmd = NAND_READ;
 	swr.stime = nsecs_latest;
+	swr.interleave_pci_dma = false;
 
 	for (lpn = start_lpn; lpn <= end_lpn; lpn+=chunks) {
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
-		chunks = min(end_lpn - lpn + 1, (__u64)(spp->chunks_per_read_pg - ppa.h.chunk_offs));
+		chunk_off = ppa.g.chunk % spp->chunks_per_read_pg;
+		chunks = min(end_lpn - lpn + 1, (__u64)(spp->chunks_per_read_pg - chunk_off));
 		swr.xfer_size = chunks * spp->chunksz;
 		nsecs_completed = ssd_advance_status((struct ssd *)zns_ssd, &ppa, &swr);
 		nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 	} 
+
+	if (swr.interleave_pci_dma == false) {
+		nsecs_completed = ssd_advance_pcie((struct ssd *)zns_ssd, nsecs_latest, nr_lba * spp->secsz);
+		nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
+	}
 
 	ret->status = status;
 	ret->nsecs_target = nsecs_latest; 

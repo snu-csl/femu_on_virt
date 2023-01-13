@@ -385,7 +385,7 @@ void ssd_init_params(struct ssdparams *spp, __u32 nchs, __u64 capacity)
     spp->chunks_per_pgm_pg = PGM_PAGE_SIZE / (spp->chunksz);
     spp->pgm_pgs_per_blk = DIV_ROUND_UP(blk_size, PGM_PAGE_SIZE); 
 
-    spp->chunks_per_read_pg = (PGM_PAGE_SIZE / READ_PAGE_SIZE) * spp->chunks_per_pgm_pg;
+    spp->chunks_per_read_pg = READ_PAGE_SIZE / (spp->chunksz);
     spp->read_pgs_per_blk = (PGM_PAGE_SIZE / READ_PAGE_SIZE) * spp->pgm_pgs_per_blk;  
    
     spp->chunks_per_blk = spp->chunks_per_pgm_pg * spp->pgm_pgs_per_blk;
@@ -404,7 +404,7 @@ void ssd_init_params(struct ssdparams *spp, __u32 nchs, __u64 capacity)
     spp->fw_rd0_size = FW_READ0_SIZE;
     spp->fw_wr0_lat = FW_PROG0_LATENCY;
     spp->fw_wr1_lat = FW_PROG1_LATENCY;
-    spp->fw_xfer_lat = FW_XFER_LATENCY; 
+    spp->fw_4kb_xfer_lat = FW_4KB_XFER_LATENCY; 
 
     spp->ch_bandwidth = NAND_CHANNEL_BANDWIDTH; 
     spp->pcie_bandwidth = PCIE_BANDWIDTH; 
@@ -514,7 +514,7 @@ void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp)
     chmodel_init(ch->perf_model, spp->ch_bandwidth);
 
     /* Add firmware overhead */
-    ch->perf_model->xfer_lat+=spp->fw_xfer_lat;
+    ch->perf_model->xfer_lat+=(spp->fw_4kb_xfer_lat *UNIT_XFER_SIZE/4096);
 }
 
 void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
@@ -729,12 +729,11 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
             xfer_size = min(remaining, (uint64_t)spp->ch_max_xfer_size);
             chnl_etime = chmodel_request(ch->perf_model, chnl_stime, xfer_size);
             
-            if (ncmd->type == USER_IO) /* overlap pci transfer with nand ch transfer*/
-                completed_time = 
-					ssd_advance_pcie(ssd, chnl_etime, xfer_size);
+            if (ncmd->interleave_pci_dma) /* overlap pci transfer with nand ch transfer*/
+                completed_time = ssd_advance_pcie(ssd, chnl_etime, xfer_size);
             else
                 completed_time = chnl_etime;
-
+            
             remaining -= xfer_size;
             chnl_stime = chnl_etime;
         }
@@ -883,6 +882,7 @@ static void gc_read_page(struct ssd *ssd, struct ppa *ppa)
         gcr.cmd = NAND_READ;
         gcr.stime = 0;
         gcr.xfer_size = ssd->sp.chunksz;
+        gcr.interleave_pci_dma = false;
         ssd_advance_status(ssd, ppa, &gcr);
     }
 }
@@ -911,6 +911,7 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa)
         gcw.type = GC_IO;
         gcw.cmd = NAND_NOP;
         gcw.stime = 0;
+        gcw.interleave_pci_dma = false;
 
         if (last_chunk_in_wordline(ssd, &new_ppa)) {
             gcw.cmd = NAND_WRITE;
@@ -1003,6 +1004,7 @@ static void clean_one_flash_page(struct ssd *ssd, struct ppa *ppa)
             gcr.cmd = NAND_READ;
             gcr.stime = 0;
             gcr.xfer_size = spp->chunksz * cnt;
+            gcr.interleave_pci_dma = false;
             completed_time = ssd_advance_status(ssd, ppa, &gcr);
         }
 
@@ -1068,6 +1070,7 @@ int do_gc(struct ssd *ssd, bool force)
                         gce.type = GC_IO;
                         gce.cmd = NAND_ERASE;
                         gce.stime = 0;
+                        gce.interleave_pci_dma = false;
                         ssd_advance_status(ssd, &ppa, &gce);
                     }
 
@@ -1124,7 +1127,7 @@ void ssd_gc2(struct ssd *ssd) {
 
 bool is_same_flash_page(struct ppa ppa1, struct ppa ppa2) 
 {
-    return (ppa1.h.blk_in_die == ppa2.h.blk_in_die) &&
+    return (ppa1.h.blk_in_ssd == ppa2.h.blk_in_ssd) &&
            (ppa1.h.wordline == ppa2.h.wordline);
 }
 
@@ -1147,6 +1150,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     srd.type = USER_IO;
     srd.cmd = NAND_READ;
     srd.stime = nsecs_start;
+    srd.interleave_pci_dma = true;
 
     NVMEV_DEBUG("ssd_read: start_lpn=%lld, len=%d, end_lpn=%ld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn) >= spp->tt_chunks) {
@@ -1250,6 +1254,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     swr.type = USER_IO;
     swr.cmd = NAND_WRITE;
     swr.stime = nsecs_latest;
+    swr.interleave_pci_dma = false;
 
     for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
         ssd = conv_ssd_from_lpn(lpn);

@@ -76,7 +76,7 @@ enum {
 struct ppa {
     union {
         struct {
-            uint64_t chunk  : CHUNK_BITS;
+            uint64_t chunk  : CHUNK_BITS; // chunk == 4KB
             uint64_t blk : BLK_BITS;
             uint64_t pl  : PL_BITS;
             uint64_t lun : LUN_BITS;
@@ -87,7 +87,7 @@ struct ppa {
         struct {
             uint64_t chunk_offs : CHUNK_OFFS_BITS;
             uint64_t wordline : WORDLINE_BITS;
-            uint64_t blk_in_die : BLK_BITS + PL_BITS + LUN_BITS + CH_BITS;
+            uint64_t blk_in_ssd : BLK_BITS + PL_BITS + LUN_BITS + CH_BITS;
             uint64_t rsv : 1;
         } h;
 
@@ -169,7 +169,7 @@ struct ssdparams {
     int fw_rd0_size;
     int fw_wr0_lat;       /* Firmware overhead of write in nanoseconds */
     int fw_wr1_lat;       /* Firmware overhead of write in nanoseconds */
-    int fw_xfer_lat;     /* Firmware overhead of data transfer in nanoseconds */
+    int fw_4kb_xfer_lat;     /* Firmware overhead of data transfer in nanoseconds */
 
     uint64_t ch_bandwidth; /*NAND CH Maximum bandwidth in MB/s*/
     uint64_t pcie_bandwidth; /*PCIE Maximum bandwidth in MB/s*/
@@ -250,6 +250,7 @@ struct nand_cmd {
     int cmd;
     uint64_t xfer_size; // byte
     uint64_t stime; /* Coperd: request arrival time */
+    bool interleave_pci_dma;
 };
 
 struct write_flow_control {
