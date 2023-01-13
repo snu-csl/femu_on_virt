@@ -668,7 +668,6 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
         __get_ioclock(ssd) : ncmd->stime;
     uint64_t nand_stime, nand_etime;
     uint64_t chnl_stime, chnl_etime;
-    uint64_t pcie_stime, pcie_etime;
     uint64_t remaining, xfer_size, completed_time;
     
     NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu command %d ppa 0x%llx\n",
@@ -689,12 +688,12 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
         nand_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                     lun->next_lun_avail_time;
 
-        if (ncmd->xfer_size == 4096)
+        if (ncmd->xfer_size == 4096) {
             if ((ppa->h.wordline % 2) == 0)
                 nand_etime = nand_stime + spp->pg_4kb_rd_lat_lsb;
             else
                 nand_etime = nand_stime + spp->pg_4kb_rd_lat_msb;
-        else {
+        } else {
             if ((ppa->h.wordline % 2) == 0)
                 nand_etime = nand_stime + spp->pg_rd_lat_lsb;
             else       
