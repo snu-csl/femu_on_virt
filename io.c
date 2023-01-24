@@ -142,7 +142,8 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 		#endif
 
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
-			memcpy(vdev->ns_mapped[nsid] + offset, vaddr + mem_offs, io_size);
+			if (vdev->config.write_time > 0)
+				memcpy(vdev->ns_mapped[nsid] + offset, vaddr + mem_offs, io_size);
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
 			memcpy(vaddr + mem_offs, vdev->ns_mapped[nsid] + offset, io_size);
 		}
@@ -295,6 +296,7 @@ static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long lon
 	pi->proc_table[entry].nsecs_enqueue = local_clock();
 	pi->proc_table[entry].nsecs_target =  ret->nsecs_target;
 	pi->proc_table[entry].status = ret->status;
+	pi->proc_table[entry].ignore = ret->ignore;
 	pi->proc_table[entry].is_completed = false;
 	pi->proc_table[entry].is_copied = false;
 	pi->proc_table[entry].prev = -1;
@@ -648,7 +650,7 @@ static int nvmev_kthread_io(void *data)
 				unsigned long long memcpy_time;
 				pe->nsecs_copy_start = local_clock() + delta;
 #endif
-				if (pe->writeback_cmd) 
+				if (pe->writeback_cmd || pe->ignore) 
 					;
 				else if (dma_flag)
 					__do_perform_io_using_dma(pe->sqid, pe->sq_entry);

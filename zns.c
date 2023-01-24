@@ -94,6 +94,7 @@ void zns_exit(void)
 	kfree(zns_ssd->zone_descs);
 	kfree(zns_ssd->report_buffer);
 }
+extern struct nvmev_dev *vdev;
 
  bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
  {
@@ -102,9 +103,16 @@ void zns_exit(void)
     NVMEV_ASSERT(csi == NVME_CSI_ZNS);
     switch(cmd->common.opcode) {
         case nvme_cmd_write:
-            if (!zns_write(req, ret))
-                return false;
-            break;
+			if (vdev->config.write_time == 0) {
+				ret->status = NVME_SC_SUCCESS;
+				ret->nsecs_target = req->nsecs_start;
+				ret->ignore = true;
+			} else {
+				ret->ignore = false;
+				if (!zns_write(req, ret))
+					return false;
+			}
+			break;
         case nvme_cmd_read:
             if (!zns_read(req, ret))
                 return false;
@@ -122,7 +130,14 @@ void zns_exit(void)
         case nvme_cmd_resv_release:
             break;
         case nvme_cmd_zone_mgmt_send:
-			zns_zmgmt_send(req, ret);
+			if (vdev->config.write_time == 0) {
+				ret->status = NVME_SC_SUCCESS;
+				ret->nsecs_target = req->nsecs_start;
+				ret->ignore = true;
+			} else {
+				ret->ignore = false;
+				zns_zmgmt_send(req, ret);
+			}
 			break;
 		case nvme_cmd_zone_mgmt_recv:
 			zns_zmgmt_recv(req, ret);

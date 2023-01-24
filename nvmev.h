@@ -28,16 +28,16 @@
 #define SUPPORT_VIRTUAL_CAPACITY		0
 
 /* Modify configuration  */
-#define NR_NAMESPACE	1 // Still.. only support single namespace.
+#define NR_NAMESPACE	2 // Still.. only support single namespace.
 
 /* NVME_CSI_NVM : Conv
    NVME_CSI_ZNS : ZNS
    NS_CAPACITY : MB (0 -> Full capacity) */
 
-#define NS_CSI_0 NVME_CSI_ZNS
-#define NS_CAPACITY_0 (0) 
-#define NS_CSI_1 NVME_CSI_NVM  
-#define NS_CAPACITY_1 (96*1024*1024)
+#define NS_CSI_0 NVME_CSI_NVM
+#define NS_CAPACITY_0 (24*8*1024*1024) 
+#define NS_CSI_1 NVME_CSI_ZNS  
+#define NS_CAPACITY_1 (0)
 
 /*************************/
 static const __u32 ns_csi[] = {NS_CSI_0, NS_CSI_1};
@@ -49,7 +49,7 @@ static const __u64 ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
 #if NR_NAMESPACE >= 3
 	#error "ONLY SUPPORT NR_NAMESPACE <= 2"
 #elif NR_NAMESPACE == 2
-	#if NS_CSI_0 != NVME_CSI_ZNS || NS_CSI_1 != NVME_CSI_NVM
+	#if NS_CSI_0 == NS_CSI_1
 		#error "ONLY SUPPORT 1 ZNS Namepsace, 1 Conv Namespace"
 	#endif
 #endif 
@@ -220,6 +220,7 @@ struct nvmev_proc_table {
 	unsigned int status;
 	unsigned int result0;
 	unsigned int result1;
+	bool ignore;
 
 	bool writeback_cmd;
 	void * write_buffer;
@@ -302,6 +303,7 @@ struct nvme_result {
     __u64 nsecs_target;
     __u32 early_completion;
     __u64 wp; // only for zone append
+	__u32 ignore;
 };
 
 // VDEV Init, Final Function
