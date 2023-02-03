@@ -142,8 +142,8 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 		#endif
 
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
-			if (vdev->config.write_time > 0)
-				memcpy(vdev->ns_mapped[nsid] + offset, vaddr + mem_offs, io_size);
+			//if (vdev->config.write_time > 0)
+			memcpy(vdev->ns_mapped[nsid] + offset, vaddr + mem_offs, io_size);
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
 			memcpy(vaddr + mem_offs, vdev->ns_mapped[nsid] + offset, io_size);
 		}
@@ -378,6 +378,84 @@ void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct 
 	pi->proc_table[entry].writeback_cmd = true;
 	pi->proc_table[entry].buffs_to_release = buffs_to_release;
 	pi->proc_table[entry].write_buffer = (void*)write_buffer;
+	pi->proc_table[entry].write_pointer = 0;
+	mb();	/* IO kthread shall see the updated pe at once */
+
+	// (END) -> (START) order, nsecs target ascending order
+	if (pi->io_seq == -1) {
+		pi->io_seq = entry;
+		pi->io_seq_end = entry;
+	} else {
+		unsigned int curr = pi->io_seq_end;
+
+		while (curr != -1) {
+			if (pi->proc_table[curr].nsecs_target <= pi->proc_io_nsecs)
+				break;
+
+			if (pi->proc_table[curr].nsecs_target <= nsecs_target)
+				break;
+
+			curr = pi->proc_table[curr].prev;
+		}
+
+		if (curr == -1) { /* Head inserted */
+			pi->proc_table[pi->io_seq].prev = entry;
+			pi->proc_table[entry].next = pi->io_seq;
+			pi->io_seq = entry;
+		} else if (pi->proc_table[curr].next == -1) { /* Tail */
+			pi->proc_table[entry].prev = curr;
+			pi->io_seq_end = entry;
+			pi->proc_table[curr].next = entry;
+		} else { /* In between */
+			pi->proc_table[entry].prev = curr;
+			pi->proc_table[entry].next = pi->proc_table[curr].next;
+
+			pi->proc_table[pi->proc_table[entry].next].prev = entry;
+			pi->proc_table[curr].next = entry;
+		}
+	}
+}
+
+void enqueue_writeback_io_req2(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release, 
+																											unsigned long long write_pointer)
+{
+#if SUPPORT_MULTI_IO_WORKER_BY_SQ
+	unsigned int proc_turn = (sqid - 1) % (vdev->config.nr_io_cpu);
+#else
+	unsigned int proc_turn = vdev->proc_turn;
+#endif
+	struct nvmev_proc_info *pi = &vdev->proc_info[proc_turn];
+	unsigned int entry = pi->free_seq;
+
+	if (pi->proc_table[entry].next >= NR_MAX_PARALLEL_IO) {
+		WARN_ON_ONCE("IO queue is almost full");
+		pi->free_seq = entry;
+		return;
+	}
+
+	if (++proc_turn == vdev->config.nr_io_cpu) proc_turn = 0;
+	vdev->proc_turn = proc_turn;
+	pi->free_seq = pi->proc_table[entry].next;
+	BUG_ON(pi->free_seq >= NR_MAX_PARALLEL_IO);
+
+	NVMEV_DEBUG("%s/%u[%d], sq %d cq %d, entry %d %llu + %llu\n",
+			pi->thread_name, entry, sq_entry(sq_entry).rw.opcode,
+			sqid, cqid, sq_entry, nsecs_start, ret->nsecs_target - nsecs_start);
+
+	/////////////////////////////////
+	pi->proc_table[entry].sqid = sqid;
+	pi->proc_table[entry].nsecs_start = local_clock();
+	pi->proc_table[entry].nsecs_enqueue = local_clock();
+	pi->proc_table[entry].nsecs_target =  nsecs_target;
+	pi->proc_table[entry].is_completed = false;
+	pi->proc_table[entry].is_copied = true;
+	pi->proc_table[entry].prev = -1;
+	pi->proc_table[entry].next = -1;
+
+	pi->proc_table[entry].writeback_cmd = true;
+	pi->proc_table[entry].buffs_to_release = buffs_to_release;
+	pi->proc_table[entry].write_buffer = (void*)write_buffer;
+	pi->proc_table[entry].write_pointer = write_pointer;
 	mb();	/* IO kthread shall see the updated pe at once */
 
 	// (END) -> (START) order, nsecs target ascending order
@@ -671,6 +749,12 @@ static int nvmev_kthread_io(void *data)
 			if (pe->nsecs_target <= curr_nsecs) {
 				if (pe->writeback_cmd) {
 					buffer_release((struct buffer *)pe->write_buffer, pe->buffs_to_release);
+
+					if (pe->write_pointer > 0 && vdev->config.write_time > 0)
+						zns_advance_durable_write_pointer(pe->write_pointer);
+					else if (pe->write_pointer > 0 && vdev->config.write_time == 0)
+						NVMEV_ERROR("Skip lba=0x%llx time=%llu\n", pe->write_pointer, pe->nsecs_target/1000);
+
 				} else  {
 					__fill_cq_result(pe);
 				}

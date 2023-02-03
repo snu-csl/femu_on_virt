@@ -441,7 +441,7 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
     //spp->gc_thres_lines = (int)((1 - spp->gc_thres_pcent) * spp->tt_lines);
     //spp->gc_thres_pcent_high = 0.997; /* Mot used */
     spp->gc_thres_lines_high = 2; /* Need only two lines.(host write, gc)*/
-    spp->enable_gc_delay = 1;
+    spp->enable_gc_delay = 0;
 
     spp->op_area_pcent = OP_AREA_PERCENT;
     spp->pba_pcent = (int)((1 + spp->op_area_pcent) * 100);
@@ -605,6 +605,7 @@ unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size
     ssd_init_pcie(pcie, spp);
 
     logical_space = (unsigned long)((memmap_size * 100) / spp->pba_pcent);
+    logical_space = (logical_space / ZONE_SIZE) * ZONE_SIZE;
 
     NVMEV_INFO("FTL physical space: %ld, logical space: %ld (physical/logical * 100 = %d)\n", memmap_size, logical_space, spp->pba_pcent);
 
@@ -1337,7 +1338,8 @@ void ssd_flush(struct nvme_request * req, struct nvme_result * ret)
 	ret->nsecs_target = latest;
 	return;
 }
-
+extern struct nvmev_dev *vdev;
+void zns_flush(struct nvme_request * req, struct nvme_result * ret);
 bool ssd_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
 {
     struct nvme_command *cmd = req->cmd;
@@ -1345,8 +1347,15 @@ bool ssd_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
     NVMEV_ASSERT(csi == NVME_CSI_NVM);
     switch(cmd->common.opcode) {
         case nvme_cmd_write:
-            if (!ssd_write(req, ret))
-                return false;
+            if (vdev->config.write_time == 0) {
+				ret->status = NVME_SC_SUCCESS;
+				ret->nsecs_target = req->nsecs_start;
+				ret->ignore = true;
+			} else {
+                ret->ignore = false;
+                if (!ssd_write(req, ret))
+                    return false;
+            }
             break;
         case nvme_cmd_read:
             if (!ssd_read(req, ret))

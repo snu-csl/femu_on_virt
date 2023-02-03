@@ -225,6 +225,7 @@ struct nvmev_proc_table {
 	bool writeback_cmd;
 	void * write_buffer;
 	unsigned int buffs_to_release;
+	unsigned long long write_pointer;
 
 	unsigned int next, prev;
 };

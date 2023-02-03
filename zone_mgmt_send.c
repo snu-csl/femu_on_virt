@@ -152,6 +152,9 @@ void __reset_zone(struct zns_ssd * zns_ssd, __u64 zid)
 	zone_descs[zid].wp = zone_descs[zid].zslba;
 	zone_descs[zid].zrwav = 0;
 
+	zns_ssd->zone_descs_durable[zid].wp = zone_descs[zid].zslba;
+	zns_ssd->zone_descs_durable[zid].zrwav = 0;
+
 	buffer_refill(&zns_ssd->zwra_buffer[zid]);
 }
 
@@ -317,6 +320,7 @@ __u32 __proc_zmgmt_send(struct zns_ssd *zns_ssd, __u64 slba, __u32 action, __u32
 	return status;
 }
 
+extern struct buffer zns_write_buffer;
 void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 {
 	struct nvme_zone_mgmt_send * cmd = (struct nvme_zone_mgmt_send *)req->cmd;
@@ -329,6 +333,7 @@ void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 	__u64 slba = cmd->slba;
 	__u64 zid = lba_to_zone(zns_ssd, slba);
 	if (select_all) {
+		buffer_refill(&zns_write_buffer);
 		for (zid = 0; zid < zns_ssd->nr_zones; zid++)
 			__proc_zmgmt_send(zns_ssd, zone_to_slba(zns_ssd, zid), action, true, option);
 	} else {

@@ -20,6 +20,7 @@ struct zns_ssd {
     __u32 nr_open_zones;
     __u32 dies_per_zone;
     __u32 zone_size; //bytes
+    __u32 wl_per_zone;
 
     /*related to zrwa*/
     __u32 nr_zrwa_zones;
@@ -34,6 +35,8 @@ struct zns_ssd {
     
     struct zone_resource_info res_infos[RES_TYPE_COUNT];
     struct zone_descriptor *zone_descs;
+    struct zone_descriptor *zone_descs_durable;
+    __u8 ** wl_state;
     struct zone_report *report_buffer;
     struct buffer * zwra_buffer;
 
@@ -58,7 +61,7 @@ static inline bool is_zone_resource_full(struct zns_ssd *zns_ssd, __u32 type)
 static inline bool acquire_zone_resource(struct zns_ssd *zns_ssd, __u32 type)
 {
 	if(is_zone_resource_avail(zns_ssd, type)) {
-		zns_ssd->res_infos[type].acquired_cnt++;
+		//zns_ssd->res_infos[type].acquired_cnt++;
 		return true;
 	}
 
@@ -69,7 +72,7 @@ static inline void release_zone_resource(struct zns_ssd *zns_ssd, __u32 type)
 {	
 	ASSERT(zns_ssd->res_infos[type].acquired_cnt > 0);
 
-	zns_ssd->res_infos[type].acquired_cnt--;
+	//zns_ssd->res_infos[type].acquired_cnt--;
 }
 
 static inline void change_zone_state(struct zns_ssd * zns_ssd, __u32 zid, enum zone_state state)
@@ -117,4 +120,10 @@ bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
 
 void zns_init(unsigned int cpu_nr_dispatcher, void * storage_base_addr, unsigned long capacity, unsigned int namespace);
 void zns_exit(void);
+void zns_reset_desc_durable(__u32 zid);
+void zns_flush(struct nvme_request * req, struct nvme_result * ret);
+void zns_recover_metadata(void);
+void zns_advance_durable_write_pointer(__u64 lba);
+void enqueue_writeback_io_req2(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release, 
+																											unsigned long long write_pointer);
 #endif

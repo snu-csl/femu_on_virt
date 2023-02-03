@@ -349,6 +349,11 @@ static ssize_t __proc_file_write(struct file *file, const char __user *buf, size
 	if (!strcmp(filename, "read_times")) {
 		ret = sscanf(input, "%u %u %u", &cfg->read_delay, &cfg->read_time, &cfg->read_trailing);
 		adjust_ftl_latency(0, cfg->read_time);
+		
+		if (cfg->read_time == 0) {
+			zns_recover_metadata();
+		}
+		
 	} else if (!strcmp(filename, "write_times")) {
 		ret = sscanf(input, "%u %u %u", &cfg->write_delay, &cfg->write_time, &cfg->write_trailing);
 		adjust_ftl_latency(1, cfg->write_time);
