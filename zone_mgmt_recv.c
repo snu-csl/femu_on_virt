@@ -5,7 +5,7 @@
 #include <linux/sched/clock.h>
 
 #include "nvmev.h"
-#include "ftl.h"
+#include "ssd.h"
 #include "zns.h"
 
 #if SUPPORT_ZNS 

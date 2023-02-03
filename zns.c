@@ -1,5 +1,8 @@
+#include <linux/ktime.h>
+#include <linux/sched/clock.h>
+
 #include "nvmev.h"
-#include "ftl.h"
+#include "ssd.h"
 #include "zns.h"
 
 #if SUPPORT_ZNS
@@ -110,6 +113,24 @@ void zns_exit(void)
 	kfree(zns_ssd->report_buffer);
 }
 
+void zns_flush(struct nvme_request * req, struct nvme_result * ret)
+{   
+	unsigned long long latest = 0;
+
+	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
+
+    latest = local_clock();
+    #if 0
+	for (i = 0; i < vdev->config.nr_io_units; i++) {
+		latest = max(latest, vdev->io_unit_stat[i]);
+	}
+    #endif
+
+	ret->status = NVME_SC_SUCCESS;
+	ret->nsecs_target = latest;
+	return;
+}
+
  bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
  {
     struct nvme_command *cmd = req->cmd;
@@ -125,7 +146,7 @@ void zns_exit(void)
                 return false;
             break;
         case nvme_cmd_flush:
-            ssd_flush(req, ret);
+            zns_flush(req, ret);
             break;
         case nvme_cmd_write_uncor:
         case nvme_cmd_compare:

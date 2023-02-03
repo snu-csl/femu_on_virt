@@ -127,7 +127,7 @@
 #define SSD_PARTITION_BITS    2
 #define FLASH_PAGE_SIZE      (32*1024)
 #define WORDLINE_SIZE        (FLASH_PAGE_SIZE * 1)
-#define BLKS_PER_PLN         10240
+#define BLKS_PER_PLN         8192
 #define BLK_SIZE             0 /*BLKS_PER_PLN should not be 0 */
 
 #define CH_MAX_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
