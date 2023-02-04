@@ -27,8 +27,7 @@
 #include <asm/e820/api.h>
 
 #include "nvmev.h"
-#include "ftl.h"
-#include "channel.h"
+#include "conv_ssd.h"
 #include "dma.h"
 
 #if SUPPORT_ZNS

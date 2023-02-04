@@ -2,7 +2,7 @@
 #include <linux/sched/clock.h>
 
 #include "nvmev.h"
-#include "ftl.h"
+#include "conv_ssd.h"
 
 struct conv_ssd *g_conv_ssds = NULL;
 

@@ -13,7 +13,7 @@
  **********************************************************************/
 
 #include "nvmev.h"
-#include "ftl.h"
+#include "conv_ssd.h"
 
 #if SUPPORT_ZNS
 #include "zns.h"

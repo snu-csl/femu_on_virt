@@ -2,7 +2,7 @@ KERNELDIR := /lib/modules/$(shell uname -r)/build
 PWD     := $(shell pwd)
 
 obj-m   := nvmev.o
-nvmev-objs := main.o pci.o admin.o io.o ssd.o ftl.o pqueue.o dma.o
+nvmev-objs := main.o pci.o admin.o io.o ssd.o conv_ssd.o pqueue.o dma.o
 nvmev-objs += zns.o zone_read_write.o zone_mgmt_send.o zone_mgmt_recv.o 
 nvmev-objs += channel.o 
 
