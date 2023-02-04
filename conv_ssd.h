@@ -21,7 +21,7 @@ struct write_pointer {
     struct line *curline;
     int ch;
     int lun;
-    int chunk;
+    int pg;
     int blk;
     int pl;
 };
@@ -53,7 +53,7 @@ struct conv_ssd {
         struct ssd ssd;
 
         struct {
-            STRUCT_SSD_ENTRY
+            STRUCT_SSD_ENTRIES
         };
     };
 

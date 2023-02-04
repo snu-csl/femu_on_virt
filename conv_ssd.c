@@ -6,9 +6,9 @@
 
 struct conv_ssd *g_conv_ssds = NULL;
 
-static inline bool last_chunk_in_wordline(struct conv_ssd *conv_ssd, struct ppa *ppa)
+static inline bool last_pg_in_wordline(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
-    return (ppa->g.chunk % conv_ssd->sp.chunks_per_wordline)== (conv_ssd->sp.chunks_per_wordline - 1);
+    return (ppa->g.pg % conv_ssd->sp.pgs_per_wrpage)== (conv_ssd->sp.pgs_per_wrpage - 1);
 }
 
 bool should_gc(struct conv_ssd *conv_ssd)
@@ -33,7 +33,7 @@ static inline struct ppa get_maptbl_ent(struct conv_ssd *conv_ssd, uint64_t lpn)
 
 static inline void set_maptbl_ent(struct conv_ssd *conv_ssd, uint64_t lpn, struct ppa *ppa)
 {
-    NVMEV_ASSERT(lpn < conv_ssd->sp.tt_chunks);
+    NVMEV_ASSERT(lpn < conv_ssd->sp.tt_pgs);
     conv_ssd->maptbl[lpn] = *ppa;
 }
 
@@ -43,15 +43,15 @@ static uint64_t ppa2pgidx(struct conv_ssd *conv_ssd, struct ppa *ppa)
     uint64_t pgidx;
 
     NVMEV_JH("ppa2pgidx: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n",
-        ppa->g.ch, ppa->g.lun, ppa->g.pl, ppa->g.blk, ppa->g.chunk);
+        ppa->g.ch, ppa->g.lun, ppa->g.pl, ppa->g.blk, ppa->g.pg);
 
-    pgidx = ppa->g.ch  * spp->chunks_per_ch  + \
-            ppa->g.lun * spp->chunks_per_lun + \
-            ppa->g.pl  * spp->chunks_per_pl  + \
-            ppa->g.blk * spp->chunks_per_blk + \
-            ppa->g.chunk;
+    pgidx = ppa->g.ch  * spp->pgs_per_ch  + \
+            ppa->g.lun * spp->pgs_per_lun + \
+            ppa->g.pl  * spp->pgs_per_pl  + \
+            ppa->g.blk * spp->pgs_per_blk + \
+            ppa->g.pg;
 
-    NVMEV_ASSERT(pgidx < spp->tt_chunks);
+    NVMEV_ASSERT(pgidx < spp->tt_pgs);
 
     return pgidx;
 }
@@ -166,7 +166,7 @@ static void init_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
     wpp->curline = curline;
     wpp->ch = 0;
     wpp->lun = 0;
-    wpp->chunk = 0;
+    wpp->pg = 0;
     wpp->blk = curline->id;
     wpp->pl = 0;
 }
@@ -174,8 +174,8 @@ static void init_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
 static void init_write_flow_control(struct conv_ssd *conv_ssd) {
     struct write_flow_control * wfc = &(conv_ssd->wfc);
 
-    wfc->write_credits = conv_ssd->sp.chunks_per_line;
-    wfc->credits_to_refill = conv_ssd->sp.chunks_per_line; 
+    wfc->write_credits = conv_ssd->sp.pgs_per_line;
+    wfc->credits_to_refill = conv_ssd->sp.pgs_per_line; 
 }
 
 static inline void check_addr(int a, int max)
@@ -213,12 +213,12 @@ static void advance_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
         NVMEV_ASSERT(0);
 
     NVMEV_DEBUG("current wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n", 
-        wpp->ch, wpp->lun, wpp->pl, wpp->blk, wpp->chunk);
+        wpp->ch, wpp->lun, wpp->pl, wpp->blk, wpp->pg);
 
-    check_addr(wpp->chunk, spp->chunks_per_blk);
-    wpp->chunk++;
-    if ((wpp->chunk % spp->chunks_per_wordline) == 0) {
-        wpp->chunk -= spp->chunks_per_wordline;
+    check_addr(wpp->pg, spp->pgs_per_blk);
+    wpp->pg++;
+    if ((wpp->pg % spp->pgs_per_wrpage) == 0) {
+        wpp->pg -= spp->pgs_per_wrpage;
             check_addr(wpp->ch, spp->nchs);
             wpp->ch++;
             if (wpp->ch == spp->nchs) {
@@ -229,11 +229,11 @@ static void advance_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
                 if (wpp->lun == spp->luns_per_ch) {
                     wpp->lun = 0;
                     /* go to next wordline in the block */
-                    wpp->chunk += spp->chunks_per_wordline;
-                    if (wpp->chunk == spp->chunks_per_blk) {
-                        wpp->chunk = 0;
+                    wpp->pg += spp->pgs_per_wrpage;
+                    if (wpp->pg == spp->pgs_per_blk) {
+                        wpp->pg = 0;
                         /* move current line to {victim,full} line list */
-                        if (wpp->curline->vpc == spp->chunks_per_line) {
+                        if (wpp->curline->vpc == spp->pgs_per_line) {
                             /* all pgs are still valid, move to full line list */
                             NVMEV_ASSERT(wpp->curline->ipc == 0);
                             QTAILQ_INSERT_TAIL(&lm->full_line_list, wpp->curline, entry);
@@ -241,7 +241,7 @@ static void advance_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
                             NVMEV_JH("wpp: move line to full_line_list\n");
                         } else {
                             NVMEV_JH("wpp: line is moved to victim list\n");
-                            NVMEV_ASSERT(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->chunks_per_line);
+                            NVMEV_ASSERT(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->pgs_per_line);
                             /* there must be some invalid pages in this line */
                             NVMEV_ASSERT(wpp->curline->ipc > 0);
                             pqueue_insert(lm->victim_line_pq, wpp->curline);
@@ -259,7 +259,7 @@ static void advance_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
                         wpp->blk = wpp->curline->id;
                         check_addr(wpp->blk, spp->blks_per_pl);
                         /* make sure we are starting from page 0 in the super block */
-                        NVMEV_ASSERT(wpp->chunk == 0);
+                        NVMEV_ASSERT(wpp->pg == 0);
                         NVMEV_ASSERT(wpp->lun == 0);
                         NVMEV_ASSERT(wpp->ch == 0);
                         /* TODO: assume # of pl_per_lun is 1, fix later */
@@ -269,7 +269,7 @@ static void advance_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
             }
     }
     NVMEV_JH("advanced wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d (curline %d)\n", 
-        wpp->ch, wpp->lun, wpp->pl, wpp->blk, wpp->chunk, wpp->curline->id);
+        wpp->ch, wpp->lun, wpp->pl, wpp->blk, wpp->pg, wpp->curline->id);
 }
 
 static struct ppa get_new_page(struct conv_ssd *conv_ssd, uint32_t io_type)
@@ -287,7 +287,7 @@ static struct ppa get_new_page(struct conv_ssd *conv_ssd, uint32_t io_type)
     ppa.ppa = 0;
     ppa.g.ch = wpp->ch;
     ppa.g.lun = wpp->lun;
-    ppa.g.chunk = wpp->chunk;
+    ppa.g.pg = wpp->pg;
     ppa.g.blk = wpp->blk;
     ppa.g.pl = wpp->pl;
     NVMEV_ASSERT(ppa.g.pl == 0);
@@ -300,8 +300,8 @@ static void init_maptbl(struct conv_ssd *conv_ssd)
     int i;
     struct ssdparams *spp = &conv_ssd->sp;
 
-    conv_ssd->maptbl = vmalloc(sizeof(struct ppa) * spp->tt_chunks);
-    for (i = 0; i < spp->tt_chunks; i++) {
+    conv_ssd->maptbl = vmalloc(sizeof(struct ppa) * spp->tt_pgs);
+    for (i = 0; i < spp->tt_pgs; i++) {
         conv_ssd->maptbl[i].ppa = UNMAPPED_PPA;
     }
 }
@@ -311,8 +311,8 @@ static void init_rmap(struct conv_ssd *conv_ssd)
     int i;
     struct ssdparams *spp = &conv_ssd->sp;
 
-    conv_ssd->rmap = vmalloc(sizeof(uint64_t) * spp->tt_chunks);
-    for (i = 0; i < spp->tt_chunks; i++) {
+    conv_ssd->rmap = vmalloc(sizeof(uint64_t) * spp->tt_pgs);
+    for (i = 0; i < spp->tt_pgs; i++) {
         conv_ssd->rmap[i] = INVALID_LPN;
     }
 }
@@ -321,7 +321,7 @@ static void conv_init_ftl(struct conv_ssd *conv_ssd)
 {
     struct ssdparams *spp = &(conv_ssd->sp);
     
-    NVMEV_INFO("Init FTL Instance with %d channels(%ld pages)\n", spp->nchs, spp->tt_chunks);
+    NVMEV_INFO("Init FTL Instance with %d channels(%ld pages)\n", spp->nchs, spp->tt_pgs);
 
     /* initialize maptbl */
     NVMEV_INFO("initialize maptbl\n");
@@ -389,12 +389,12 @@ static inline bool valid_ppa(struct conv_ssd *conv_ssd, struct ppa *ppa)
     int lun = ppa->g.lun;
     int pl = ppa->g.pl;
     int blk = ppa->g.blk;
-    int pg = ppa->g.chunk;
+    int pg = ppa->g.pg;
     //int sec = ppa->g.sec;
 
     if (ch >= 0 && ch < spp->nchs && lun >= 0 && lun < spp->luns_per_ch && pl >=
         0 && pl < spp->pls_per_lun && blk >= 0 && blk < spp->blks_per_pl && pg
-        >= 0 && pg < spp->chunks_per_blk)
+        >= 0 && pg < spp->pgs_per_blk)
         return true;
 
     return false;
@@ -402,7 +402,7 @@ static inline bool valid_ppa(struct conv_ssd *conv_ssd, struct ppa *ppa)
 
 static inline bool valid_lpn(struct conv_ssd *conv_ssd, uint64_t lpn)
 {
-    return (lpn < conv_ssd->sp.tt_chunks);
+    return (lpn < conv_ssd->sp.tt_pgs);
 }
 
 static inline bool mapped_ppa(struct ppa *ppa)
@@ -415,37 +415,37 @@ static inline struct line *get_line(struct conv_ssd *conv_ssd, struct ppa *ppa)
     return &(conv_ssd->lm.lines[ppa->g.blk]);
 }
 
-/* update SSD status about one page from CHUNK_VALID -> CHUNK_VALID */
+/* update SSD status about one page from PG_VALID -> PG_VALID */
 static void mark_page_invalid(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
     struct line_mgmt *lm = &conv_ssd->lm;
     struct ssdparams *spp = &conv_ssd->sp;
     struct nand_block *blk = NULL;
-    struct nand_chunk *chunk = NULL;
+    struct nand_page *pg = NULL;
     bool was_full_line = false;
     struct line *line;
 
     /* update corresponding page status */
-    chunk = get_pg(&conv_ssd->ssd, ppa);
-    NVMEV_ASSERT(chunk->status == CHUNK_VALID);
-    chunk->status = CHUNK_INVALID;
+    pg = get_pg(&conv_ssd->ssd, ppa);
+    NVMEV_ASSERT(pg->status == PG_VALID);
+    pg->status = PG_INVALID;
 
     /* update corresponding block status */
     blk = get_blk(&conv_ssd->ssd, ppa);
-    NVMEV_ASSERT(blk->ipc >= 0 && blk->ipc < spp->chunks_per_blk);
+    NVMEV_ASSERT(blk->ipc >= 0 && blk->ipc < spp->pgs_per_blk);
     blk->ipc++;
-    NVMEV_ASSERT(blk->vpc > 0 && blk->vpc <= spp->chunks_per_blk);
+    NVMEV_ASSERT(blk->vpc > 0 && blk->vpc <= spp->pgs_per_blk);
     blk->vpc--;
 
     /* update corresponding line status */
     line = get_line(conv_ssd, ppa);
-    NVMEV_ASSERT(line->ipc >= 0 && line->ipc < spp->chunks_per_line);
-    if (line->vpc == spp->chunks_per_line) {
+    NVMEV_ASSERT(line->ipc >= 0 && line->ipc < spp->pgs_per_line);
+    if (line->vpc == spp->pgs_per_line) {
         NVMEV_ASSERT(line->ipc == 0);
         was_full_line = true;
     }
     line->ipc++;
-    NVMEV_ASSERT(line->vpc > 0 && line->vpc <= spp->chunks_per_line);
+    NVMEV_ASSERT(line->vpc > 0 && line->vpc <= spp->pgs_per_line);
     /* Adjust the position of the victime line in the pq under over-writes */
     if (line->pos) {
         /* Note that line->vpc will be updated by this call */
@@ -466,22 +466,22 @@ static void mark_page_invalid(struct conv_ssd *conv_ssd, struct ppa *ppa)
 static void mark_page_valid(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
     struct nand_block *blk = NULL;
-    struct nand_chunk *chunk = NULL;
+    struct nand_page *pg = NULL;
     struct line *line;
   
     /* update page status */
-    chunk = get_pg(&conv_ssd->ssd, ppa);
-    NVMEV_ASSERT(chunk->status == CHUNK_FREE);
-    chunk->status = CHUNK_VALID;
+    pg = get_pg(&conv_ssd->ssd, ppa);
+    NVMEV_ASSERT(pg->status == PG_FREE);
+    pg->status = PG_VALID;
 
     /* update corresponding block status */
     blk = get_blk(&conv_ssd->ssd, ppa);
-    NVMEV_ASSERT(blk->vpc >= 0 && blk->vpc < conv_ssd->sp.chunks_per_blk);
+    NVMEV_ASSERT(blk->vpc >= 0 && blk->vpc < conv_ssd->sp.pgs_per_blk);
     blk->vpc++;
 
     /* update corresponding line status */
     line = get_line(conv_ssd, ppa);
-    NVMEV_ASSERT(line->vpc >= 0 && line->vpc < conv_ssd->sp.chunks_per_line);
+    NVMEV_ASSERT(line->vpc >= 0 && line->vpc < conv_ssd->sp.pgs_per_line);
     line->vpc++;
 }
 
@@ -489,18 +489,18 @@ static void mark_block_free(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
     struct ssdparams *spp = &conv_ssd->sp;
     struct nand_block *blk = get_blk(&conv_ssd->ssd, ppa);
-    struct nand_chunk *chunk = NULL;
+    struct nand_page *pg = NULL;
     int i;
 
-    for (i = 0; i < spp->chunks_per_blk; i++) {
+    for (i = 0; i < spp->pgs_per_blk; i++) {
         /* reset page status */
-        chunk = &blk->chunk[i];
-        NVMEV_ASSERT(chunk->nsecs == spp->secs_per_chunk);
-        chunk->status = CHUNK_FREE;
+        pg = &blk->pg[i];
+        NVMEV_ASSERT(pg->nsecs == spp->secs_per_pg);
+        pg->status = PG_FREE;
     }
 
     /* reset block status */
-    NVMEV_ASSERT(blk->nchunks == spp->chunks_per_blk);
+    NVMEV_ASSERT(blk->npgs == spp->pgs_per_blk);
     blk->ipc = 0;
     blk->vpc = 0;
     blk->erase_cnt++;
@@ -514,7 +514,7 @@ static void gc_read_page(struct conv_ssd *conv_ssd, struct ppa *ppa)
         gcr.type = GC_IO;
         gcr.cmd = NAND_READ;
         gcr.stime = 0;
-        gcr.xfer_size = conv_ssd->sp.chunksz;
+        gcr.xfer_size = conv_ssd->sp.pgsz;
         gcr.interleave_pci_dma = false;
         ssd_advance_status(&(conv_ssd->ssd), ppa, &gcr);
     }
@@ -546,9 +546,9 @@ static uint64_t gc_write_page(struct conv_ssd *conv_ssd, struct ppa *old_ppa)
         gcw.stime = 0;
         gcw.interleave_pci_dma = false;
 
-        if (last_chunk_in_wordline(conv_ssd, &new_ppa)) {
+        if (last_pg_in_wordline(conv_ssd, &new_ppa)) {
             gcw.cmd = NAND_WRITE;
-            gcw.xfer_size = spp->chunksz * conv_ssd->sp.chunks_per_wordline;
+            gcw.xfer_size = spp->pgsz * conv_ssd->sp.pgs_per_wrpage;
         }
 
         ssd_advance_status(&conv_ssd->ssd, &new_ppa, &gcw);
@@ -576,7 +576,7 @@ static struct line *select_victim_line(struct conv_ssd *conv_ssd, bool force)
         return NULL;
     }
 
-    if (!force && (victim_line->vpc > (conv_ssd->sp.chunks_per_line / 8))) {
+    if (!force && (victim_line->vpc > (conv_ssd->sp.pgs_per_line / 8))) {
         return NULL;
     }
 
@@ -592,16 +592,16 @@ static struct line *select_victim_line(struct conv_ssd *conv_ssd, bool force)
 static void clean_one_block(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
     struct ssdparams *spp = &conv_ssd->sp;
-    struct nand_chunk *chunk_iter = NULL;
+    struct nand_page *pg_iter = NULL;
     int cnt = 0;
-    int chunk;
+    int pg;
 
-    for (chunk = 0; chunk < spp->chunks_per_blk; chunk++) {
-        ppa->g.chunk = chunk;
-        chunk_iter = get_pg(&conv_ssd->ssd, ppa);
+    for (pg = 0; pg < spp->pgs_per_blk; pg++) {
+        ppa->g.pg = pg;
+        pg_iter = get_pg(&conv_ssd->ssd, ppa);
         /* there shouldn't be any free page in victim blocks */
-        NVMEV_ASSERT(chunk_iter->status != CHUNK_FREE);
-        if (chunk_iter->status == CHUNK_VALID) {
+        NVMEV_ASSERT(pg_iter->status != PG_FREE);
+        if (pg_iter->status == PG_VALID) {
             gc_read_page(conv_ssd, ppa);
             /* delay the maptbl update until "write" happens */
             gc_write_page(conv_ssd, ppa);
@@ -616,19 +616,19 @@ static void clean_one_block(struct conv_ssd *conv_ssd, struct ppa *ppa)
 static void clean_one_page(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
     struct ssdparams *spp = &conv_ssd->sp;
-    struct nand_chunk *chunk_iter = NULL;
+    struct nand_page *pg_iter = NULL;
     int cnt = 0, i = 0;
     uint64_t completed_time = 0;
     struct ppa ppa_copy = *ppa;
 
-    for (i = 0; i < spp->chunks_per_page; i++) {
-        chunk_iter = get_pg(&conv_ssd->ssd, &ppa_copy);
+    for (i = 0; i < spp->pgs_per_rdpage; i++) {
+        pg_iter = get_pg(&conv_ssd->ssd, &ppa_copy);
         /* there shouldn't be any free page in victim blocks */
-        NVMEV_ASSERT(chunk_iter->status != CHUNK_FREE);
-        if (chunk_iter->status == CHUNK_VALID) 
+        NVMEV_ASSERT(pg_iter->status != PG_FREE);
+        if (pg_iter->status == PG_VALID) 
             cnt++;
         
-        ppa_copy.g.chunk++;
+        ppa_copy.g.pg++;
     }
 
     ppa_copy = *ppa;
@@ -639,20 +639,20 @@ static void clean_one_page(struct conv_ssd *conv_ssd, struct ppa *ppa)
             gcr.type = GC_IO;
             gcr.cmd = NAND_READ;
             gcr.stime = 0;
-            gcr.xfer_size = spp->chunksz * cnt;
+            gcr.xfer_size = spp->pgsz * cnt;
             gcr.interleave_pci_dma = false;
             completed_time = ssd_advance_status(&conv_ssd->ssd, &ppa_copy, &gcr);
         }
 
-        for (i = 0; i < spp->chunks_per_page; i++) {
-            chunk_iter = get_pg(&conv_ssd->ssd, &ppa_copy);
+        for (i = 0; i < spp->pgs_per_rdpage; i++) {
+            pg_iter = get_pg(&conv_ssd->ssd, &ppa_copy);
 
             /* there shouldn't be any free page in victim blocks */
-            if (chunk_iter->status == CHUNK_VALID) 
+            if (pg_iter->status == PG_VALID) 
                 /* delay the maptbl update until "write" happens */
                 gc_write_page(conv_ssd, &ppa_copy);
             
-            ppa_copy.g.chunk++;
+            ppa_copy.g.pg++;
         }
     }
 }
@@ -689,8 +689,8 @@ int do_gc(struct conv_ssd *conv_ssd, bool force)
     conv_ssd->wfc.credits_to_refill = victim_line->ipc;
 
     /* copy back valid data */
-    for (page = 0; page < spp->pages_per_blk; page++) {
-        ppa.g.chunk = page * spp->chunks_per_page; 
+    for (page = 0; page < spp->rdpages_per_blk; page++) {
+        ppa.g.pg = page * spp->pgs_per_rdpage; 
         for (ch = 0; ch < spp->nchs; ch++) {
             for (lun = 0; lun < spp->luns_per_ch; lun++) {
                 ppa.g.ch = ch;
@@ -699,7 +699,7 @@ int do_gc(struct conv_ssd *conv_ssd, bool force)
                 lunp = get_lun(&conv_ssd->ssd, &ppa);
                 clean_one_page(conv_ssd, &ppa);
 
-                if (page == (spp->pages_per_blk - 1)){
+                if (page == (spp->rdpages_per_blk - 1)){
                     mark_block_free(conv_ssd, &ppa);
 
                     if (spp->enable_gc_delay) {
@@ -747,8 +747,8 @@ void conv_gc(struct conv_ssd *conv_ssd) {
 
 bool is_same_page(struct conv_ssd * conv_ssd, struct ppa ppa1, struct ppa ppa2) 
 {   
-    uint32_t ppa1_page = ppa1.g.chunk / conv_ssd->sp.chunks_per_page;
-    uint32_t ppa2_page = ppa2.g.chunk / conv_ssd->sp.chunks_per_page;
+    uint32_t ppa1_page = ppa1.g.pg / conv_ssd->sp.pgs_per_rdpage;
+    uint32_t ppa2_page = ppa2.g.pg / conv_ssd->sp.pgs_per_rdpage;
     
     return (ppa1.h.blk_in_ssd == ppa2.h.blk_in_ssd) &&
            (ppa1_page == ppa2_page);
@@ -764,8 +764,8 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
     int nr_lba = (cmd->rw.length + 1);
     struct ppa cur_ppa;
     struct ppa prev_ppa;
-    uint64_t start_lpn = lba / spp->secs_per_chunk;
-    uint64_t end_lpn = (lba + nr_lba - 1) / spp->secs_per_chunk;
+    uint64_t start_lpn = lba / spp->secs_per_pg;
+    uint64_t end_lpn = (lba + nr_lba - 1) / spp->secs_per_pg;
     uint64_t lpn, local_lpn;
     uint64_t nsecs_completed, nsecs_latest = nsecs_start;
     uint32_t xfer_size, i;
@@ -776,8 +776,8 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
     srd.interleave_pci_dma = true;
 
     NVMEV_DEBUG("conv_read: start_lpn=%lld, len=%d, end_lpn=%ld", start_lpn, nr_lba, end_lpn);
-    if (LPN_TO_LOCAL_LPN(end_lpn) >= spp->tt_chunks) {
-        NVMEV_ERROR("conv_read: lpn passed FTL range(start_lpn=%lld,tt_chunks=%ld)\n", start_lpn, spp->tt_chunks);
+    if (LPN_TO_LOCAL_LPN(end_lpn) >= spp->tt_pgs) {
+        NVMEV_ERROR("conv_read: lpn passed FTL range(start_lpn=%lld,tt_pgs=%ld)\n", start_lpn, spp->tt_pgs);
         return false;
     }
 
@@ -802,13 +802,13 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
             {
                 NVMEV_DEBUG("lpn 0x%llx not mapped to valid ppa\n", local_lpn);
                 NVMEV_DEBUG("Invalid ppa,ch:%d,lun:%d,blk:%d,pl:%d,pg:%d\n",
-                cur_ppa.g.ch, cur_ppa.g.lun, cur_ppa.g.blk, cur_ppa.g.pl, cur_ppa.g.chunk);
+                cur_ppa.g.ch, cur_ppa.g.lun, cur_ppa.g.blk, cur_ppa.g.pl, cur_ppa.g.pg);
                 continue;
             }
 
             // aggregate read io in same flash page
             if (mapped_ppa(&prev_ppa) && is_same_page(conv_ssd, cur_ppa, prev_ppa)) {
-                xfer_size += spp->chunksz;
+                xfer_size += spp->pgsz;
                 continue;
             }
 
@@ -818,7 +818,7 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
                 nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
             }
             
-            xfer_size = spp->chunksz;
+            xfer_size = spp->pgsz;
             prev_ppa = cur_ppa;
         }
 
@@ -846,8 +846,8 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
     struct buffer * wbuffer = conv_ssd_instance(0)->write_buffer;
 
     int nr_lba = (cmd->rw.length + 1);
-    uint64_t start_lpn = lba / spp->secs_per_chunk;
-    uint64_t end_lpn = (lba + nr_lba - 1) / spp->secs_per_chunk;
+    uint64_t start_lpn = lba / spp->secs_per_pg;
+    uint64_t end_lpn = (lba + nr_lba - 1) / spp->secs_per_pg;
     struct ppa ppa;
     uint64_t lpn, local_lpn;
     uint64_t nsecs_completed = 0, nsecs_latest;
@@ -856,8 +856,8 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
     struct nand_cmd swr;
 
     NVMEV_DEBUG("conv_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
-    if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_chunks) {
-        NVMEV_ERROR("conv_write: lpn passed FTL range(start_lpn=%lld,tt_chunks=%ld)\n", start_lpn, spp->tt_chunks);
+    if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_pgs) {
+        NVMEV_ERROR("conv_write: lpn passed FTL range(start_lpn=%lld,tt_pgs=%ld)\n", start_lpn, spp->tt_pgs);
         return false;
     }
     
@@ -904,13 +904,13 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
         advance_write_pointer(conv_ssd, USER_IO);
 
         /* Aggregate write io in flash page */
-        if (last_chunk_in_wordline(conv_ssd, &ppa)) {
-            swr.xfer_size = spp->chunksz * spp->chunks_per_wordline;
+        if (last_pg_in_wordline(conv_ssd, &ppa)) {
+            swr.xfer_size = spp->pgsz * spp->pgs_per_wrpage;
 
             nsecs_completed = ssd_advance_status(&conv_ssd->ssd, &ppa, &swr);
             nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
-            enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuffer, spp->chunks_per_wordline * spp->chunksz);
+            enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuffer, spp->pgs_per_wrpage * spp->pgsz);
         } 
         
         consume_write_credit(conv_ssd);

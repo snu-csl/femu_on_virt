@@ -41,24 +41,24 @@ enum {
     SEC_INVALID = 1,
     SEC_VALID = 2,
 
-    CHUNK_FREE = 0,
-    CHUNK_INVALID = 1,
-    CHUNK_VALID = 2
+    PG_FREE = 0,
+    PG_INVALID = 1,
+    PG_VALID = 2
 };
 
 #define TOTAL_PPA_BITS (64)
 #define BLK_BITS    (16)
-#define CHUNK_BITS  (16)
+#define PAGE_BITS  (16)
 #define PL_BITS     (8)
 #define LUN_BITS    (8)
 #define CH_BITS     (8)
-#define RSB_BITS    (TOTAL_PPA_BITS - (BLK_BITS + CHUNK_BITS + PL_BITS + LUN_BITS + CH_BITS))
+#define RSB_BITS    (TOTAL_PPA_BITS - (BLK_BITS + PAGE_BITS + PL_BITS + LUN_BITS + CH_BITS))
 
 /* describe a physical page addr */
 struct ppa {
     union {
         struct {
-            uint64_t chunk  : CHUNK_BITS; // chunk == 4KB
+            uint64_t pg  : PAGE_BITS; // pg == 4KB
             uint64_t blk : BLK_BITS;
             uint64_t pl  : PL_BITS;
             uint64_t lun : LUN_BITS;
@@ -67,7 +67,7 @@ struct ppa {
         } g;
 
         struct {
-            uint64_t : CHUNK_BITS;
+            uint64_t : PAGE_BITS;
             uint64_t blk_in_ssd : BLK_BITS + PL_BITS + LUN_BITS + CH_BITS;
             uint64_t rsv : RSB_BITS;
         } h;
@@ -78,15 +78,15 @@ struct ppa {
 
 typedef int nand_sec_status_t;
 
-struct nand_chunk {
+struct nand_page {
     nand_sec_status_t *sec;
     int nsecs;
     int status;
 };
 
 struct nand_block {
-    struct nand_chunk *chunk;
-    int nchunks;
+    struct nand_page *pg;
+    int npgs;
     int ipc; /* invalid page count */
     int vpc; /* valid page count */
     int erase_cnt;
@@ -133,20 +133,22 @@ struct buffer {
 };
 
 /*
-chunk : Mapping unit (4KB)
-page (flash page) : Nand sensing unit,tR 
-wordline (flash wordline) : Nand Program unit, tPROG
-blk : Nand Erase unit
+pg (page): Mapping unit (4KB)
+rdpage (read page) : Nand sensing unit , tR 
+wrpage (write page) : Nand program unit, tPROG, (eg. rdpage * 3 (TLC))
+blk (block): Nand erase unit
+lun (die) : Nand operation unit
+ch (channel) : Nand <-> SSD controller data transfer unit
 */
 struct ssdparams {
     int secsz;        /* sector size in bytes */
-    int secs_per_chunk;  /* # of sectors per page */
-    int chunksz;
-    int chunks_per_page; /* # of pgs per flash page */
-    int pages_per_blk; /* # of flash pages per block */
-    int chunks_per_wordline; /* # of pgs per oneshot program page */
-    int wordlines_per_blk; /* # of pgm page pages per block */
-    int chunks_per_blk;  /* # of NAND pages per block */
+    int secs_per_pg;  /* # of sectors per page */
+    int pgsz;
+    int pgs_per_rdpage; /* # of pgs per flash page */
+    int rdpages_per_blk; /* # of flash pages per block */
+    int pgs_per_wrpage; /* # of pgs per oneshot program page */
+    int wrpages_per_blk; /* # of pgm page pages per block */
+    int pgs_per_blk;  /* # of NAND pages per block */
     int blks_per_pl;  /* # of blocks per plane */
     int pls_per_lun;  /* # of planes per LUN (Die) */
     int luns_per_ch;  /* # of LUNs per channel */
@@ -190,17 +192,17 @@ struct ssdparams {
     unsigned long secs_per_ch;  /* # of sectors per channel */
     unsigned long tt_secs;      /* # of sectors in the SSD */
 
-    unsigned long chunks_per_pl;   /* # of pages per plane */
-    unsigned long chunks_per_lun;  /* # of pages per LUN (Die) */
-    unsigned long chunks_per_ch;   /* # of pages per channel */
-    unsigned long tt_chunks;       /* total # of pages in the SSD */
+    unsigned long pgs_per_pl;   /* # of pages per plane */
+    unsigned long pgs_per_lun;  /* # of pages per LUN (Die) */
+    unsigned long pgs_per_ch;   /* # of pages per channel */
+    unsigned long tt_pgs;       /* total # of pages in the SSD */
 
     unsigned long blks_per_lun; /* # of blocks per LUN */
     unsigned long blks_per_ch;  /* # of blocks per channel */
     unsigned long tt_blks;      /* total # of blocks in the SSD */
 
     unsigned long secs_per_line;
-    unsigned long chunks_per_line;
+    unsigned long pgs_per_line;
     unsigned long blks_per_line;
     unsigned long tt_lines;
 
@@ -214,14 +216,14 @@ struct ssdparams {
     unsigned long long write_buffer_size;
 };
 
-#define STRUCT_SSD_ENTRY  struct ssdparams sp; \
+#define STRUCT_SSD_ENTRIES  struct ssdparams sp; \
                           struct ssd_channel *ch; \
                           struct ssd_pcie *pcie; \
                           struct buffer *write_buffer; \
                           unsigned int cpu_nr_dispatcher; \
 
 struct ssd {
-    STRUCT_SSD_ENTRY
+    STRUCT_SSD_ENTRIES
 };
 
 static inline struct ssd_channel *get_ch(struct ssd *ssd, struct ppa *ppa)
@@ -247,10 +249,10 @@ static inline struct nand_block *get_blk(struct ssd *ssd, struct ppa *ppa)
     return &(pl->blk[ppa->g.blk]);
 }
 
-static inline struct nand_chunk *get_pg(struct ssd *ssd, struct ppa *ppa)
+static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
 {
     struct nand_block *blk = get_blk(ssd, ppa);
-    return &(blk->chunk[ppa->g.chunk]);
+    return &(blk->pg[ppa->g.pg]);
 }
 
 void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp);

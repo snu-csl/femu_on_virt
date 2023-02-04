@@ -90,7 +90,7 @@ void zns_init(__u64 capacity, __u32 cpu_nr_dispatcher, void * storage_base_addr,
 	zns_ssd->storage_base_addr = storage_base_addr;
 	
 	/* It should be 4KB aligned, according to lpn size */
-	NVMEV_ASSERT((zns_ssd->zp.zone_size % spp.chunksz) == 0); 
+	NVMEV_ASSERT((zns_ssd->zp.zone_size % spp.pgsz) == 0); 
 	
 	zns_init_descriptor(zns_ssd);
 	zns_init_resource(zns_ssd);

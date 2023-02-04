@@ -4,7 +4,7 @@
 
 - Recommend kernel v4.4.x (tested on 4.4.108)
 
-- A part of main memory should be reserved to emulate NVMe device. To reserve a chunk of memory, add the following options to `GRUB_CMDLINE_LINUX` in
+- A part of main memory should be reserved to emulate NVMe device. To reserve a pg of memory, add the following options to `GRUB_CMDLINE_LINUX` in
 
   `/etc/default/grub` as follow:
 
@@ -12,7 +12,7 @@
   GRUB_CMDLINE_LINUX="memmap=64G\\\$128G"
   ```
 
-  This option will reserve 64GB of memory chunk starting from 128GB memory offset.
+  This option will reserve 64GB of memory page starting from 128GB memory offset.
 
 ### Run
 

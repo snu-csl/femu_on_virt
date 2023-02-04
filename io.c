@@ -169,7 +169,7 @@ static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
 	u64 paddr;
 	u64 *tmp_paddr_list = NULL;
 	size_t mem_offs = 0;
-	size_t io_size, chunk_size;
+	size_t io_size, page_size;
 
 	offset = sq_entry(sq_entry).rw.slba << 9;
 	length = (sq_entry(sq_entry).rw.length + 1) << 9;
@@ -215,26 +215,26 @@ static unsigned int __do_perform_io_using_dma(int sqid, int sq_entry)
 	while (remaining) {
 		mem_offs = 0;
 		io_size = 0;
-		chunk_size = 0;
+		page_size = 0;
 
 		paddr = paddr_list[prp_offs];
-		chunk_size = min_t(size_t, remaining, PAGE_SIZE);
+		page_size = min_t(size_t, remaining, PAGE_SIZE);
 
 		/* For non-page aligned paddr, it will never be between continuous PRP list (Always first paddr)  */
 		if (paddr & PAGE_OFFSET_MASK) {
 			mem_offs = paddr & PAGE_OFFSET_MASK;
-			if (chunk_size + mem_offs > PAGE_SIZE)
-				chunk_size = PAGE_SIZE - mem_offs;
+			if (page_size + mem_offs > PAGE_SIZE)
+				page_size = PAGE_SIZE - mem_offs;
 		}
 
 		for (prp_offs++; prp_offs <= num_prps; prp_offs++) {
 			if (paddr_list[prp_offs] == paddr_list[prp_offs - 1] + PAGE_SIZE)
-				chunk_size += PAGE_SIZE;
+				page_size += PAGE_SIZE;
 			else
 				break;
 		}
 
-		io_size = min_t(size_t, remaining, chunk_size);
+		io_size = min_t(size_t, remaining, page_size);
 
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
 			dmatest_submit(paddr, vdev->config.storage_start + offset, io_size);

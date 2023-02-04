@@ -74,8 +74,8 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
     __u64 blk_size, total_size;
 
     spp->secsz = 512;
-    spp->secs_per_chunk = 8;
-    spp->chunksz = spp->secsz * spp->secs_per_chunk;
+    spp->secs_per_pg = 8;
+    spp->pgsz = spp->secsz * spp->secs_per_pg;
 
     spp->nchs = NAND_CHANNELS;
     spp->pls_per_lun = PLNS_PER_LUN;
@@ -87,7 +87,7 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
     capacity /= nparts; 
 
     if (BLKS_PER_PLN > 0) {
-        /* pages_per_blk depends on capacity */
+        /* rdpages_per_blk depends on capacity */
         spp->blks_per_pl = BLKS_PER_PLN; 
         blk_size = DIV_ROUND_UP(capacity, spp->blks_per_pl * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     } else {
@@ -96,13 +96,13 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
         spp->blks_per_pl = DIV_ROUND_UP(capacity, blk_size * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     }
 
-    spp->chunks_per_wordline = WORDLINE_SIZE / (spp->chunksz);
-    spp->wordlines_per_blk = DIV_ROUND_UP(blk_size, WORDLINE_SIZE); 
+    spp->pgs_per_wrpage = WORDLINE_SIZE / (spp->pgsz);
+    spp->wrpages_per_blk = DIV_ROUND_UP(blk_size, WORDLINE_SIZE); 
 
-    spp->chunks_per_page = FLASH_PAGE_SIZE / (spp->chunksz);
-    spp->pages_per_blk = (WORDLINE_SIZE / FLASH_PAGE_SIZE) * spp->wordlines_per_blk;  
+    spp->pgs_per_rdpage = FLASH_PAGE_SIZE / (spp->pgsz);
+    spp->rdpages_per_blk = (WORDLINE_SIZE / FLASH_PAGE_SIZE) * spp->wrpages_per_blk;  
    
-    spp->chunks_per_blk = spp->chunks_per_wordline * spp->wordlines_per_blk;
+    spp->pgs_per_blk = spp->pgs_per_wrpage * spp->wrpages_per_blk;
 
     spp->write_unit_size = WRITE_UNIT_SIZE;
 
@@ -124,16 +124,16 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
     spp->pcie_bandwidth = PCIE_BANDWIDTH; 
 
     /* calculated values */
-    spp->secs_per_blk = spp->secs_per_chunk * spp->chunks_per_blk;
+    spp->secs_per_blk = spp->secs_per_pg * spp->pgs_per_blk;
     spp->secs_per_pl = spp->secs_per_blk * spp->blks_per_pl;
     spp->secs_per_lun = spp->secs_per_pl * spp->pls_per_lun;
     spp->secs_per_ch = spp->secs_per_lun * spp->luns_per_ch;
     spp->tt_secs = spp->secs_per_ch * spp->nchs;
 
-    spp->chunks_per_pl = spp->chunks_per_blk * spp->blks_per_pl;
-    spp->chunks_per_lun = spp->chunks_per_pl * spp->pls_per_lun;
-    spp->chunks_per_ch = spp->chunks_per_lun * spp->luns_per_ch;
-    spp->tt_chunks = spp->chunks_per_ch * spp->nchs;
+    spp->pgs_per_pl = spp->pgs_per_blk * spp->blks_per_pl;
+    spp->pgs_per_lun = spp->pgs_per_pl * spp->pls_per_lun;
+    spp->pgs_per_ch = spp->pgs_per_lun * spp->luns_per_ch;
+    spp->tt_pgs = spp->pgs_per_ch * spp->nchs;
 
     spp->blks_per_lun = spp->blks_per_pl * spp->pls_per_lun;
     spp->blks_per_ch = spp->blks_per_lun * spp->luns_per_ch;
@@ -146,8 +146,8 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
 
     /* line is special, put it at the end */
     spp->blks_per_line = spp->tt_luns; /* TODO: to fix under multiplanes */
-    spp->chunks_per_line = spp->blks_per_line * spp->chunks_per_blk;
-    spp->secs_per_line = spp->chunks_per_line * spp->secs_per_chunk;
+    spp->pgs_per_line = spp->blks_per_line * spp->pgs_per_blk;
+    spp->secs_per_line = spp->pgs_per_line * spp->secs_per_pg;
     spp->tt_lines = spp->blks_per_lun; /* TODO: to fix under multiplanes */ // lun size is super-block(line) size
 
     //spp->gc_thres_pcent = 0.75;
@@ -162,31 +162,31 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
     spp->write_buffer_size = WRITE_BUFFER_SIZE;
     check_params(spp);
 
-    total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->chunks_per_blk * spp->secsz * spp->secs_per_chunk;
-    blk_size = spp->chunks_per_blk *  spp->secsz * spp->secs_per_chunk;
-    NVMEV_INFO("Total Capacity=%lu(GB), %lu(MB) Block Size=%lu(Byte) luns=%lu lines=%lu chunks_per_line=%lu chunks_per_blk=%u gc_thresh_line=%d spp->gc_thres_lines_high=%d n", 
+    total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->pgs_per_blk * spp->secsz * spp->secs_per_pg;
+    blk_size = spp->pgs_per_blk *  spp->secsz * spp->secs_per_pg;
+    NVMEV_INFO("Total Capacity=%lu(GB), %lu(MB) Block Size=%lu(Byte) luns=%lu lines=%lu pgs_per_line=%lu pgs_per_blk=%u gc_thresh_line=%d spp->gc_thres_lines_high=%d n", 
                     BYTE_TO_GB(total_size), BYTE_TO_MB(total_size), blk_size, 
-                    spp->tt_luns, spp->tt_lines, spp->chunks_per_line, spp->chunks_per_blk, spp->gc_thres_lines, spp->gc_thres_lines_high);
+                    spp->tt_luns, spp->tt_lines, spp->pgs_per_line, spp->pgs_per_blk, spp->gc_thres_lines, spp->gc_thres_lines_high);
 }
 
-static void ssd_init_nand_page(struct nand_chunk *chunk, struct ssdparams *spp)
+static void ssd_init_nand_page(struct nand_page *pg, struct ssdparams *spp)
 {
     int i;
-    chunk->nsecs = spp->secs_per_chunk;
-    chunk->sec = kmalloc(sizeof(nand_sec_status_t) * chunk->nsecs, GFP_KERNEL);
-    for (i = 0; i < chunk->nsecs; i++) {
-        chunk->sec[i] = SEC_FREE;
+    pg->nsecs = spp->secs_per_pg;
+    pg->sec = kmalloc(sizeof(nand_sec_status_t) * pg->nsecs, GFP_KERNEL);
+    for (i = 0; i < pg->nsecs; i++) {
+        pg->sec[i] = SEC_FREE;
     }
-    chunk->status = CHUNK_FREE;
+    pg->status = PG_FREE;
 }
 
 static void ssd_init_nand_blk(struct nand_block *blk, struct ssdparams *spp)
 {
     int i;
-    blk->nchunks = spp->chunks_per_blk;
-    blk->chunk = kmalloc(sizeof(struct nand_chunk) * blk->nchunks, GFP_KERNEL);
-    for (i = 0; i < blk->nchunks; i++) {
-        ssd_init_nand_page(&blk->chunk[i], spp);
+    blk->npgs = spp->pgs_per_blk;
+    blk->pg = kmalloc(sizeof(struct nand_page) * blk->npgs, GFP_KERNEL);
+    for (i = 0; i < blk->npgs; i++) {
+        ssd_init_nand_page(&blk->pg[i], spp);
     }
     blk->ipc = 0;
     blk->vpc = 0;
@@ -280,7 +280,7 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
     struct nand_lun *lun;
     struct ssd_channel * ch;
     NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu command %d ppa 0x%llx\n",
-                            ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.chunk, c, ppa->ppa);
+                            ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg, c, ppa->ppa);
 	
     if (ppa->ppa == UNMAPPED_PPA) {
 		NVMEV_INFO("Error ppa 0x%llx\n", ppa->ppa);
@@ -324,7 +324,7 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
 
     case NAND_WRITE:
         NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu\n",
-                            ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.chunk);
+                            ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg);
 
         /* write: transfer data through channel first */
         chnl_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
