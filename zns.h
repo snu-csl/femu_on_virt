@@ -28,14 +28,13 @@ struct znsparams {
 };
 
 struct zns_ssd {
-    /* Don't touch. It should be same location of struct ssd 
-       It will be cleaned */
-    struct ssdparams sp;
-    struct ssd_channel *ch;
-    struct ssd_pcie *pcie;
-    struct buffer * write_buffer;
-    unsigned int cpu_nr_dispatcher;
-    //////////////////////
+     union {
+        struct ssd ssd;
+
+        struct {
+            STRUCT_SSD_ENTRY
+        };
+    };
 
     struct znsparams zp;
 

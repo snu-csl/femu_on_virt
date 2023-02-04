@@ -48,11 +48,14 @@ struct write_flow_control {
 };
 
 struct conv_ssd {
-    struct ssdparams sp;
-    struct ssd_channel *ch;
-    struct ssd_pcie *pcie;
-    struct buffer *write_buffer;
-    unsigned int cpu_nr_dispatcher;
+
+    union {
+        struct ssd ssd;
+
+        struct {
+            STRUCT_SSD_ENTRY
+        };
+    };
 
     struct ppa *maptbl; /* page level mapping table */
     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */

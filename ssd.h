@@ -212,12 +212,14 @@ struct ssdparams {
     int pba_pcent;    /* (physical space / logical space) * 100*/    
 };
 
+#define STRUCT_SSD_ENTRY  struct ssdparams sp; \
+                          struct ssd_channel *ch; \
+                          struct ssd_pcie *pcie; \
+                          struct buffer *write_buffer; \
+                          unsigned int cpu_nr_dispatcher; \
+
 struct ssd {
-    struct ssdparams sp;
-    struct ssd_channel *ch;
-    struct ssd_pcie *pcie;
-    struct buffer *write_buffer;
-    unsigned int cpu_nr_dispatcher;
+    STRUCT_SSD_ENTRY
 };
 
 static inline struct ssd_channel *get_ch(struct ssd *ssd, struct ppa *ppa)

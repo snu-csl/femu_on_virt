@@ -150,7 +150,7 @@
 #define OP_AREA_PERCENT      (0.07)
 
 //Not used
-#define ZONE_SIZE       (0) //byte
+#define ZONE_SIZE       (1) //byte
 #define DIES_PER_ZONE   (0)
 
 #define MAX_ZRWA_ZONES (0) /* 0 : Not support ZRWA */
