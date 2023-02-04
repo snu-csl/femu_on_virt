@@ -69,17 +69,23 @@ static void check_params(struct ssdparams *spp)
     //ftl_assert(is_power_of_2(spp->nchs));
 }
 
-void ssd_init_params(struct ssdparams *spp, __u32 nchs, __u64 capacity)
+void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
 {
-    unsigned long blk_size, total_size;
+    __u64 blk_size, total_size;
 
     spp->secsz = 512;
     spp->secs_per_chunk = 8;
-    spp->chunksz = spp->secsz * spp->secs_per_chunk;  
-    spp->nchs = nchs;
+    spp->chunksz = spp->secsz * spp->secs_per_chunk;
+
+    spp->nchs = NAND_CHANNELS;
     spp->pls_per_lun = PLNS_PER_LUN;
     spp->luns_per_ch = LUNS_PER_NAND_CH;
-    
+
+    /* partitioning SSD by dividing channel*/
+    NVMEV_ASSERT((spp->nchs % nparts) == 0);
+    spp->nchs /= nparts;
+    capacity /= nparts; 
+
     if (BLKS_PER_PLN > 0) {
         /* pages_per_blk depends on capacity */
         spp->blks_per_pl = BLKS_PER_PLN; 
@@ -153,6 +159,7 @@ void ssd_init_params(struct ssdparams *spp, __u32 nchs, __u64 capacity)
     spp->op_area_pcent = OP_AREA_PERCENT;
     spp->pba_pcent = (int)((1 + spp->op_area_pcent) * 100);
 
+    spp->write_buffer_size = WRITE_BUFFER_SIZE;
     check_params(spp);
 
     total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->chunks_per_blk * spp->secsz * spp->secs_per_chunk;
@@ -229,6 +236,30 @@ void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
 {
     pcie->perf_model = kmalloc(sizeof(struct channel_model), GFP_KERNEL);
     chmodel_init(pcie->perf_model, spp->pcie_bandwidth);
+}
+
+void ssd_init(struct ssd * ssd, struct ssdparams *spp, __u32 cpu_nr_dispatcher)
+{
+    __u32 i;
+    /*copy spp*/
+    ssd->sp = *spp;
+
+        /* initialize conv_ssd internal layout architecture */
+    ssd->ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320
+    for (i = 0; i < spp->nchs; i++) {
+        ssd_init_ch(&(ssd->ch[i]), spp);
+    }
+
+    /* Set CPU number to use same cpuclock as io.c */
+    ssd->cpu_nr_dispatcher = cpu_nr_dispatcher;
+
+    ssd->pcie = (struct ssd_pcie *)kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
+    ssd_init_pcie(ssd->pcie, spp);
+
+    ssd->write_buffer = (struct buffer *) kmalloc(sizeof(struct buffer), GFP_ATOMIC); 
+    buffer_init(ssd->write_buffer, spp->write_buffer_size);
+
+    return;
 }
 
 inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length) 
@@ -340,7 +371,7 @@ void adjust_ftl_latency(int target, int lat)
     int i;
 
     for (i = 0; i < SSD_PARTITIONS; i++) {
-        spp = &(g_conv_ssd[i].sp); 
+        spp = &(g_conv_ssds[i].sp); 
         printk("Before latency: %d %d %d, change to %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat, lat);
         switch (target) {
             case NAND_READ:

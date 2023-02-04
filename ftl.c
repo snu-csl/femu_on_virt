@@ -4,7 +4,7 @@
 #include "nvmev.h"
 #include "ftl.h"
 
-struct conv_ssd g_conv_ssd[SSD_PARTITIONS];
+struct conv_ssd *g_conv_ssds = NULL;
 
 static inline bool last_chunk_in_wordline(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
@@ -21,9 +21,9 @@ static inline bool should_gc_high(struct conv_ssd *conv_ssd)
     return (conv_ssd->lm.free_line_cnt <= conv_ssd->sp.gc_thres_lines_high);
 }
 
-static inline struct conv_ssd * conv_ssd_from_lpn(uint64_t lpn)
+static inline struct conv_ssd * conv_ssd_instance(uint32_t id)
 {
-    return &g_conv_ssd[LPN_TO_SSD_ID(lpn)];
+    return &g_conv_ssds[id % SSD_PARTITIONS];
 }
 
 static inline struct ppa get_maptbl_ent(struct conv_ssd *conv_ssd, uint64_t lpn)
@@ -213,7 +213,7 @@ static void ssd_advance_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_typ
         NVMEV_ASSERT(0);
 
     NVMEV_DEBUG("current wpp: ch:%d, lun:%d, pl:%d, blk:%d, pg:%d\n", 
-        wpp->ch, wpp->lun, wpp->pl, wpp->blk, wpp-->chunk);
+        wpp->ch, wpp->lun, wpp->pl, wpp->blk, wpp->chunk);
 
     check_addr(wpp->chunk, spp->chunks_per_blk);
     wpp->chunk++;
@@ -345,48 +345,39 @@ static void ssd_init_ftl(struct conv_ssd *conv_ssd)
     return;
 }
 
-unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size)
+__u64 conv_ssd_init(__u64 capacity, __u32 cpu_nr_dispatcher)
 {
-    struct ssdparams *spp;
-    int i, j;
-    unsigned long long logical_space, partioned_space;
-   
-    struct ssd_pcie * pcie = kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
-    struct buffer * write_buffer = (struct buffer *) kmalloc(sizeof(struct buffer), GFP_ATOMIC); 
-    struct conv_ssd * parted_ssd;
-    partioned_space = DIV_ROUND_UP(memmap_size, SSD_PARTITIONS);
-
-    for (i = 0; i < SSD_PARTITIONS; i++) { 
-
-        /* Set CPU number to use same cpuclock as io.c */
-        parted_ssd = &g_conv_ssd[i];
-        spp = &(parted_ssd->sp);
-       
-        ssd_init_params(spp, NCHS_PER_PARTITON, partioned_space);
-        
-         /* initialize conv_ssd internal layout architecture */
-        parted_ssd->ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320
-        for (j = 0; j < spp->nchs; j++) {
-            ssd_init_ch(&(parted_ssd->ch[j]), spp);
-        }
-
-        ssd_init_ftl(parted_ssd);
-
-        parted_ssd->cpu_nr_dispatcher = cpu_nr_dispatcher;
-
-        /* PCIe, Write buffer are shared by all instances*/
-        parted_ssd->pcie = pcie;
-        parted_ssd->write_buffer = write_buffer;
+    struct ssdparams spp;
+    struct conv_ssd * conv_ssds;
+    __u32 i;
+    __u64 logical_space;
+    const __u32 nparts =  SSD_PARTITIONS;
+    
+    ssd_init_params(&spp, capacity, nparts);
+    
+    conv_ssds = kmalloc(sizeof(struct conv_ssd) * nparts, GFP_KERNEL);
+    
+    for (i = 0; i < nparts; i++) { 
+        ssd_init(&conv_ssds[i].ssd, &spp, cpu_nr_dispatcher);
+        ssd_init_ftl(&conv_ssds[i]);
     }
 
-    spp = &(g_conv_ssd[0].sp); 
-    ssd_init_pcie(pcie, spp);
-    buffer_init(write_buffer, WRITE_BUFFER_SIZE);
+     /* PCIe, Write buffer are shared by all instances*/
+    for (i = 1; i < nparts; i++) {
+        kfree(conv_ssds[i].ssd.pcie);
+        kfree(conv_ssds[i].ssd.write_buffer);
 
-    logical_space = (unsigned long)((memmap_size * 100) / spp->pba_pcent);
+        conv_ssds[i].ssd.pcie = conv_ssds[0].ssd.pcie;
+        conv_ssds[i].ssd.write_buffer = conv_ssds[0].ssd.write_buffer;
+    }
 
-    NVMEV_INFO("FTL physical space: %ld, logical space: %lld (physical/logical * 100 = %d) cpu: %d\n", 
-                    memmap_size, logical_space, spp->pba_pcent, cpu_nr_dispatcher);
+    NVMEV_ASSERT(g_conv_ssds == NULL);
+    g_conv_ssds = conv_ssds; 
+
+    logical_space = (__u64)((capacity * 100) / spp.pba_pcent);
+    logical_space = logical_space - (logical_space % PAGE_SIZE);
+    NVMEV_INFO("FTL physical space: %lld, logical space: %lld (physical/logical * 100 = %d) cpu: %d\n", 
+                    capacity, logical_space, spp.pba_pcent, cpu_nr_dispatcher);
 
     return logical_space;
 }
@@ -737,7 +728,7 @@ void ssd_gc_bg(void) {
     struct conv_ssd *conv_ssd;
 
     for (i = 0; i < SSD_PARTITIONS; i++) {
-        conv_ssd = &g_conv_ssd[i];
+        conv_ssd = conv_ssd_instance(i);
 
         if (should_gc(conv_ssd)) {
 			NVMEV_DEBUG("NEED GC!\n");
@@ -768,7 +759,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
     struct nvme_command * cmd = req->cmd;
     uint64_t nsecs_start = req->nsecs_start;
     struct conv_ssd *conv_ssd;
-    struct ssdparams *spp = &(g_conv_ssd[0].sp);  
+    struct ssdparams *spp = &(conv_ssd_instance(0)->sp);  
     uint64_t lba = cmd->rw.slba;
     int nr_lba = (cmd->rw.length + 1);
     struct ppa cur_ppa;
@@ -797,7 +788,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
 
 
     for (i = 0; (i < SSD_PARTITIONS) && (start_lpn <= end_lpn); i++, start_lpn++) {
-        conv_ssd = conv_ssd_from_lpn(start_lpn);
+        conv_ssd = conv_ssd_instance(start_lpn);
         xfer_size = 0;
         prev_ppa = get_maptbl_ent(conv_ssd, LPN_TO_LOCAL_LPN(start_lpn));
         
@@ -851,8 +842,8 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     uint64_t nsecs_start = req->nsecs_start;
     uint64_t lba = cmd->rw.slba;
     struct conv_ssd *conv_ssd;
-    struct ssdparams *spp = &(g_conv_ssd[0].sp);
-    struct buffer * wbuffer = g_conv_ssd[0].write_buffer;
+    struct ssdparams *spp = &conv_ssd_instance(0)->sp;
+    struct buffer * wbuffer = conv_ssd_instance(0)->write_buffer;
 
     int nr_lba = (cmd->rw.length + 1);
     uint64_t start_lpn = lba / spp->secs_per_chunk;
@@ -879,7 +870,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     nsecs_latest = nsecs_start;
 	nsecs_latest += spp->fw_wr0_lat;
 	nsecs_latest += spp->fw_wr1_lat * (end_lpn - start_lpn + 1);
-    nsecs_latest = ssd_advance_pcie(&conv_ssd_from_lpn(start_lpn)->ssd, 
+    nsecs_latest = ssd_advance_pcie(&conv_ssd_instance(0)->ssd, 
                                         nsecs_latest, LBA_TO_BYTE(nr_lba));
     nsecs_xfer_completed = nsecs_latest;
 
@@ -889,7 +880,7 @@ bool ssd_write(struct nvme_request * req, struct nvme_result * ret)
     swr.interleave_pci_dma = false;
 
     for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
-        conv_ssd = conv_ssd_from_lpn(lpn);
+        conv_ssd = conv_ssd_instance(lpn);
         local_lpn = LPN_TO_LOCAL_LPN(lpn); 
         ppa = get_maptbl_ent(conv_ssd, local_lpn); // 현재 LPN에 대해 전에 이미 쓰인 PPA가 있는지 확인
         if (mapped_ppa(&ppa)) {
@@ -960,6 +951,8 @@ bool ssd_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
     struct nvme_command *cmd = req->cmd;
     size_t csi = NS_CSI(cmd->common.nsid - 1);
     NVMEV_ASSERT(csi == NVME_CSI_NVM);
+
+    //printk("%s csi=%d opcode=%d\n",__FUNCTION__, csi, cmd->common.opcode);
     switch(cmd->common.opcode) {
         case nvme_cmd_write:
             if (!ssd_write(req, ret))

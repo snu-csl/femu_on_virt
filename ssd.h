@@ -209,7 +209,9 @@ struct ssdparams {
 
     unsigned long tt_luns;      /* total # of LUNs in the SSD */
 
-    int pba_pcent;    /* (physical space / logical space) * 100*/    
+    int pba_pcent;    /* (physical space / logical space) * 100*/  
+
+    unsigned long long write_buffer_size;
 };
 
 #define STRUCT_SSD_ENTRY  struct ssdparams sp; \
@@ -253,7 +255,8 @@ static inline struct nand_chunk *get_pg(struct ssd *ssd, struct ppa *ppa)
 
 void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp);
 void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp);
-void ssd_init_params(struct ssdparams *spp, __u32 nchs, __u64 capacity);
+void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts);
+void ssd_init(struct ssd * ssd, struct ssdparams *spp, __u32 cpu_nr_dispatcher);
 
 void adjust_ftl_latency(int target, int lat);
 uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);

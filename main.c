@@ -541,7 +541,6 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 	int i;
 	
 	for (i = 0; i < NR_NAMESPACE; i++){
-		
 		if (NS_CAPACITY(i) == 0)
 			vdev->config.ns_size[i] = remaining_capacity; 
 		else
@@ -549,15 +548,13 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 		
 		remaining_capacity -= vdev->config.ns_size[i];
 		vdev->ns_mapped[i] = ns_addr;
-		memset(ns_addr, 0, 64*1024*1024);
 		ns_addr += vdev->config.ns_size[i];
 
 		if (NS_CSI(i) == NVME_CSI_NVM) {
-			unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, vdev->config.ns_size[i]);
-			vdev->config.ns_size[i] = tmp_size - (tmp_size % PAGE_SIZE);
+			vdev->config.ns_size[i] = conv_ssd_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher);
 		}
 		else if (NS_CSI(i) == NVME_CSI_ZNS) {
-			zns_init(vdev->config.cpu_nr_dispatcher, vdev->ns_mapped[i], vdev->config.ns_size[i], i); 
+			zns_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher, vdev->ns_mapped[i], i); 
 		}
 		else
 			NVMEV_ASSERT(0);

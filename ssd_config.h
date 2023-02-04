@@ -226,7 +226,6 @@
 #define NS_CAPACITY_1 (0)
 #endif // BASE_SSD == SAMSUNG_970_PRO
 
-#define NCHS_PER_PARTITON  (NAND_CHANNELS/SSD_PARTITIONS)
 #define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_PARTITIONS)     
 #define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_PARTITION_BITS)
 #endif

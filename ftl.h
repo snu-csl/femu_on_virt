@@ -65,9 +65,7 @@ struct conv_ssd {
     struct write_flow_control wfc;
 };
 
-extern struct conv_ssd g_conv_ssd[SSD_PARTITIONS];
-
-unsigned long ssd_init(unsigned int cpu_nr_dispatcher, unsigned long memmap_size);
+__u64 conv_ssd_init(__u64 capacity, __u32 cpu_nr_dispatcher);
 
 bool ssd_read(struct nvme_request * req, struct nvme_result * ret);
 bool ssd_write(struct nvme_request * req, struct nvme_result * ret);

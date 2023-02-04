@@ -491,8 +491,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	if (csi == NVME_CSI_NVM) {
 		if (!ssd_proc_nvme_io_cmd(&req, &ret))
 			return false; 
-	}
-	else if (csi == NVME_CSI_ZNS) {
+	} else if (csi == NVME_CSI_ZNS) {
 		if (!zns_proc_nvme_io_cmd(&req, &ret))
 			return false; 
 	}

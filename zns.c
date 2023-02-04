@@ -7,7 +7,7 @@
 
 #if SUPPORT_ZNS
 
-struct zns_ssd g_zns_ssd;
+struct zns_ssd *g_zns_ssd = NULL;
 
 static void zns_init_descriptor(struct zns_ssd *zns_ssd)
 {
@@ -72,36 +72,31 @@ static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, __u64 
 	NVMEV_INFO("zone_size=%d(KB), # zones=%d # die/zone=%d \n", zpp->zone_size, zpp->nr_zones, zpp->dies_per_zone);
 }
 
-void zns_init(__u32 cpu_nr_dispatcher, void * storage_base_addr, __u64 capacity, __u32 namespace)
+void zns_init(__u64 capacity, __u32 cpu_nr_dispatcher, void * storage_base_addr, __u32 namespace)
 {
-	struct zns_ssd *zns_ssd = zns_ssd_instance();
-	struct ssdparams *spp = &(zns_ssd->sp);
-	struct znsparams *zpp = &(zns_ssd->zp);
-	int i;
-	
-	ssd_init_params(spp, NAND_CHANNELS, capacity);
-	zns_init_params(zpp, spp, capacity);
-	
-	zns_ssd->pcie = kmalloc(sizeof(struct ssd_pcie), GFP_KERNEL);
-	ssd_init_pcie(zns_ssd->pcie, spp);
+	struct zns_ssd *zns_ssd;
+	struct ssdparams spp;
 
-	/* initialize ssd internal layout architecture */
-    zns_ssd->ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320
-    for (i = 0; i < spp->nchs; i++) {
-        ssd_init_ch(&(zns_ssd->ch[i]), spp);
-    }
+	const __u32 nparts = 1; /* Not support multi partitions for zns*/
+
+	zns_ssd = kmalloc(sizeof(struct zns_ssd) * nparts, GFP_KERNEL);
+
+	ssd_init_params(&spp, capacity, nparts);
+	zns_init_params(&zns_ssd->zp, &spp, capacity);
 	
-	zns_ssd->write_buffer = (struct buffer *) kmalloc(sizeof(struct buffer), GFP_ATOMIC);
-	buffer_init(zns_ssd->write_buffer, WRITE_BUFFER_SIZE);
+	ssd_init(&zns_ssd->ssd, &spp, cpu_nr_dispatcher);
 
 	zns_ssd->ns = namespace;
 	zns_ssd->storage_base_addr = storage_base_addr;
 	
 	/* It should be 4KB aligned, according to lpn size */
-	NVMEV_ASSERT((zns_ssd->zp.zone_size % spp->chunksz) == 0); 
+	NVMEV_ASSERT((zns_ssd->zp.zone_size % spp.chunksz) == 0); 
 	
 	zns_init_descriptor(zns_ssd);
 	zns_init_resource(zns_ssd);
+
+	NVMEV_ASSERT(g_zns_ssd == NULL);
+	g_zns_ssd = zns_ssd;
 }
 
 void zns_exit(void)

@@ -5,7 +5,7 @@
 #include "nvmev.h"
 #include "nvme_zns.h"
 
-extern struct zns_ssd g_zns_ssd;
+extern struct zns_ssd * g_zns_ssd;
 
 #define NVMEV_ZNS_DEBUG(string, args...) //printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
 
@@ -112,7 +112,7 @@ static inline __u32 die_to_lun(struct zns_ssd *zns_ssd, __u32 die) {
 }
 
 static inline struct zns_ssd * zns_ssd_instance(void) {
-    return &(g_zns_ssd);
+    return g_zns_ssd;
 }
 
 /* zns external interface */
@@ -122,6 +122,6 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret);
 bool zns_read(struct nvme_request * req, struct nvme_result * ret);
 bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
 
-void zns_init(__u32 cpu_nr_dispatcher, void * storage_base_addr, __u64 capacity, __u32 namespace);
+void zns_init(__u64 capacity, __u32 cpu_nr_dispatcher, void * storage_base_addr, __u32 namespace);
 void zns_exit(void);
 #endif
