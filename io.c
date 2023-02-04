@@ -25,8 +25,6 @@
 #include "zns.h"
 #endif
 
-#include "channel.h"
-
 #undef PERF_DEBUG
 
 #define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))

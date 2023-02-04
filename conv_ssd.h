@@ -67,9 +67,9 @@ struct conv_ssd {
 
 __u64 conv_init(__u64 capacity, __u32 cpu_nr_dispatcher);
 
+bool conv_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
 bool conv_read(struct nvme_request * req, struct nvme_result * ret);
 bool conv_write(struct nvme_request * req, struct nvme_result * ret);
-bool conv_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
 void conv_flush(struct nvme_request * req, struct nvme_result * ret);
 void conv_gc_bg(void);
 void conv_gc(struct conv_ssd *ssd);

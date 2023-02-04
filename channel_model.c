@@ -4,7 +4,7 @@
 #include <linux/sched/clock.h>
 
 #include "nvmev.h"
-#include "channel.h"
+#include "channel_model.h"
 
 extern struct nvmev_dev *vdev;
 

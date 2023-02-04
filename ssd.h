@@ -5,7 +5,7 @@
 #include "queue.h"
 #include "pqueue.h"
 #include "ssd_config.h"
-#include "channel.h"
+#include "channel_model.h"
 /*
     Default malloc size
     Channel = 40 * 8 = 320

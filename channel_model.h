@@ -1,5 +1,5 @@
-#ifndef _CHANNEL_H
-#define _CHANNEL_H
+#ifndef _CHANNEL_MODEL_H
+#define _CHANNEL_MODEL_H
 
 /* Macros for channel model */
 #define NR_CREDIT_ENTRIES 		(1024*96)
