@@ -87,7 +87,7 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
     capacity /= nparts; 
 
     if (BLKS_PER_PLN > 0) {
-        /* rdpages_per_blk depends on capacity */
+        /* flashpgs_per_blk depends on capacity */
         spp->blks_per_pl = BLKS_PER_PLN; 
         blk_size = DIV_ROUND_UP(capacity, spp->blks_per_pl * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     } else {
@@ -96,13 +96,13 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
         spp->blks_per_pl = DIV_ROUND_UP(capacity, blk_size * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     }
 
-    spp->pgs_per_wrpage = WORDLINE_SIZE / (spp->pgsz);
-    spp->wrpages_per_blk = DIV_ROUND_UP(blk_size, WORDLINE_SIZE); 
+    spp->pgs_per_oneshotpg = WORDLINE_SIZE / (spp->pgsz);
+    spp->oneshotpgs_per_blk = DIV_ROUND_UP(blk_size, WORDLINE_SIZE); 
 
-    spp->pgs_per_rdpage = FLASH_PAGE_SIZE / (spp->pgsz);
-    spp->rdpages_per_blk = (WORDLINE_SIZE / FLASH_PAGE_SIZE) * spp->wrpages_per_blk;  
+    spp->pgs_per_flashpg = FLASH_PAGE_SIZE / (spp->pgsz);
+    spp->flashpgs_per_blk = (WORDLINE_SIZE / FLASH_PAGE_SIZE) * spp->oneshotpgs_per_blk;  
    
-    spp->pgs_per_blk = spp->pgs_per_wrpage * spp->wrpages_per_blk;
+    spp->pgs_per_blk = spp->pgs_per_oneshotpg * spp->oneshotpgs_per_blk;
 
     spp->write_unit_size = WRITE_UNIT_SIZE;
 

@@ -134,8 +134,8 @@ struct buffer {
 
 /*
 pg (page): Mapping unit (4KB)
-rdpage (read page) : Nand sensing unit , tR 
-wrpage (write page) : Nand program unit, tPROG, (eg. rdpage * 3 (TLC))
+flashpg (flash page) : Nand sensing unit , tR 
+oneshotpg (oneshot page) : Nand program unit, tPROG, (eg. flashpg * 3 (TLC))
 blk (block): Nand erase unit
 lun (die) : Nand operation unit
 ch (channel) : Nand <-> SSD controller data transfer unit
@@ -144,11 +144,11 @@ struct ssdparams {
     int secsz;        /* sector size in bytes */
     int secs_per_pg;  /* # of sectors per page */
     int pgsz;
-    int pgs_per_rdpage; /* # of pgs per flash page */
-    int rdpages_per_blk; /* # of flash pages per block */
-    int pgs_per_wrpage; /* # of pgs per oneshot program page */
-    int wrpages_per_blk; /* # of pgm page pages per block */
-    int pgs_per_blk;  /* # of NAND pages per block */
+    int pgs_per_flashpg; /* # of pgs per flash page */
+    int flashpgs_per_blk; /* # of flash pages per block */
+    int pgs_per_oneshotpg; /* # of pgs per oneshot page */
+    int oneshotpgs_per_blk; /* # of oneshot pages per block */
+    int pgs_per_blk;  /* # of pages per block */
     int blks_per_pl;  /* # of blocks per plane */
     int pls_per_lun;  /* # of planes per LUN (Die) */
     int luns_per_ch;  /* # of LUNs per channel */

@@ -8,7 +8,7 @@ struct conv_ssd *g_conv_ssds = NULL;
 
 static inline bool last_pg_in_wordline(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
-    return (ppa->g.pg % conv_ssd->sp.pgs_per_wrpage)== (conv_ssd->sp.pgs_per_wrpage - 1);
+    return (ppa->g.pg % conv_ssd->sp.pgs_per_oneshotpg)== (conv_ssd->sp.pgs_per_oneshotpg - 1);
 }
 
 bool should_gc(struct conv_ssd *conv_ssd)
@@ -217,8 +217,8 @@ static void advance_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
 
     check_addr(wpp->pg, spp->pgs_per_blk);
     wpp->pg++;
-    if ((wpp->pg % spp->pgs_per_wrpage) == 0) {
-        wpp->pg -= spp->pgs_per_wrpage;
+    if ((wpp->pg % spp->pgs_per_oneshotpg) == 0) {
+        wpp->pg -= spp->pgs_per_oneshotpg;
             check_addr(wpp->ch, spp->nchs);
             wpp->ch++;
             if (wpp->ch == spp->nchs) {
@@ -229,7 +229,7 @@ static void advance_write_pointer(struct conv_ssd *conv_ssd, uint32_t io_type)
                 if (wpp->lun == spp->luns_per_ch) {
                     wpp->lun = 0;
                     /* go to next wordline in the block */
-                    wpp->pg += spp->pgs_per_wrpage;
+                    wpp->pg += spp->pgs_per_oneshotpg;
                     if (wpp->pg == spp->pgs_per_blk) {
                         wpp->pg = 0;
                         /* move current line to {victim,full} line list */
@@ -548,7 +548,7 @@ static uint64_t gc_write_page(struct conv_ssd *conv_ssd, struct ppa *old_ppa)
 
         if (last_pg_in_wordline(conv_ssd, &new_ppa)) {
             gcw.cmd = NAND_WRITE;
-            gcw.xfer_size = spp->pgsz * conv_ssd->sp.pgs_per_wrpage;
+            gcw.xfer_size = spp->pgsz * conv_ssd->sp.pgs_per_oneshotpg;
         }
 
         ssd_advance_status(&conv_ssd->ssd, &new_ppa, &gcw);
@@ -613,7 +613,7 @@ static void clean_one_block(struct conv_ssd *conv_ssd, struct ppa *ppa)
 }
 
 /* here ppa identifies the block we want to clean */
-static void clean_one_page(struct conv_ssd *conv_ssd, struct ppa *ppa)
+static void clean_one_flashpg(struct conv_ssd *conv_ssd, struct ppa *ppa)
 {
     struct ssdparams *spp = &conv_ssd->sp;
     struct nand_page *pg_iter = NULL;
@@ -621,7 +621,7 @@ static void clean_one_page(struct conv_ssd *conv_ssd, struct ppa *ppa)
     uint64_t completed_time = 0;
     struct ppa ppa_copy = *ppa;
 
-    for (i = 0; i < spp->pgs_per_rdpage; i++) {
+    for (i = 0; i < spp->pgs_per_flashpg; i++) {
         pg_iter = get_pg(&conv_ssd->ssd, &ppa_copy);
         /* there shouldn't be any free page in victim blocks */
         NVMEV_ASSERT(pg_iter->status != PG_FREE);
@@ -644,7 +644,7 @@ static void clean_one_page(struct conv_ssd *conv_ssd, struct ppa *ppa)
             completed_time = ssd_advance_status(&conv_ssd->ssd, &ppa_copy, &gcr);
         }
 
-        for (i = 0; i < spp->pgs_per_rdpage; i++) {
+        for (i = 0; i < spp->pgs_per_flashpg; i++) {
             pg_iter = get_pg(&conv_ssd->ssd, &ppa_copy);
 
             /* there shouldn't be any free page in victim blocks */
@@ -674,7 +674,7 @@ int do_gc(struct conv_ssd *conv_ssd, bool force)
     struct ssdparams *spp = &(conv_ssd->sp);
     struct nand_lun *lunp;
     struct ppa ppa;
-    int ch, lun, page;
+    int ch, lun, flashpg;
 
     victim_line = select_victim_line(conv_ssd, force);
     if (!victim_line) {
@@ -689,17 +689,17 @@ int do_gc(struct conv_ssd *conv_ssd, bool force)
     conv_ssd->wfc.credits_to_refill = victim_line->ipc;
 
     /* copy back valid data */
-    for (page = 0; page < spp->rdpages_per_blk; page++) {
-        ppa.g.pg = page * spp->pgs_per_rdpage; 
+    for (flashpg = 0; flashpg < spp->flashpgs_per_blk; flashpg++) {
+        ppa.g.pg = flashpg * spp->pgs_per_flashpg; 
         for (ch = 0; ch < spp->nchs; ch++) {
             for (lun = 0; lun < spp->luns_per_ch; lun++) {
                 ppa.g.ch = ch;
                 ppa.g.lun = lun;
                 ppa.g.pl = 0;
                 lunp = get_lun(&conv_ssd->ssd, &ppa);
-                clean_one_page(conv_ssd, &ppa);
+                clean_one_flashpg(conv_ssd, &ppa);
 
-                if (page == (spp->rdpages_per_blk - 1)){
+                if (flashpg == (spp->flashpgs_per_blk - 1)){
                     mark_block_free(conv_ssd, &ppa);
 
                     if (spp->enable_gc_delay) {
@@ -745,10 +745,10 @@ void conv_gc(struct conv_ssd *conv_ssd) {
     }
 }
 
-bool is_same_page(struct conv_ssd * conv_ssd, struct ppa ppa1, struct ppa ppa2) 
+bool is_same_flash_page(struct conv_ssd * conv_ssd, struct ppa ppa1, struct ppa ppa2) 
 {   
-    uint32_t ppa1_page = ppa1.g.pg / conv_ssd->sp.pgs_per_rdpage;
-    uint32_t ppa2_page = ppa2.g.pg / conv_ssd->sp.pgs_per_rdpage;
+    uint32_t ppa1_page = ppa1.g.pg / conv_ssd->sp.pgs_per_flashpg;
+    uint32_t ppa2_page = ppa2.g.pg / conv_ssd->sp.pgs_per_flashpg;
     
     return (ppa1.h.blk_in_ssd == ppa2.h.blk_in_ssd) &&
            (ppa1_page == ppa2_page);
@@ -807,7 +807,7 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
             }
 
             // aggregate read io in same flash page
-            if (mapped_ppa(&prev_ppa) && is_same_page(conv_ssd, cur_ppa, prev_ppa)) {
+            if (mapped_ppa(&prev_ppa) && is_same_flash_page(conv_ssd, cur_ppa, prev_ppa)) {
                 xfer_size += spp->pgsz;
                 continue;
             }
@@ -905,12 +905,12 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
 
         /* Aggregate write io in flash page */
         if (last_pg_in_wordline(conv_ssd, &ppa)) {
-            swr.xfer_size = spp->pgsz * spp->pgs_per_wrpage;
+            swr.xfer_size = spp->pgsz * spp->pgs_per_oneshotpg;
 
             nsecs_completed = ssd_advance_status(&conv_ssd->ssd, &ppa, &swr);
             nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
-            enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuffer, spp->pgs_per_wrpage * spp->pgsz);
+            enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuffer, spp->pgs_per_oneshotpg * spp->pgsz);
         } 
         
         consume_write_credit(conv_ssd);
