@@ -65,13 +65,13 @@ struct conv_ssd {
     struct write_flow_control wfc;
 };
 
-__u64 conv_ssd_init(__u64 capacity, __u32 cpu_nr_dispatcher);
+__u64 conv_init(__u64 capacity, __u32 cpu_nr_dispatcher);
 
-bool ssd_read(struct nvme_request * req, struct nvme_result * ret);
-bool ssd_write(struct nvme_request * req, struct nvme_result * ret);
-bool ssd_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
-void ssd_flush(struct nvme_request * req, struct nvme_result * ret);
-void ssd_gc_bg(void);
-void ssd_gc(struct conv_ssd *ssd);
+bool conv_read(struct nvme_request * req, struct nvme_result * ret);
+bool conv_write(struct nvme_request * req, struct nvme_result * ret);
+bool conv_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
+void conv_flush(struct nvme_request * req, struct nvme_result * ret);
+void conv_gc_bg(void);
+void conv_gc(struct conv_ssd *ssd);
 
 #endif

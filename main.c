@@ -550,7 +550,7 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 		ns_addr += vdev->config.ns_size[i];
 
 		if (NS_CSI(i) == NVME_CSI_NVM) {
-			vdev->config.ns_size[i] = conv_ssd_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher);
+			vdev->config.ns_size[i] = conv_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher);
 		}
 		else if (NS_CSI(i) == NVME_CSI_ZNS) {
 			zns_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher, vdev->ns_mapped[i], i); 

@@ -51,7 +51,7 @@ static void __check_gc_and_run(int sqid, int sq_entry)
 
 	/* clean one line if needed (in the background) */
 	if (cmd->common.opcode == nvme_cmd_write) {
-		ssd_gc_bg();
+		conv_gc_bg();
 	}
 }
 
@@ -489,7 +489,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 #endif
 
 	if (csi == NVME_CSI_NVM) {
-		if (!ssd_proc_nvme_io_cmd(&req, &ret))
+		if (!conv_proc_nvme_io_cmd(&req, &ret))
 			return false; 
 	} else if (csi == NVME_CSI_ZNS) {
 		if (!zns_proc_nvme_io_cmd(&req, &ret))
