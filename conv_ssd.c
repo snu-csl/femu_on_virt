@@ -786,10 +786,10 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
         return false;
     }
 
-    if (LBA_TO_BYTE(nr_lba) <= spp->fw_rd0_size)
-        srd.stime += spp->fw_rd0_lat;
+    if (LBA_TO_BYTE(nr_lba) <= (KB(4) * SSD_PARTITIONS))
+        srd.stime += spp->fw_4kb_rd_lat;
     else
-        srd.stime += spp->fw_rd1_lat;
+        srd.stime += spp->fw_rd_lat;
 
 
     for (i = 0; (i < SSD_PARTITIONS) && (start_lpn <= end_lpn); i++, start_lpn++) {

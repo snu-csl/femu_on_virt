@@ -27,7 +27,7 @@ void chmodel_init(struct channel_model * ch, uint64_t bandwidth/*MB/s*/)
 	printk("[%s] %p bandwidth %llu max_credits %u tx_time %u\n",__FUNCTION__, ch, bandwidth, ch->max_credits, ch->xfer_lat);
 }
 
-uint64_t chmodel_request( struct channel_model * ch, uint64_t request_time, uint64_t length)
+uint64_t chmodel_request(struct channel_model * ch, uint64_t request_time, uint64_t length)
 {
 	uint64_t cur_time = __get_wallclock();
 	uint32_t pos, next_pos;

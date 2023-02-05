@@ -110,18 +110,23 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
     spp->pg_rd_lat = NAND_READ_LATENCY;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
     spp->blk_er_lat = NAND_ERASE_LATENCY;
-    spp->ch_xfer_lat = 0;
     spp->ch_max_xfer_size = CH_MAX_XFER_SIZE;
 
-    spp->fw_rd0_lat = FW_READ0_LATENCY;
-    spp->fw_rd1_lat = FW_READ1_LATENCY;
-    spp->fw_rd0_size = FW_READ0_SIZE;
-    spp->fw_wr0_lat = FW_PROG0_LATENCY;
-    spp->fw_wr1_lat = FW_PROG1_LATENCY;
-    spp->fw_4kb_xfer_lat = FW_4KB_XFER_LATENCY; 
+    spp->fw_4kb_rd_lat = FW_4KB_READ_LATENCY;
+    spp->fw_rd_lat = FW_READ_LATENCY;
+    spp->fw_ch_xfer_lat = FW_CH_XFER_LATENCY; 
+    spp->fw_wbuf_lat0 = FW_WBUF_LATENCY0;
+    spp->fw_wbuf_lat1 = FW_WBUF_LATENCY1;
 
     spp->ch_bandwidth = NAND_CHANNEL_BANDWIDTH; 
     spp->pcie_bandwidth = PCIE_BANDWIDTH; 
+    
+    spp->write_buffer_size = WRITE_BUFFER_SIZE;
+
+    spp->op_area_pcent = OP_AREA_PERCENT;
+
+    spp->gc_thres_lines_high = 2; /* Need only two lines.(host write, gc)*/
+    spp->enable_gc_delay = 1;
 
     /* calculated values */
     spp->secs_per_blk = spp->secs_per_pg * spp->pgs_per_blk;
@@ -150,16 +155,9 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
     spp->secs_per_line = spp->pgs_per_line * spp->secs_per_pg;
     spp->tt_lines = spp->blks_per_lun; /* TODO: to fix under multiplanes */ // lun size is super-block(line) size
 
-    //spp->gc_thres_pcent = 0.75;
-    //spp->gc_thres_lines = (int)((1 - spp->gc_thres_pcent) * spp->tt_lines);
-    //spp->gc_thres_pcent_high = 0.997; /* Mot used */
-    spp->gc_thres_lines_high = 2; /* Need only two lines.(host write, gc)*/
-    spp->enable_gc_delay = 1;
-
-    spp->op_area_pcent = OP_AREA_PERCENT;
     spp->pba_pcent = (int)((1 + spp->op_area_pcent) * 100);
 
-    spp->write_buffer_size = WRITE_BUFFER_SIZE;
+    
     check_params(spp);
 
     total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->pgs_per_blk * spp->secsz * spp->secs_per_pg;
@@ -229,7 +227,7 @@ void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp)
     chmodel_init(ch->perf_model, spp->ch_bandwidth);
 
     /* Add firmware overhead */
-    ch->perf_model->xfer_lat+=(spp->fw_4kb_xfer_lat *UNIT_XFER_SIZE/4096);
+    ch->perf_model->xfer_lat+=(spp->fw_ch_xfer_lat *UNIT_XFER_SIZE/KB(4));
 }
 
 void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
@@ -268,13 +266,20 @@ inline uint64_t ssd_advance_pcie(struct ssd *ssd, uint64_t request_time, uint64_
     return chmodel_request(perf_model, request_time, length);
 }
 
+/* Write buffer Performance Model
+  Y = A + (B * X)       
+  Y : latency (ns)
+  X : transfer size (4KB unit)
+  A : fw_wbuf_lat0 
+  B : fw_wbuf_lat1 + pcie dma transfer
+*/
 uint64_t ssd_advance_write_buffer(struct ssd *ssd, uint64_t request_time, uint64_t length) 
 {
     uint64_t nsecs_latest = request_time;
     struct ssdparams *spp = &ssd->sp;
 
-    nsecs_latest += spp->fw_wr0_lat;
-	nsecs_latest += spp->fw_wr1_lat * DIV_ROUND_UP(length, KB(4));
+    nsecs_latest += spp->fw_wbuf_lat0;
+	nsecs_latest += spp->fw_wbuf_lat1 * DIV_ROUND_UP(length, KB(4));
 
     nsecs_latest = ssd_advance_pcie(ssd, nsecs_latest, length);
 

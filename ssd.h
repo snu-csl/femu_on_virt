@@ -144,7 +144,7 @@ ch (channel) : Nand <-> SSD controller data transfer unit
 struct ssdparams {
     int secsz;        /* sector size in bytes */
     int secs_per_pg;  /* # of sectors per page */
-    int pgsz;
+    int pgsz;         /* mapping unit size in bytes*/
     int pgs_per_flashpg; /* # of pgs per flash page */
     int flashpgs_per_blk; /* # of flash pages per block */
     int pgs_per_oneshotpg; /* # of pgs per oneshot page */
@@ -159,24 +159,20 @@ struct ssdparams {
        Transfer size should be multiple of it */
     int write_unit_size;  
 
-    int pg_4kb_rd_lat;/* NAND page 4KB read latency in nanoseconds */
-    int pg_rd_lat;    /* NAND page read latency in nanoseconds */
-    int pg_wr_lat;    /* NAND page program latency in nanoseconds */
-    int blk_er_lat;   /* NAND block erase latency in nanoseconds */
-    int ch_xfer_lat;  /* channel transfer latency for one page in nanoseconds
-                       * this defines the channel bandwith
-                       */
+    int pg_4kb_rd_lat;/* NAND page 4KB read latency in nanoseconds. sensing time (half tR) */
+    int pg_rd_lat;    /* NAND page read latency in nanoseconds. sensing time (tR) */
+    int pg_wr_lat;    /* NAND page program latency in nanoseconds. pgm time (tPROG)*/
+    int blk_er_lat;   /* NAND block erase latency in nanoseconds. erase time (tERASE) */
     int ch_max_xfer_size;
 
-    int fw_rd0_lat;       /* Firmware overhead of read 0 of read in nanoseconds */
-    int fw_rd1_lat;       /* Firmware overhead of read 1 of read in nanoseconds */
-    int fw_rd0_size;
-    int fw_wr0_lat;       /* Firmware overhead of write in nanoseconds */
-    int fw_wr1_lat;       /* Firmware overhead of write in nanoseconds */
-    int fw_4kb_xfer_lat;     /* Firmware overhead of data transfer in nanoseconds */
+    int fw_4kb_rd_lat;    /* Firmware overhead of read 0 of read in nanoseconds */
+    int fw_rd_lat;        /* Firmware overhead of read 1 of read in nanoseconds */
+    int fw_wbuf_lat0;       /* Firmware overhead of write in nanoseconds */
+    int fw_wbuf_lat1;       /* Firmware overhead of write in nanoseconds */
+    int fw_ch_xfer_lat;      /* Firmware overhead of nand channel data transfer(4KB) in nanoseconds */
 
-    uint64_t ch_bandwidth; /*NAND CH Maximum bandwidth in MB/s*/
-    uint64_t pcie_bandwidth; /*PCIE Maximum bandwidth in MB/s*/
+    uint64_t ch_bandwidth; /*NAND CH Maximum bandwidth in MiB/s*/
+    uint64_t pcie_bandwidth; /*PCIE Maximum bandwidth in MiB/s*/
 
     double gc_thres_pcent;
     int gc_thres_lines;

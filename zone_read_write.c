@@ -415,7 +415,7 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 
 	// get delay from nand model
 	nsecs_latest = nsecs_start;
-	nsecs_latest += spp->fw_rd0_lat;
+	nsecs_latest += spp->fw_4kb_rd_lat;
 	swr.type = USER_IO;
 	swr.cmd = NAND_READ;
 	swr.stime = nsecs_latest;
