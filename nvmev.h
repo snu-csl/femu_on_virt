@@ -29,8 +29,8 @@
 #define SUPPORT_VIRTUAL_CAPACITY		0
 
 /*************************/
-static const __u32 ns_csi[] = {NS_CSI_0, NS_CSI_1};
-static const __u64 ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
+static const uint32_t ns_csi[] = {NS_CSI_0, NS_CSI_1};
+static const uint64_t ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
 
 #define NS_CSI(ns) (ns_csi[ns])
 #define NS_CAPACITY(ns) (ns_capacity[ns])
@@ -282,15 +282,15 @@ struct nvmev_dev {
 
 struct nvme_request {
     struct nvme_command * cmd;
-    __u32 sq_id;
-    __u64 nsecs_start;
+    uint32_t sq_id;
+    uint64_t nsecs_start;
 };
 
 struct nvme_result {
-    __u32 status;
-    __u64 nsecs_target;
-    __u32 early_completion;
-    __u64 wp; // only for zone append
+    uint32_t status;
+    uint64_t nsecs_target;
+    uint32_t early_completion;
+    uint64_t wp; // only for zone append
 };
 
 // VDEV Init, Final Function

@@ -5,33 +5,33 @@
 #if SUPPORT_ZNS 
 void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release);
 
-static inline  __u32 __nr_lbas_from_rw_cmd(struct nvme_rw_command * cmd)
+static inline  uint32_t __nr_lbas_from_rw_cmd(struct nvme_rw_command * cmd)
 {
 	return cmd->length + 1;
 }
 
-static inline __u64 __lba_to_lpn(struct zns_ssd *zns_ssd, __u64 lba) 
+static inline uint64_t __lba_to_lpn(struct zns_ssd *zns_ssd, uint64_t lba) 
 {
 	return lba / zns_ssd->sp.secs_per_pg;
 }
 
-static inline  __u64 __zone_end_lba(struct zns_ssd *zns_ssd, __u32 zid) 
+static inline  uint64_t __zone_end_lba(struct zns_ssd *zns_ssd, uint32_t zid) 
 {
 	struct zone_descriptor *zone_descs = &(zns_ssd->zone_descs[zid]);
 
 	return zone_descs->zslba + zone_descs->zone_capacity - 1; 
 }
 
-bool __check_boundary_error(struct zns_ssd *zns_ssd, __u64 slba, __u32 nr_lba)
+bool __check_boundary_error(struct zns_ssd *zns_ssd, uint64_t slba, uint32_t nr_lba)
 {	
 	return lba_to_zone(zns_ssd, slba) == lba_to_zone(zns_ssd, slba + nr_lba - 1);
 }
 
-void __increase_write_ptr(struct zns_ssd *zns_ssd, __u32 zid, __u32 nr_lba)
+void __increase_write_ptr(struct zns_ssd *zns_ssd, uint32_t zid, uint32_t nr_lba)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
-	__u64 cur_write_ptr = zone_descs[zid].wp;
-	__u64 zone_capacity = zone_descs[zid].zone_capacity;
+	uint64_t cur_write_ptr = zone_descs[zid].wp;
+	uint64_t zone_capacity = zone_descs[zid].zone_capacity;
 	
 	cur_write_ptr += nr_lba;
 	
@@ -56,14 +56,14 @@ static inline struct ppa __lpn_to_ppa(struct zns_ssd *zns_ssd, uint64_t lpn)
 {
 	struct ssdparams *spp = &(zns_ssd->sp);
 	struct znsparams *zpp = &(zns_ssd->zp);
-	__u64 zone = lpn_to_zone(zns_ssd, lpn); // find corresponding zone
-	__u64 off = lpn - zone_to_slpn(zns_ssd, zone); 
+	uint64_t zone = lpn_to_zone(zns_ssd, lpn); // find corresponding zone
+	uint64_t off = lpn - zone_to_slpn(zns_ssd, zone); 
 	
-	__u32 sdie = (zone * zpp->dies_per_zone) % spp->tt_luns;
-	__u32 die = sdie + ((off / spp->pgs_per_oneshotpg) % zpp->dies_per_zone);
+	uint32_t sdie = (zone * zpp->dies_per_zone) % spp->tt_luns;
+	uint32_t die = sdie + ((off / spp->pgs_per_oneshotpg) % zpp->dies_per_zone);
 
-	__u32 channel = die_to_channel(zns_ssd, die);
-	__u32 lun = die_to_lun(zns_ssd, die);
+	uint32_t channel = die_to_channel(zns_ssd, die);
+	uint32_t lun = die_to_lun(zns_ssd, die);
 	struct ppa ppa = {0};
 
 	ppa.g.lun = lun;
@@ -79,26 +79,26 @@ bool __zns_write(struct zns_ssd *zns_ssd, struct nvme_request * req, struct nvme
 	struct ssdparams *spp = &(zns_ssd->sp);
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 
-	__u64 slba = cmd->slba;
-	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
+	uint64_t slba = cmd->slba;
+	uint64_t nr_lba = __nr_lbas_from_rw_cmd(cmd);
 	
-	__u64 slpn = __lba_to_lpn(zns_ssd, slba);
-	__u64 elpn = __lba_to_lpn(zns_ssd, slba + nr_lba - 1);
-	__u64 lpn;
+	uint64_t slpn = __lba_to_lpn(zns_ssd, slba);
+	uint64_t elpn = __lba_to_lpn(zns_ssd, slba + nr_lba - 1);
+	uint64_t lpn;
 
 	// get zone from start_lbai
-	__u32 zid = lba_to_zone(zns_ssd, slba);
+	uint32_t zid = lba_to_zone(zns_ssd, slba);
 	enum zone_state state = zone_descs[zid].state;	
 
-	__u64 nsecs_start = req->nsecs_start;
-	__u64 nsecs_completed = nsecs_start, nsecs_latest;
-	__u64 nsecs_xfer_completed = nsecs_start;
-	__u32 status = NVME_SC_SUCCESS;
+	uint64_t nsecs_start = req->nsecs_start;
+	uint64_t nsecs_completed = nsecs_start, nsecs_latest;
+	uint64_t nsecs_xfer_completed = nsecs_start;
+	uint32_t status = NVME_SC_SUCCESS;
 	
 	struct ppa ppa;
 	struct nand_cmd swr;
 
-	__u64 pgs = 0, pg_off;
+	uint64_t pgs = 0, pg_off;
 
 	NVMEV_ZNS_DEBUG("%s slba 0x%llx nr_lba 0x%lx zone_id %d state %d\n",__FUNCTION__, slba, nr_lba, zid, state);
 	
@@ -177,7 +177,7 @@ bool __zns_write(struct zns_ssd *zns_ssd, struct nvme_request * req, struct nvme
 	for (lpn = slpn; lpn <= elpn; lpn+=pgs) {
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
 		pg_off = ppa.g.pg % spp->pgs_per_oneshotpg;
-		pgs = min(elpn - lpn + 1, (__u64)(spp->pgs_per_oneshotpg - pg_off));
+		pgs = min(elpn - lpn + 1, (uint64_t)(spp->pgs_per_oneshotpg - pg_off));
 
 		/* Aggregate write io in flash page */
 		if ((pg_off + pgs) == spp->pgs_per_oneshotpg) {	
@@ -211,29 +211,29 @@ bool __zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, struct
 	struct ssdparams *spp = &(zns_ssd->sp);
 	struct znsparams *zpp = &(zns_ssd->zp);
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
-	__u64 slba = cmd->slba;
-	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
-	__u64 elba = cmd->slba + nr_lba -1;
+	uint64_t slba = cmd->slba;
+	uint64_t nr_lba = __nr_lbas_from_rw_cmd(cmd);
+	uint64_t elba = cmd->slba + nr_lba -1;
 		
 	// get zone from start_lbai
-	__u32 zid = lba_to_zone(zns_ssd, slba);
+	uint32_t zid = lba_to_zone(zns_ssd, slba);
 	enum zone_state state = zone_descs[zid].state;	
 	
-	__u64 prev_wp = zone_descs[zid].wp;
-	const __u32 lbas_per_zrwa = zpp->lbas_per_zrwa;
-	const __u32 lbas_per_zrwafg = zpp->lbas_per_zrwafg;
-	__u64 zrwa_impl_start = prev_wp + lbas_per_zrwa;
-	__u64 zrwa_impl_end = prev_wp + (2*lbas_per_zrwa) - 1;
+	uint64_t prev_wp = zone_descs[zid].wp;
+	const uint32_t lbas_per_zrwa = zpp->lbas_per_zrwa;
+	const uint32_t lbas_per_zrwafg = zpp->lbas_per_zrwafg;
+	uint64_t zrwa_impl_start = prev_wp + lbas_per_zrwa;
+	uint64_t zrwa_impl_end = prev_wp + (2*lbas_per_zrwa) - 1;
 	
-	__u64 nsecs_start = req->nsecs_start;
-	__u64 nsecs_completed = 0, nsecs_latest;
-	__u64 nsecs_xfer_completed;
-	__u32 status = NVME_SC_SUCCESS;
+	uint64_t nsecs_start = req->nsecs_start;
+	uint64_t nsecs_completed = 0, nsecs_latest;
+	uint64_t nsecs_xfer_completed;
+	uint32_t status = NVME_SC_SUCCESS;
 
 	struct ppa ppa;
 	struct nand_cmd swr;
 
-	__u64 nr_lbas_flush = 0, lpn, remaining, pgs = 0, pg_off;
+	uint64_t nr_lbas_flush = 0, lpn, remaining, pgs = 0, pg_off;
 	
 	NVMEV_DEBUG("%s slba 0x%llx nr_lba 0x%llx zone_id %d state %d wp 0x%llx zrwa_impl_start 0x%llx zrwa_impl_end 0x%llx  buffer %d\n",
 														__FUNCTION__, slba, nr_lba, zid, state, prev_wp, zrwa_impl_start, zrwa_impl_end, zns_ssd->zwra_buffer[zid].remaining);
@@ -325,7 +325,7 @@ bool __zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, struct
 	while (remaining > 0) {
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
 		pg_off = ppa.g.pg % spp->pgs_per_oneshotpg;
-		pgs = min(remaining, (__u64)(spp->pgs_per_oneshotpg - pg_off));
+		pgs = min(remaining, (uint64_t)(spp->pgs_per_oneshotpg - pg_off));
 
 		if ((pg_off + pgs) == spp->pgs_per_oneshotpg) {	
 			swr.type = USER_IO;
@@ -362,11 +362,11 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	
-	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
-	__u64 slpn = __lba_to_lpn(zns_ssd, cmd->slba);
+	uint64_t nr_lba = __nr_lbas_from_rw_cmd(cmd);
+	uint64_t slpn = __lba_to_lpn(zns_ssd, cmd->slba);
 
 	// get zone from start_lba
-	__u32 zid = lpn_to_zone(zns_ssd, slpn);
+	uint32_t zid = lpn_to_zone(zns_ssd, slpn);
 
 	NVMEV_DEBUG("%s slba 0x%llx nr_lba 0x%lx zone_id %d \n",__FUNCTION__, cmd->slba, nr_lba, zid);
 	
@@ -386,19 +386,19 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	
-	__u64 slba = cmd->slba;
-	__u64 nr_lba = __nr_lbas_from_rw_cmd(cmd);
+	uint64_t slba = cmd->slba;
+	uint64_t nr_lba = __nr_lbas_from_rw_cmd(cmd);
 	
-	__u64 slpn = __lba_to_lpn(zns_ssd, slba);
-	__u64 elpn = __lba_to_lpn(zns_ssd, slba + nr_lba - 1);
-	__u64 lpn;
+	uint64_t slpn = __lba_to_lpn(zns_ssd, slba);
+	uint64_t elpn = __lba_to_lpn(zns_ssd, slba + nr_lba - 1);
+	uint64_t lpn;
 
 	// get zone from start_lba
-	__u32 zid = lpn_to_zone(zns_ssd, slpn);
-	__u32 status = NVME_SC_SUCCESS;
-	__u64 nsecs_start = req->nsecs_start;
-	__u64 nsecs_completed = nsecs_start, nsecs_latest = 0;	
-	__u64 pgs = 0, pg_off;
+	uint32_t zid = lpn_to_zone(zns_ssd, slpn);
+	uint32_t status = NVME_SC_SUCCESS;
+	uint64_t nsecs_start = req->nsecs_start;
+	uint64_t nsecs_completed = nsecs_start, nsecs_latest = 0;	
+	uint64_t pgs = 0, pg_off;
 	struct ppa ppa;
 	struct nand_cmd swr;
 
@@ -424,7 +424,7 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 	for (lpn = slpn; lpn <= elpn; lpn+=pgs) {
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
 		pg_off = ppa.g.pg % spp->pgs_per_flashpg;
-		pgs = min(elpn - lpn + 1, (__u64)(spp->pgs_per_flashpg - pg_off));
+		pgs = min(elpn - lpn + 1, (uint64_t)(spp->pgs_per_flashpg - pg_off));
 		swr.xfer_size = pgs * spp->pgsz;
 		swr.ppa = &ppa;
 		nsecs_completed = ssd_advance_nand(&zns_ssd->ssd, &swr);

@@ -65,7 +65,7 @@ struct conv_ssd {
     struct write_flow_control wfc;
 };
 
-__u64 conv_init(__u64 capacity, __u32 cpu_nr_dispatcher);
+uint64_t conv_init(uint64_t capacity, uint32_t cpu_nr_dispatcher);
 
 bool conv_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
 bool conv_read(struct nvme_request * req, struct nvme_result * ret);

@@ -12,11 +12,11 @@ struct zns_ssd *g_zns_ssd = NULL;
 static void zns_init_descriptor(struct zns_ssd *zns_ssd)
 {
 	struct zone_descriptor *zone_descs;
-	__u32 zone_size = zns_ssd->zp.zone_size;
-	__u32 nr_zones = zns_ssd->zp.nr_zones;
-	__u64 zslba = 0;
-	__u32 i = 0;
-	const __u32 zrwa_buffer_size = zns_ssd->zp.zrwa_buffer_size;
+	uint32_t zone_size = zns_ssd->zp.zone_size;
+	uint32_t nr_zones = zns_ssd->zp.nr_zones;
+	uint64_t zslba = 0;
+	uint32_t i = 0;
+	const uint32_t zrwa_buffer_size = zns_ssd->zp.zrwa_buffer_size;
 
 	zns_ssd->zone_descs = (struct zone_descriptor *) kmalloc(sizeof(struct zone_descriptor) * nr_zones, GFP_ATOMIC);
 	zns_ssd->report_buffer = (struct zone_report *) kmalloc(sizeof(struct zone_report) + sizeof(struct zone_descriptor) * (nr_zones - 1), GFP_ATOMIC);
@@ -55,7 +55,7 @@ static void zns_init_resource(struct zns_ssd *zns_ssd)
 
 }
 
-static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, __u64 capacity)
+static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, uint64_t capacity)
 {
 	zpp->zone_size = ZONE_SIZE;
 	zpp->nr_zones = capacity / ZONE_SIZE;
@@ -72,12 +72,12 @@ static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, __u64 
 	NVMEV_INFO("zone_size=%d(KB), # zones=%d # die/zone=%d \n", zpp->zone_size, zpp->nr_zones, zpp->dies_per_zone);
 }
 
-void zns_init(__u64 capacity, __u32 cpu_nr_dispatcher, void * storage_base_addr, __u32 namespace)
+void zns_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace)
 {
 	struct zns_ssd *zns_ssd;
 	struct ssdparams spp;
 
-	const __u32 nparts = 1; /* Not support multi partitions for zns*/
+	const uint32_t nparts = 1; /* Not support multi partitions for zns*/
 
 	zns_ssd = kmalloc(sizeof(struct zns_ssd) * nparts, GFP_KERNEL);
 

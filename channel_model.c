@@ -13,7 +13,7 @@ static inline unsigned long long __get_wallclock(void)
 	return cpu_clock(vdev->config.cpu_nr_dispatcher);
 }
 
-void chmodel_init(struct channel_model * ch, __u64 bandwidth/*MB/s*/)  
+void chmodel_init(struct channel_model * ch, uint64_t bandwidth/*MB/s*/)  
 {
 	ch->head = 0;
 	ch->valid_len = 0;
@@ -27,16 +27,16 @@ void chmodel_init(struct channel_model * ch, __u64 bandwidth/*MB/s*/)
 	printk("[%s] %p bandwidth %llu max_credits %u tx_time %u\n",__FUNCTION__, ch, bandwidth, ch->max_credits, ch->xfer_lat);
 }
 
-__u64 chmodel_request( struct channel_model * ch, __u64 request_time, __u64 length)
+uint64_t chmodel_request( struct channel_model * ch, uint64_t request_time, uint64_t length)
 {
-	__u64 cur_time = __get_wallclock();
-	__u32 pos, next_pos;
-	__u32 remaining_credits, consumed_credits;
-	__u32 default_delay, delay = 0; 
-	__u32 valid_length;
-	__u64 total_latency;
-	__u32 units_to_xfer = DIV_ROUND_UP(length, UNIT_XFER_SIZE);
-	__u32 cur_time_offs, request_time_offs;	
+	uint64_t cur_time = __get_wallclock();
+	uint32_t pos, next_pos;
+	uint32_t remaining_credits, consumed_credits;
+	uint32_t default_delay, delay = 0; 
+	uint32_t valid_length;
+	uint64_t total_latency;
+	uint32_t units_to_xfer = DIV_ROUND_UP(length, UNIT_XFER_SIZE);
+	uint32_t cur_time_offs, request_time_offs;	
 	
 	// Search current time index and move head to it
 	cur_time_offs  = (cur_time/UNIT_TIME_INTERVAL) - (ch->cur_time/UNIT_TIME_INTERVAL);

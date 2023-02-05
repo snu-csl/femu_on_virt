@@ -347,13 +347,13 @@ static void conv_init_ftl(struct conv_ssd *conv_ssd)
     return;
 }
 
-__u64 conv_init(__u64 capacity, __u32 cpu_nr_dispatcher)
+uint64_t conv_init(uint64_t capacity, uint32_t cpu_nr_dispatcher)
 {
     struct ssdparams spp;
     struct conv_ssd * conv_ssds;
-    __u32 i;
-    __u64 logical_space;
-    const __u32 nparts =  SSD_PARTITIONS;
+    uint32_t i;
+    uint64_t logical_space;
+    const uint32_t nparts =  SSD_PARTITIONS;
     
     ssd_init_params(&spp, capacity, nparts);
     
@@ -376,7 +376,7 @@ __u64 conv_init(__u64 capacity, __u32 cpu_nr_dispatcher)
     NVMEV_ASSERT(g_conv_ssds == NULL);
     g_conv_ssds = conv_ssds; 
 
-    logical_space = (__u64)((capacity * 100) / spp.pba_pcent);
+    logical_space = (uint64_t)((capacity * 100) / spp.pba_pcent);
     logical_space = logical_space - (logical_space % PAGE_SIZE);
     NVMEV_INFO("FTL physical space: %lld, logical space: %lld (physical/logical * 100 = %d) cpu: %d\n", 
                     capacity, logical_space, spp.pba_pcent, cpu_nr_dispatcher);

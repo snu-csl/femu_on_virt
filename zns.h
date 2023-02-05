@@ -12,19 +12,19 @@ extern struct zns_ssd * g_zns_ssd;
 // Zoned Namespace Command Set Specification Revision 1.1a
 #define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 struct znsparams {
-    __u32 nr_zones;
-    __u32 nr_active_zones;
-    __u32 nr_open_zones;
-    __u32 dies_per_zone;
-    __u32 zone_size; //bytes
+    uint32_t nr_zones;
+    uint32_t nr_active_zones;
+    uint32_t nr_open_zones;
+    uint32_t dies_per_zone;
+    uint32_t zone_size; //bytes
 
     /*related to zrwa*/
-    __u32 nr_zrwa_zones;
-    __u32 zrwafg_size;
-    __u32 zrwa_size;
-    __u32 zrwa_buffer_size;
-    __u32 lbas_per_zrwafg;
-    __u32 lbas_per_zrwa;
+    uint32_t nr_zrwa_zones;
+    uint32_t zrwafg_size;
+    uint32_t zrwa_size;
+    uint32_t zrwa_buffer_size;
+    uint32_t lbas_per_zrwafg;
+    uint32_t lbas_per_zrwa;
 };
 
 struct zns_ssd {
@@ -38,7 +38,7 @@ struct zns_ssd {
 
     struct znsparams zp;
 
-    __u32 ns;
+    uint32_t ns;
     void * storage_base_addr;
     
     struct zone_resource_info res_infos[RES_TYPE_COUNT];
@@ -48,21 +48,21 @@ struct zns_ssd {
 };
 
 /* zns internal functions */
-static inline void * get_storage_addr_from_zid(struct zns_ssd *zns_ssd, __u64 zid) {
+static inline void * get_storage_addr_from_zid(struct zns_ssd *zns_ssd, uint64_t zid) {
     return (void *) ((char*)zns_ssd->storage_base_addr + zid*zns_ssd->zp.zone_size);
 }
 
-static inline bool is_zone_resource_avail(struct zns_ssd *zns_ssd, __u32 type)
+static inline bool is_zone_resource_avail(struct zns_ssd *zns_ssd, uint32_t type)
 {
 	return zns_ssd->res_infos[type].acquired_cnt < zns_ssd->res_infos[type].total_cnt;
 }
 
-static inline bool is_zone_resource_full(struct zns_ssd *zns_ssd, __u32 type)
+static inline bool is_zone_resource_full(struct zns_ssd *zns_ssd, uint32_t type)
 {
 	return zns_ssd->res_infos[type].acquired_cnt == zns_ssd->res_infos[type].total_cnt;
 }
 
-static inline bool acquire_zone_resource(struct zns_ssd *zns_ssd, __u32 type)
+static inline bool acquire_zone_resource(struct zns_ssd *zns_ssd, uint32_t type)
 {
 	if(is_zone_resource_avail(zns_ssd, type)) {
 		zns_ssd->res_infos[type].acquired_cnt++;
@@ -72,14 +72,14 @@ static inline bool acquire_zone_resource(struct zns_ssd *zns_ssd, __u32 type)
 	return false;
 }
 
-static inline void release_zone_resource(struct zns_ssd *zns_ssd, __u32 type)
+static inline void release_zone_resource(struct zns_ssd *zns_ssd, uint32_t type)
 {	
 	ASSERT(zns_ssd->res_infos[type].acquired_cnt > 0);
 
 	zns_ssd->res_infos[type].acquired_cnt--;
 }
 
-static inline void change_zone_state(struct zns_ssd * zns_ssd, __u32 zid, enum zone_state state)
+static inline void change_zone_state(struct zns_ssd * zns_ssd, uint32_t zid, enum zone_state state)
 {
 	NVMEV_ZNS_DEBUG("change state zid %d from %d to %d \n",zid, zns_ssd->zone_descs[zid].state, state);
 
@@ -87,27 +87,27 @@ static inline void change_zone_state(struct zns_ssd * zns_ssd, __u32 zid, enum z
 	zns_ssd->zone_descs[zid].state = state;
 }
 
-static inline __u32 lpn_to_zone(struct zns_ssd *zns_ssd, __u64 lpn) {
+static inline uint32_t lpn_to_zone(struct zns_ssd *zns_ssd, uint64_t lpn) {
     return (lpn) / (zns_ssd->zp.zone_size / zns_ssd->sp.pgsz);
 }
 
-static inline __u64 zone_to_slpn(struct zns_ssd *zns_ssd, __u32 zid) {
+static inline uint64_t zone_to_slpn(struct zns_ssd *zns_ssd, uint32_t zid) {
     return (zid) * (zns_ssd->zp.zone_size / zns_ssd->sp.pgsz);
 }
 
-static inline __u32 lba_to_zone(struct zns_ssd *zns_ssd, __u64 lba) {
+static inline uint32_t lba_to_zone(struct zns_ssd *zns_ssd, uint64_t lba) {
     return (lba) / (BYTE_TO_LBA(zns_ssd->zp.zone_size));
 }
 
-static inline __u64 zone_to_slba(struct zns_ssd *zns_ssd, __u32 zid) {
+static inline uint64_t zone_to_slba(struct zns_ssd *zns_ssd, uint32_t zid) {
     return (zid) * (BYTE_TO_LBA(zns_ssd->zp.zone_size));
 }
 
-static inline __u32 die_to_channel(struct zns_ssd *zns_ssd, __u32 die) {
+static inline uint32_t die_to_channel(struct zns_ssd *zns_ssd, uint32_t die) {
     return (die) % zns_ssd->sp.nchs;
 }
 
-static inline __u32 die_to_lun(struct zns_ssd *zns_ssd, __u32 die) {
+static inline uint32_t die_to_lun(struct zns_ssd *zns_ssd, uint32_t die) {
     return (die) / zns_ssd->sp.nchs;
 }
 
@@ -122,6 +122,6 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret);
 bool zns_read(struct nvme_request * req, struct nvme_result * ret);
 bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
 
-void zns_init(__u64 capacity, __u32 cpu_nr_dispatcher, void * storage_base_addr, __u32 namespace);
+void zns_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace);
 void zns_exit(void);
 #endif

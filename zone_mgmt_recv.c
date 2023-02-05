@@ -9,14 +9,14 @@
 #include "zns.h"
 
 #if SUPPORT_ZNS 
-__u64 __prp_transfer_data(__u64 prp1, __u64 prp2, void * buffer, __u64 length, __u32 io)
+uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer, uint64_t length, uint32_t io)
 {
 	size_t offset;
 	size_t remaining;
 	size_t prp_offs = 0;
 	size_t prp2_offs = 0;
-	__u64 paddr;
-	__u64 * paddr_list = NULL;
+	uint64_t paddr;
+	uint64_t * paddr_list = NULL;
 	size_t mem_offs = 0;
 	
 	//NVMEV_ZNS_DEBUG("[PRP Transfer] prp1 0x%llx prp2 0x%llx buffer 0x%p length 0x%lx io %ld \n", 
@@ -74,12 +74,12 @@ __u64 __prp_transfer_data(__u64 prp1, __u64 prp2, void * buffer, __u64 length, _
 void __fill_zone_report(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cmd, struct zone_report * report)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
-	__u64 slba = cmd->slba;
-	__u64 start_zid = lba_to_zone(zns_ssd, slba);
+	uint64_t slba = cmd->slba;
+	uint64_t start_zid = lba_to_zone(zns_ssd, slba);
 	
-	__u64 bytes_transfer = (cmd->nr_dw + 1) * sizeof(__u32);
+	uint64_t bytes_transfer = (cmd->nr_dw + 1) * sizeof(uint32_t);
 
-	__u64 nr_zone_to_report; 
+	uint64_t nr_zone_to_report; 
 
 	if (cmd->zra_specific_features == 0) // all
 		nr_zone_to_report = zns_ssd->zp.nr_zones - start_zid;
@@ -116,10 +116,10 @@ void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret)
 	struct zone_report * buffer = zns_ssd->report_buffer;
 	struct nvme_zone_mgmt_recv * cmd = (struct nvme_zone_mgmt_recv *) req->cmd;
 	
-	__u64 prp1 = (__u64)cmd->prp1;
-	__u64 prp2 = (__u64)cmd->prp2;
-	__u64 length = (cmd->nr_dw + 1) * sizeof(__u32);
-	__u32 status; 
+	uint64_t prp1 = (uint64_t)cmd->prp1;
+	uint64_t prp2 = (uint64_t)cmd->prp2;
+	uint64_t length = (cmd->nr_dw + 1) * sizeof(uint32_t);
+	uint32_t status; 
 
 	NVMEV_ZNS_DEBUG("%s slba 0x%llx nr_dw 0x%lx  action %u partial %u action_specific 0x%x\n",
 					__FUNCTION__, cmd->slba, length, cmd->zra, cmd->zra_specific_features, cmd->zra_specific_field);

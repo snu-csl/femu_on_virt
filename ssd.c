@@ -9,14 +9,14 @@ static inline unsigned long long __get_ioclock(struct ssd *ssd)
 	return cpu_clock(ssd->cpu_nr_dispatcher);
 }
 
-void buffer_init(struct buffer * buf, __u32 size)
+void buffer_init(struct buffer * buf, uint32_t size)
 {
     spin_lock_init(&buf->lock);
     buf->initial = size;
     buf->remaining = size;
 }
 
-uint32_t buffer_allocate(struct buffer * buf, __u32 size)
+uint32_t buffer_allocate(struct buffer * buf, uint32_t size)
 {
     #if 1
     while(!spin_trylock(&buf->lock));
@@ -42,7 +42,7 @@ uint32_t buffer_allocate(struct buffer * buf, __u32 size)
     #endif
 }
 
-bool buffer_release(struct buffer * buf, __u32 size)
+bool buffer_release(struct buffer * buf, uint32_t size)
 {
     while(!spin_trylock(&buf->lock));
     buf->remaining += size;
@@ -69,9 +69,9 @@ static void check_params(struct ssdparams *spp)
     //ftl_assert(is_power_of_2(spp->nchs));
 }
 
-void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
+void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
 {
-    __u64 blk_size, total_size;
+    uint64_t blk_size, total_size;
 
     spp->secsz = 512;
     spp->secs_per_pg = 8;
@@ -238,9 +238,9 @@ void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp)
     chmodel_init(pcie->perf_model, spp->pcie_bandwidth);
 }
 
-void ssd_init(struct ssd * ssd, struct ssdparams *spp, __u32 cpu_nr_dispatcher)
+void ssd_init(struct ssd * ssd, struct ssdparams *spp, uint32_t cpu_nr_dispatcher)
 {
-    __u32 i;
+    uint32_t i;
     /*copy spp*/
     ssd->sp = *spp;
 
@@ -262,13 +262,13 @@ void ssd_init(struct ssd * ssd, struct ssdparams *spp, __u32 cpu_nr_dispatcher)
     return;
 }
 
-inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length) 
+inline uint64_t ssd_advance_pcie(struct ssd *ssd, uint64_t request_time, uint64_t length) 
 {
     struct channel_model * perf_model = ssd->pcie->perf_model;
     return chmodel_request(perf_model, request_time, length);
 }
 
-uint64_t ssd_advance_write_buffer(struct ssd *ssd, __u64 request_time, __u64 length) 
+uint64_t ssd_advance_write_buffer(struct ssd *ssd, uint64_t request_time, uint64_t length) 
 {
     uint64_t nsecs_latest = request_time;
     struct ssdparams *spp = &ssd->sp;

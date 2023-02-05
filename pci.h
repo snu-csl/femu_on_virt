@@ -16,19 +16,19 @@
 #define _LIB_NVMEV_HDR_H
 
 struct __nvme_bar {
-	__u64			cap;	/* Controller Capabilities */
-	__u32			vs;	/* Version */
-	__u32			intms;	/* Interrupt Mask Set */
-	__u32			intmc;	/* Interrupt Mask Clear */
-	__u32			cc;	/* Controller Configuration */
-	__u32			rsvd1;	/* Reserved */
-	__u32			csts;	/* Controller Status */
-	__u32			nssr;	/* Subsystem Reset */
-	__u32			aqa;	/* Admin Queue Attributes */
-	__u64			asq;	/* Admin SQ Base Address */
-	__u64			acq;	/* Admin CQ Base Address */
-	__u32			cmbloc; /* Controller Memory Buffer Location */
-	__u32			cmbsz;  /* Controller Memory Buffer Size */
+	uint64_t			cap;	/* Controller Capabilities */
+	uint32_t			vs;	/* Version */
+	uint32_t			intms;	/* Interrupt Mask Set */
+	uint32_t			intmc;	/* Interrupt Mask Clear */
+	uint32_t			cc;	/* Controller Configuration */
+	uint32_t			rsvd1;	/* Reserved */
+	uint32_t			csts;	/* Controller Status */
+	uint32_t			nssr;	/* Subsystem Reset */
+	uint32_t			aqa;	/* Admin Queue Attributes */
+	uint64_t			asq;	/* Admin SQ Base Address */
+	uint64_t			acq;	/* Admin CQ Base Address */
+	uint32_t			cmbloc; /* Controller Memory Buffer Location */
+	uint32_t			cmbsz;  /* Controller Memory Buffer Size */
 };
 
 struct pci_header {
@@ -461,7 +461,7 @@ struct nvme_ctrl_regs {
 		} cap;
 		u64 u_cap;
 	};
-	//__u64			cap;	/* Controller Capabilities */
+	//uint64_t			cap;	/* Controller Capabilities */
 	union {
 		struct {
 			u8 rsvd;
@@ -470,7 +470,7 @@ struct nvme_ctrl_regs {
 		} vs;
 		u32 u_vs;
 	};
-	//__u32			vs;	/* Version */
+	//uint32_t			vs;	/* Version */
 	u32	intms;	/* Interrupt Mask Set */
 	u32	intmc;	/* Interrupt Mask Clear */
 	union {
@@ -487,7 +487,7 @@ struct nvme_ctrl_regs {
 		} cc;
 		u32 u_cc;
 	};
-	//__u32			cc;	/* Controller Configuration */
+	//uint32_t			cc;	/* Controller Configuration */
 	u32	rsvd1;	/* Reserved */
 	union {
 		struct {
@@ -500,7 +500,7 @@ struct nvme_ctrl_regs {
 		} csts;
 		u32 u_csts;
 	};
-	//__u32			csts;	/* Controller Status */
+	//uint32_t			csts;	/* Controller Status */
 	u32	nssr;	/* Subsystem Reset */
 	union {
 		struct {
@@ -511,7 +511,7 @@ struct nvme_ctrl_regs {
 		} aqa;
 		u32 u_aqa;
 	};
-	//__u32			aqa;	/* Admin Queue Attributes */
+	//uint32_t			aqa;	/* Admin Queue Attributes */
 	union {
 		struct {
 			u64 rsvd:12;
@@ -519,7 +519,7 @@ struct nvme_ctrl_regs {
 		} asq;
 		u64 u_asq;
 	};
-	//__u64			asq;	/* Admin SQ Base Address */
+	//uint64_t			asq;	/* Admin SQ Base Address */
 	union {
 		struct {
 			u64 rsvd:12;
@@ -527,7 +527,7 @@ struct nvme_ctrl_regs {
 		} acq;
 		u64 u_acq;
 	};
-	//__u64			acq;	/* Admin CQ Base Address */
+	//uint64_t			acq;	/* Admin CQ Base Address */
 	union {
 		struct {
 			u32 bir:3;
@@ -536,7 +536,7 @@ struct nvme_ctrl_regs {
 		} cmbloc;
 		u32 u_cmbloc;
 	};
-	//__u32			cmbloc; /* Controller Memory Buffer Location */
+	//uint32_t			cmbloc; /* Controller Memory Buffer Location */
 	union {
 		struct {
 			u32 sqs:1;
@@ -550,7 +550,7 @@ struct nvme_ctrl_regs {
 		} cmbsz;
 		u32 u_cmbsz;
 	};
-	//__u32			cmbsz;  /* Controller Memory Buffer Size */
+	//uint32_t			cmbsz;  /* Controller Memory Buffer Size */
 };
 
 // HEADER Initialize

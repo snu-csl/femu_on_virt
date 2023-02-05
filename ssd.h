@@ -128,8 +128,8 @@ struct nand_cmd {
 };
 
 struct buffer {
-    __u32 initial;
-    __u32 remaining;
+    uint32_t initial;
+    uint32_t remaining;
     spinlock_t lock;
 };
 
@@ -258,16 +258,16 @@ static inline struct nand_page *get_pg(struct ssd *ssd, struct ppa *ppa)
 
 void ssd_init_ch(struct ssd_channel *ch, struct ssdparams *spp);
 void ssd_init_pcie(struct ssd_pcie *pcie, struct ssdparams *spp);
-void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts);
-void ssd_init(struct ssd * ssd, struct ssdparams *spp, __u32 cpu_nr_dispatcher);
+void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts);
+void ssd_init(struct ssd * ssd, struct ssdparams *spp, uint32_t cpu_nr_dispatcher);
 
 void adjust_ftl_latency(int target, int lat);
 uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd);
-uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length);
-uint64_t ssd_advance_write_buffer(struct ssd *ssd, __u64 request_time, __u64 length);
+uint64_t ssd_advance_pcie(struct ssd *ssd, uint64_t request_time, uint64_t length);
+uint64_t ssd_advance_write_buffer(struct ssd *ssd, uint64_t request_time, uint64_t length);
 
-void buffer_init(struct buffer * buf, __u32 size);
-uint32_t buffer_allocate(struct buffer * buf, __u32 size);
-bool buffer_release(struct buffer * buf, __u32 size);
+void buffer_init(struct buffer * buf, uint32_t size);
+uint32_t buffer_allocate(struct buffer * buf, uint32_t size);
+bool buffer_release(struct buffer * buf, uint32_t size);
 void buffer_refill(struct buffer * buf);
 #endif
