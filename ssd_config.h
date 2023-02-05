@@ -16,11 +16,11 @@
 #define LUNS_PER_NAND_CH     16
 #define SSD_PARTITION_BITS    0
 #define FLASH_PAGE_SIZE      (64*1024)
-#define WORDLINE_SIZE        (FLASH_PAGE_SIZE * 3)
+#define ONESHOT_PAGE_SIZE        (FLASH_PAGE_SIZE * 3)
 #define PLNS_PER_LUN         1 /* not used*/
 
 #define CH_MAX_XFER_SIZE  (FLASH_PAGE_SIZE) /* to overlap with pcie transfer */
-#define WRITE_UNIT_SIZE     (WORDLINE_SIZE)
+#define WRITE_UNIT_SIZE     (ONESHOT_PAGE_SIZE)
 
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3200ull) //MB/s
@@ -50,7 +50,7 @@
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
 #define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
 
-#define WRITE_BUFFER_SIZE   (WORDLINE_SIZE)
+#define WRITE_BUFFER_SIZE   (ONESHOT_PAGE_SIZE)
 
 /* Modify configuration  */
 #define NR_NAMESPACE	1 // Still.. only support single namespace.
@@ -71,7 +71,7 @@
 #define LUNS_PER_NAND_CH     4
 #define SSD_PARTITION_BITS    0
 #define FLASH_PAGE_SIZE      (64*1024)
-#define WORDLINE_SIZE        (FLASH_PAGE_SIZE)
+#define ONESHOT_PAGE_SIZE        (FLASH_PAGE_SIZE)
 #define PLNS_PER_LUN         1 /* not used*/
 
 #define CH_MAX_XFER_SIZE  (64*1024) /* to overlap with pcie transfer */
@@ -105,7 +105,7 @@
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
 #define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
 
-#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * WORDLINE_SIZE * 4)
+#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * ONESHOT_PAGE_SIZE * 4)
 
 /* Modify configuration  */
 #define NR_NAMESPACE	1 // Still.. only support single namespace.
@@ -126,7 +126,7 @@
 #define PLNS_PER_LUN         1
 #define SSD_PARTITION_BITS    2
 #define FLASH_PAGE_SIZE      (32*1024)
-#define WORDLINE_SIZE        (FLASH_PAGE_SIZE * 1)
+#define ONESHOT_PAGE_SIZE        (FLASH_PAGE_SIZE * 1)
 #define BLKS_PER_PLN         8192
 #define BLK_SIZE             0 /*BLKS_PER_PLN should not be 0 */
 
@@ -158,7 +158,7 @@
 #define ZRWA_SIZE   (0)
 #define ZRWA_BUFFER_SIZE   (0)
 
-#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * WORDLINE_SIZE * 2)
+#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * ONESHOT_PAGE_SIZE * 2)
 
 /* Modify configuration  */
 #define NR_NAMESPACE	1 // Still.. only support single namespace.
@@ -179,7 +179,7 @@
 #define LUNS_PER_NAND_CH     2
 #define PLNS_PER_LUN         1
 #define FLASH_PAGE_SIZE      (32*1024)
-#define WORDLINE_SIZE        (FLASH_PAGE_SIZE * 1)
+#define ONESHOT_PAGE_SIZE        (FLASH_PAGE_SIZE * 1)
 
 #define CH_MAX_XFER_SIZE  (16*1024) /* to overlap with pcie transfer */
 #define WRITE_UNIT_SIZE     (512) 
@@ -204,14 +204,14 @@
 #define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
 
 #define MAX_ZRWA_ZONES (0xFFFFFFFF) // No limit
-#define ZRWAFG_SIZE (WORDLINE_SIZE)
+#define ZRWAFG_SIZE (ONESHOT_PAGE_SIZE)
 #define ZRWA_SIZE   (MB(1))
 #define ZRWA_BUFFER_SIZE   (ZRWA_SIZE * 2)
 /*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
 #define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
 
-#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * WORDLINE_SIZE * 4)
+#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * ONESHOT_PAGE_SIZE * 4)
 
 /* Modify configuration  */
 #define NR_NAMESPACE	1 // Still.. only support single namespace.

@@ -124,6 +124,7 @@ struct nand_cmd {
     uint64_t xfer_size; // byte
     uint64_t stime; /* Coperd: request arrival time */
     bool interleave_pci_dma;
+    struct ppa *ppa;
 };
 
 struct buffer {
@@ -261,8 +262,9 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts);
 void ssd_init(struct ssd * ssd, struct ssdparams *spp, __u32 cpu_nr_dispatcher);
 
 void adjust_ftl_latency(int target, int lat);
-uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd);
+uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd);
 uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 length);
+uint64_t ssd_advance_write_buffer(struct ssd *ssd, __u64 request_time, __u64 length);
 
 void buffer_init(struct buffer * buf, __u32 size);
 uint32_t buffer_allocate(struct buffer * buf, __u32 size);

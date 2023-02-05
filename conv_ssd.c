@@ -4,6 +4,8 @@
 #include "nvmev.h"
 #include "conv_ssd.h"
 
+void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release);
+
 struct conv_ssd *g_conv_ssds = NULL;
 
 static inline bool last_pg_in_wordline(struct conv_ssd *conv_ssd, struct ppa *ppa)
@@ -516,7 +518,8 @@ static void gc_read_page(struct conv_ssd *conv_ssd, struct ppa *ppa)
         gcr.stime = 0;
         gcr.xfer_size = conv_ssd->sp.pgsz;
         gcr.interleave_pci_dma = false;
-        ssd_advance_status(&(conv_ssd->ssd), ppa, &gcr);
+        gcr.ppa = ppa;
+        ssd_advance_nand(&(conv_ssd->ssd), &gcr);
     }
 }
 
@@ -545,13 +548,13 @@ static uint64_t gc_write_page(struct conv_ssd *conv_ssd, struct ppa *old_ppa)
         gcw.cmd = NAND_NOP;
         gcw.stime = 0;
         gcw.interleave_pci_dma = false;
-
+        gcw.ppa = &new_ppa;
         if (last_pg_in_wordline(conv_ssd, &new_ppa)) {
             gcw.cmd = NAND_WRITE;
             gcw.xfer_size = spp->pgsz * conv_ssd->sp.pgs_per_oneshotpg;
         }
 
-        ssd_advance_status(&conv_ssd->ssd, &new_ppa, &gcw);
+        ssd_advance_nand(&conv_ssd->ssd, &gcw);
     }
 
     /* advance per-ch gc_endtime as well */
@@ -641,7 +644,8 @@ static void clean_one_flashpg(struct conv_ssd *conv_ssd, struct ppa *ppa)
             gcr.stime = 0;
             gcr.xfer_size = spp->pgsz * cnt;
             gcr.interleave_pci_dma = false;
-            completed_time = ssd_advance_status(&conv_ssd->ssd, &ppa_copy, &gcr);
+            gcr.ppa = &ppa_copy;
+            completed_time = ssd_advance_nand(&conv_ssd->ssd, &gcr);
         }
 
         for (i = 0; i < spp->pgs_per_flashpg; i++) {
@@ -708,7 +712,8 @@ int do_gc(struct conv_ssd *conv_ssd, bool force)
                         gce.cmd = NAND_ERASE;
                         gce.stime = 0;
                         gce.interleave_pci_dma = false;
-                        ssd_advance_status(&conv_ssd->ssd, &ppa, &gce);
+                        gce.ppa = &ppa;
+                        ssd_advance_nand(&conv_ssd->ssd, &gce);
                     }
 
                     lunp->gc_endtime = lunp->next_lun_avail_time;
@@ -814,7 +819,8 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
 
             if (xfer_size > 0) {
                 srd.xfer_size = xfer_size;
-                nsecs_completed = ssd_advance_status(&conv_ssd->ssd, &prev_ppa, &srd);
+                srd.ppa = &prev_ppa;
+                nsecs_completed = ssd_advance_nand(&conv_ssd->ssd, &srd);
                 nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
             }
             
@@ -825,7 +831,8 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
         // issue remaining io
         if (xfer_size > 0) {
             srd.xfer_size = xfer_size;
-            nsecs_completed = ssd_advance_status(&conv_ssd->ssd, &prev_ppa, &srd);
+            srd.ppa = &prev_ppa;
+            nsecs_completed = ssd_advance_nand(&conv_ssd->ssd, &srd);
             nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
         }
     }
@@ -835,7 +842,6 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret)
     return true;
 }
 
-void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release);
 bool conv_write(struct nvme_request * req, struct nvme_result * ret)
 {
     struct nvme_command * cmd = req->cmd;
@@ -861,17 +867,14 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
         return false;
     }
     
-    //swr.stime = swr.stime > temp_latest_early_completed[req->sq_id] ? swr.stime : temp_latest_early_completed[req->sq_id];  
     allocated_buf_size = buffer_allocate(wbuffer, LBA_TO_BYTE(nr_lba)); 
 	
 	if (allocated_buf_size < LBA_TO_BYTE(nr_lba))
 		return false;
 
     nsecs_latest = nsecs_start;
-	nsecs_latest += spp->fw_wr0_lat;
-	nsecs_latest += spp->fw_wr1_lat * (end_lpn - start_lpn + 1);
-    nsecs_latest = ssd_advance_pcie(&conv_ssd_instance(0)->ssd, 
-                                        nsecs_latest, LBA_TO_BYTE(nr_lba));
+    nsecs_latest = ssd_advance_write_buffer(&conv_ssd_instance(0)->ssd,
+                                                nsecs_latest, LBA_TO_BYTE(nr_lba));
     nsecs_xfer_completed = nsecs_latest;
 
     swr.type = USER_IO;
@@ -906,8 +909,8 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
         /* Aggregate write io in flash page */
         if (last_pg_in_wordline(conv_ssd, &ppa)) {
             swr.xfer_size = spp->pgsz * spp->pgs_per_oneshotpg;
-
-            nsecs_completed = ssd_advance_status(&conv_ssd->ssd, &ppa, &swr);
+            swr.ppa = &ppa;
+            nsecs_completed = ssd_advance_nand(&conv_ssd->ssd, &swr);
             nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
             enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuffer, spp->pgs_per_oneshotpg * spp->pgsz);

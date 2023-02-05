@@ -96,11 +96,11 @@ void ssd_init_params(struct ssdparams *spp, __u64 capacity, __u32 nparts)
         spp->blks_per_pl = DIV_ROUND_UP(capacity, blk_size * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     }
 
-    spp->pgs_per_oneshotpg = WORDLINE_SIZE / (spp->pgsz);
-    spp->oneshotpgs_per_blk = DIV_ROUND_UP(blk_size, WORDLINE_SIZE); 
+    spp->pgs_per_oneshotpg = ONESHOT_PAGE_SIZE / (spp->pgsz);
+    spp->oneshotpgs_per_blk = DIV_ROUND_UP(blk_size, ONESHOT_PAGE_SIZE); 
 
     spp->pgs_per_flashpg = FLASH_PAGE_SIZE / (spp->pgsz);
-    spp->flashpgs_per_blk = (WORDLINE_SIZE / FLASH_PAGE_SIZE) * spp->oneshotpgs_per_blk;  
+    spp->flashpgs_per_blk = (ONESHOT_PAGE_SIZE / FLASH_PAGE_SIZE) * spp->oneshotpgs_per_blk;  
    
     spp->pgs_per_blk = spp->pgs_per_oneshotpg * spp->oneshotpgs_per_blk;
 
@@ -268,7 +268,20 @@ inline uint64_t ssd_advance_pcie(struct ssd *ssd, __u64 request_time, __u64 leng
     return chmodel_request(perf_model, request_time, length);
 }
 
-uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *ncmd)
+uint64_t ssd_advance_write_buffer(struct ssd *ssd, __u64 request_time, __u64 length) 
+{
+    uint64_t nsecs_latest = request_time;
+    struct ssdparams *spp = &ssd->sp;
+
+    nsecs_latest += spp->fw_wr0_lat;
+	nsecs_latest += spp->fw_wr1_lat * DIV_ROUND_UP(length, KB(4));
+
+    nsecs_latest = ssd_advance_pcie(ssd, nsecs_latest, length);
+
+    return nsecs_latest;
+}
+
+uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd)
 {
     int c = ncmd->cmd;
     uint64_t cmd_stime = (ncmd->stime == 0) ? \
@@ -279,6 +292,7 @@ uint64_t ssd_advance_status(struct ssd *ssd, struct ppa *ppa, struct nand_cmd *n
     struct ssdparams *spp;
     struct nand_lun *lun;
     struct ssd_channel * ch;
+    struct ppa *ppa = ncmd->ppa;
     NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu command %d ppa 0x%llx\n",
                             ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg, c, ppa->ppa);
 	
