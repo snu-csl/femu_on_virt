@@ -162,7 +162,7 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
 
     total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->pgs_per_blk * spp->secsz * spp->secs_per_pg;
     blk_size = spp->pgs_per_blk *  spp->secsz * spp->secs_per_pg;
-    NVMEV_INFO("Total Capacity=%lu(GB), %lu(MB) Block Size=%lu(Byte) luns=%lu lines=%lu pgs_per_line=%lu pgs_per_blk=%u gc_thresh_line=%d spp->gc_thres_lines_high=%d n", 
+    NVMEV_INFO("Total Capacity=%llu(GB), %llu(MB) Block Size=%llu(Byte) luns=%lu lines=%lu pgs_per_line=%lu pgs_per_blk=%u gc_thresh_line=%d spp->gc_thres_lines_high=%d n", 
                     BYTE_TO_GB(total_size), BYTE_TO_MB(total_size), blk_size, 
                     spp->tt_luns, spp->tt_lines, spp->pgs_per_line, spp->pgs_per_blk, spp->gc_thres_lines, spp->gc_thres_lines_high);
 }

@@ -849,7 +849,7 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
     uint64_t lba = cmd->rw.slba;
     struct conv_ssd *conv_ssd;
     struct ssdparams *spp = &conv_ssd_instance(0)->sp;
-    struct buffer * wbuffer = conv_ssd_instance(0)->write_buffer;
+    struct buffer * wbuf = conv_ssd_instance(0)->write_buffer;
 
     int nr_lba = (cmd->rw.length + 1);
     uint64_t start_lpn = lba / spp->secs_per_pg;
@@ -867,7 +867,7 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
         return false;
     }
     
-    allocated_buf_size = buffer_allocate(wbuffer, LBA_TO_BYTE(nr_lba)); 
+    allocated_buf_size = buffer_allocate(wbuf, LBA_TO_BYTE(nr_lba)); 
 	
 	if (allocated_buf_size < LBA_TO_BYTE(nr_lba))
 		return false;
@@ -913,7 +913,7 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
             nsecs_completed = ssd_advance_nand(&conv_ssd->ssd, &swr);
             nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
-            enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuffer, spp->pgs_per_oneshotpg * spp->pgsz);
+            enqueue_writeback_io_req(req->sq_id, nsecs_completed, wbuf, spp->pgs_per_oneshotpg * spp->pgsz);
         } 
         
         consume_write_credit(conv_ssd);

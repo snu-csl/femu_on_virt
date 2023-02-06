@@ -118,9 +118,9 @@ static void percolate_down(pqueue_t *q, size_t i)
 
 int pqueue_insert(pqueue_t *q, void *d)
 {
-    void *tmp;
+    //void *tmp;
     size_t i;
-    size_t newsize;
+    //size_t newsize;
 
     if (!q) return 1;
 
