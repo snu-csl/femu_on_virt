@@ -1,5 +1,5 @@
-#ifndef _ZNS_H
-#define _ZNS_H
+#ifndef _NVMEVIRT_ZNS_H
+#define _NVMEVIRT_ZNS_H
 
 #include <linux/types.h>
 #include "nvmev.h"

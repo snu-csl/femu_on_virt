@@ -110,7 +110,7 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
     spp->pg_rd_lat = NAND_READ_LATENCY;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
     spp->blk_er_lat = NAND_ERASE_LATENCY;
-    spp->ch_max_xfer_size = CH_MAX_XFER_SIZE;
+    spp->max_ch_xfer_size = MAX_CH_XFER_SIZE;
 
     spp->fw_4kb_rd_lat = FW_4KB_READ_LATENCY;
     spp->fw_rd_lat = FW_READ_LATENCY;
@@ -326,7 +326,7 @@ uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd)
         chnl_stime = nand_etime;
 
         while (remaining) {
-            xfer_size = min(remaining, (uint64_t)spp->ch_max_xfer_size);
+            xfer_size = min(remaining, (uint64_t)spp->max_ch_xfer_size);
             chnl_etime = chmodel_request(ch->perf_model, chnl_stime, xfer_size);
             
             if (ncmd->interleave_pci_dma) /* overlap pci transfer with nand ch transfer*/

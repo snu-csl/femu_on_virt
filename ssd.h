@@ -1,5 +1,5 @@
-#ifndef _SSD_H
-#define _SSD_H
+#ifndef _NVMEVIRT_SSD_H 
+#define _NVMEVIRT_SSD_H
 
 #include <linux/types.h>
 #include "queue.h"
@@ -163,7 +163,7 @@ struct ssdparams {
     int pg_rd_lat;    /* NAND page read latency in nanoseconds. sensing time (tR) */
     int pg_wr_lat;    /* NAND page program latency in nanoseconds. pgm time (tPROG)*/
     int blk_er_lat;   /* NAND block erase latency in nanoseconds. erase time (tERASE) */
-    int ch_max_xfer_size;
+    int max_ch_xfer_size;
 
     int fw_4kb_rd_lat;    /* Firmware overhead of read 0 of read in nanoseconds */
     int fw_rd_lat;        /* Firmware overhead of read 1 of read in nanoseconds */

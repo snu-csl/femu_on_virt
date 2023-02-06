@@ -1,5 +1,5 @@
-#ifndef _CONV_SSD_H
-#define _CONV_SSD_H
+#ifndef _NVMEVIRT_CONV_SSD_H
+#define _NVMEVIRT_CONV_SSD_H
 
 #include <linux/types.h>
 #include "queue.h"
