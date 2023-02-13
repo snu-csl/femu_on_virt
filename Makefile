@@ -7,7 +7,7 @@ nvmev-objs += ssd.o conv_ssd.o pqueue.o dma.o
 nvmev-objs += zns.o zone_read_write.o zone_mgmt_send.o zone_mgmt_recv.o 
 nvmev-objs += channel_model.o 
 
-ccflags-y += -Wno-implicit-fallthrough -Wno-unused-function
+ccflags-y += -Wno-implicit-fallthrough -Wno-unused-function -Wno-declaration-after-statement -Wno-unused-variable
 default:
 		$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 		ctags -R
