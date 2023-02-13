@@ -103,12 +103,22 @@ static inline uint64_t zone_to_slba(struct zns_ssd *zns_ssd, uint32_t zid) {
     return (zid) * (BYTE_TO_LBA(zns_ssd->zp.zone_size));
 }
 
+static inline  uint64_t zone_to_elba(struct zns_ssd *zns_ssd, uint32_t zid) 
+{
+	return zone_to_slba(zns_ssd, zid + 1) - 1; 
+}
+
 static inline uint32_t die_to_channel(struct zns_ssd *zns_ssd, uint32_t die) {
     return (die) % zns_ssd->sp.nchs;
 }
 
 static inline uint32_t die_to_lun(struct zns_ssd *zns_ssd, uint32_t die) {
     return (die) / zns_ssd->sp.nchs;
+}
+
+static inline uint64_t lba_to_lpn(struct zns_ssd *zns_ssd, uint64_t lba) 
+{
+	return lba / zns_ssd->sp.secs_per_pg;
 }
 
 static inline struct zns_ssd * zns_ssd_instance(void) {

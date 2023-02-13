@@ -10,18 +10,6 @@ static inline  uint32_t __nr_lbas_from_rw_cmd(struct nvme_rw_command * cmd)
 	return cmd->length + 1;
 }
 
-static inline uint64_t __lba_to_lpn(struct zns_ssd *zns_ssd, uint64_t lba) 
-{
-	return lba / zns_ssd->sp.secs_per_pg;
-}
-
-static inline  uint64_t __zone_end_lba(struct zns_ssd *zns_ssd, uint32_t zid) 
-{
-	struct zone_descriptor *zone_descs = &(zns_ssd->zone_descs[zid]);
-
-	return zone_descs->zslba + zone_descs->zone_capacity - 1; 
-}
-
 bool __check_boundary_error(struct zns_ssd *zns_ssd, uint64_t slba, uint32_t nr_lba)
 {	
 	return lba_to_zone(zns_ssd, slba) == lba_to_zone(zns_ssd, slba + nr_lba - 1);
@@ -82,8 +70,8 @@ bool __zns_write(struct zns_ssd *zns_ssd, struct nvme_request * req, struct nvme
 	uint64_t slba = cmd->slba;
 	uint64_t nr_lba = __nr_lbas_from_rw_cmd(cmd);
 	
-	uint64_t slpn = __lba_to_lpn(zns_ssd, slba);
-	uint64_t elpn = __lba_to_lpn(zns_ssd, slba + nr_lba - 1);
+	uint64_t slpn = lba_to_lpn(zns_ssd, slba);
+	uint64_t elpn = lba_to_lpn(zns_ssd, slba + nr_lba - 1);
 	uint64_t lpn;
 
 	// get zone from start_lbai
@@ -299,7 +287,7 @@ bool __zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, struct
 
 		NVMEV_DEBUG("%s implicitly flush zid %d wp before 0x%llx after 0x%llx buffer %d",
 														__FUNCTION__, zid,  prev_wp, zone_descs[zid].wp + nr_lbas_flush, zns_ssd->zwra_buffer[zid].remaining);
-	} else if (elba == __zone_end_lba(zns_ssd, zid)) { 
+	} else if (elba == zone_to_elba(zns_ssd, zid)) { 
 		// Workaround. move wp to end of the zone and make state full implicitly
 		nr_lbas_flush = elba - prev_wp + 1;
 
@@ -319,7 +307,7 @@ bool __zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, struct
                                                 nsecs_latest, LBA_TO_BYTE(nr_lba));
 	nsecs_xfer_completed = nsecs_latest;
 
-	lpn = __lba_to_lpn(zns_ssd, prev_wp);
+	lpn = lba_to_lpn(zns_ssd, prev_wp);
 	remaining = nr_lbas_flush / spp->secs_per_pg;
 	/* Aggregate write io in flash page */
 	while (remaining > 0) {
@@ -363,7 +351,7 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	
 	uint64_t nr_lba = __nr_lbas_from_rw_cmd(cmd);
-	uint64_t slpn = __lba_to_lpn(zns_ssd, cmd->slba);
+	uint64_t slpn = lba_to_lpn(zns_ssd, cmd->slba);
 
 	// get zone from start_lba
 	uint32_t zid = lpn_to_zone(zns_ssd, slpn);
@@ -389,8 +377,8 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 	uint64_t slba = cmd->slba;
 	uint64_t nr_lba = __nr_lbas_from_rw_cmd(cmd);
 	
-	uint64_t slpn = __lba_to_lpn(zns_ssd, slba);
-	uint64_t elpn = __lba_to_lpn(zns_ssd, slba + nr_lba - 1);
+	uint64_t slpn = lba_to_lpn(zns_ssd, slba);
+	uint64_t elpn = lba_to_lpn(zns_ssd, slba + nr_lba - 1);
 	uint64_t lpn;
 
 	// get zone from start_lba
