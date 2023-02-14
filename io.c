@@ -713,6 +713,8 @@ static int nvmev_kthread_io(void *data)
 		volatile unsigned int curr = pi->io_seq;
 		int qidx;
 
+		zns_flush_desc_durable();
+		
 		while (curr != -1) {
 			struct nvmev_proc_table *pe = &pi->proc_table[curr];
 			unsigned long long curr_nsecs = local_clock() + delta;

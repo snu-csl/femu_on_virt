@@ -1,12 +1,15 @@
 #include "nvmev.h"
 #include "ftl.h"
 #include "zns.h"
-
+#include <linux/ktime.h>
+#include <linux/sched/clock.h>
 #if SUPPORT_ZNS
 
 struct zns_ssd g_zns_ssd;
 struct buffer zns_write_buffer;
-
+extern struct nvmev_dev *vdev;
+unsigned long long latest_flush_nsecs = 0;
+const unsigned long long flush_interval = 5*1000*1000*1000;
 
 void zns_reset_desc_durable(__u32 zid)
 {
@@ -16,6 +19,20 @@ void zns_reset_desc_durable(__u32 zid)
 	NVMEV_ERROR("%s zid=%d\n",__FUNCTION__, zid);
 
 	memset(zns_ssd->wl_state[zid], 0, sizeof(__u8)*zns_ssd->wl_per_zone);
+}
+
+void zns_flush_desc_durable(void)
+{
+	struct zns_ssd *zns_ssd = &g_zns_ssd;
+	__u32 nr_zones = zns_ssd->nr_zones;
+	unsigned long long curr_nsecs_local = cpu_clock(zns_ssd->cpu_nr_dispatcher);
+	
+	if (curr_nsecs_local - latest_flush_nsecs > flush_interval) {
+		if (vdev->config.write_time > 0) {
+			memcpy(zns_ssd->zone_descs_durable, zns_ssd->zone_descs, sizeof(struct zone_descriptor) * nr_zones);
+			latest_flush_nsecs = curr_nsecs_local;
+		}
+	}
 }
 
 void zns_flush(struct nvme_request * req, struct nvme_result * ret)
@@ -42,8 +59,12 @@ void zns_recover_metadata(void)
 	int secs;
 	__u32 secs_per_pgm_pg = spp->chunks_per_pgm_pg * spp->secs_per_chunk;
 	__u32 wl_off;
-	
+	__u64 elba;
+	bool error;
 	NVMEV_ERROR("%s\n",__FUNCTION__);
+
+	buffer_refill(&zns_write_buffer);
+
 	for (i = 0; i < nr_zones; i++) {
 		if (zns_ssd->zone_descs[i].wp != zns_ssd->zone_descs_durable[i].wp) {
 			
@@ -55,12 +76,20 @@ void zns_recover_metadata(void)
 
 			if (zns_ssd->zone_descs[i].state == ZONE_STATE_FULL) 
 				zns_ssd->zone_descs[i].state = ZONE_STATE_OPENED_IMPL;
+			
+			elba = zns_ssd->zone_descs[i].zslba + zns_ssd->zone_descs[i].zone_capacity;
+
+			memset(vdev->ns_mapped[1] + (zns_ssd->zone_descs[i].wp * spp->secsz), 0,  (elba - zns_ssd->zone_descs[i].wp) * spp->secsz);
 		}
 
 		wl_off = (zns_ssd->zone_descs[i].wp - zns_ssd->zone_descs[i].zslba) / secs_per_pgm_pg;
 		
-		if ((zns_ssd->zone_descs[i].wp % secs_per_pgm_pg) > 0)
+		if ((zns_ssd->zone_descs[i].wp % secs_per_pgm_pg) > 0) {
 			wl_off++;
+
+			//error = buffer_allocate(&zns_write_buffer, (zns_ssd->zone_descs[i].wp % secs_per_pgm_pg) * spp->secsz);
+			//NVMEV_ASSERT(error == ((zns_ssd->zone_descs[i].wp % secs_per_pgm_pg) * spp->secsz));
+		}
 
 		for (j = wl_off; j < zns_ssd->wl_per_zone; j++) {
 			zns_ssd->wl_state[i][j] = 0;

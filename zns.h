@@ -126,4 +126,5 @@ void zns_recover_metadata(void);
 void zns_advance_durable_write_pointer(__u64 lba);
 void enqueue_writeback_io_req2(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release, 
 																											unsigned long long write_pointer);
+void zns_flush_desc_durable(void);
 #endif
