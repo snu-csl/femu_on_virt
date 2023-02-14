@@ -2,7 +2,6 @@
 #include "ssd.h"
 #include "zns.h"
 
-#if SUPPORT_ZNS 
 uint32_t __zmgmt_send_close_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
@@ -322,7 +321,7 @@ void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 	uint32_t option = cmd->zsaso;
 	uint64_t slba = cmd->slba;
 	uint64_t zid = lba_to_zone(zns_ssd, slba);
-	
+
 	if (select_all) {
 		for (zid = 0; zid < zns_ssd->zp.nr_zones; zid++)
 			__zmgmt_send(zns_ssd, zone_to_slba(zns_ssd, zid), action, option);
@@ -337,4 +336,3 @@ void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 	ret->status = status;
 	return;
 }
-#endif

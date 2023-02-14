@@ -10,7 +10,6 @@ extern struct zns_ssd * g_zns_ssd;
 #define NVMEV_ZNS_DEBUG(string, args...) //printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
 
 // Zoned Namespace Command Set Specification Revision 1.1a
-#define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 struct znsparams {
     uint32_t nr_zones;
     uint32_t nr_active_zones;

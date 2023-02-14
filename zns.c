@@ -5,8 +5,6 @@
 #include "ssd.h"
 #include "zns.h"
 
-#if SUPPORT_ZNS
-
 struct zns_ssd *g_zns_ssd = NULL;
 
 static void zns_init_descriptor(struct zns_ssd *zns_ssd)
@@ -165,4 +163,3 @@ void zns_flush(struct nvme_request * req, struct nvme_result * ret)
 
     return true;
  }
-#endif

@@ -19,15 +19,11 @@
 
 #include "nvmev.h"
 #include "conv_ssd.h"
+#include "zns.h"
 #include "dma.h"
 
-#if SUPPORT_ZNS
-#include "zns.h"
-#endif
 
 #undef PERF_DEBUG
-
-#define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 
 #define sq_entry(entry_id) \
 	sq->sq[SQ_ENTRY_TO_PAGE_NUM(entry_id)][SQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
@@ -40,17 +36,6 @@ int dma_flag = 0;
 static inline unsigned long long __get_wallclock(void)
 {
 	return cpu_clock(vdev->config.cpu_nr_dispatcher);
-}
-
-static void __check_gc_and_run(int sqid, int sq_entry)
-{
-	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
-	struct nvme_command *cmd = &sq_entry(sq_entry);
-
-	/* clean one line if needed (in the background) */
-	if (cmd->common.opcode == nvme_cmd_write) {
-		conv_gc_bg();
-	}
 }
 
 /* Return the time to complete */
@@ -670,9 +655,6 @@ static int nvmev_kthread_io(void *data)
 					__fill_cq_result(pe);
 				}
 				
-#if SUPPORT_ZNS == 0
-				//__check_gc_and_run(pe->sqid, pe->sq_entry);
-#endif
 				NVMEV_DEBUG("%s: completed %u, %d %d %d\n",
 						pi->thread_name, curr,
 						pe->sqid, pe->cqid, pe->sq_entry);

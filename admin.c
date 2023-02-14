@@ -14,10 +14,7 @@
 
 #include "nvmev.h"
 #include "conv_ssd.h"
-
-#if SUPPORT_ZNS
 #include "zns.h"
-#endif
 
 #define sq_entry(entry_id) \
 	queue->nvme_sq[SQ_ENTRY_TO_PAGE_NUM(entry_id)][SQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
@@ -306,7 +303,6 @@ static void __nvmev_admin_identify_namespace_desc(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-#if SUPPORT_ZNS
 static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
@@ -376,7 +372,6 @@ static void __nvmev_admin_identify_zns_ctrl(int eid, int cq_head)
 	cq_entry(cq_head).sq_head = eid;
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
-#endif
 
 static void __nvmev_admin_set_features(int eid, int cq_head)
 {
@@ -471,14 +466,12 @@ static void __nvmev_proc_admin_req(int entry_id)
 			case 0x03:
 				__nvmev_admin_identify_namespace_desc(entry_id, cq_head);
 				break;
-			#if SUPPORT_ZNS
 			case 0x05:
 				__nvmev_admin_identify_zns_namespace(entry_id, cq_head);
 				break;
 			case 0x06:
 				__nvmev_admin_identify_zns_ctrl(entry_id, cq_head);
 				break;
-			#endif
 			default:
 				printk("I don't know %d\n", cns);
 			}

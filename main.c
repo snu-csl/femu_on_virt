@@ -28,11 +28,9 @@
 
 #include "nvmev.h"
 #include "conv_ssd.h"
+#include "zns.h"
 #include "dma.h"
 
-#if SUPPORT_ZNS
-#include "zns.h"
-#endif
 /****************************************************************
  * Memory Layout
  ****************************************************************
@@ -85,13 +83,6 @@ unsigned int write_trailing = 0;
 unsigned int nr_io_units = 8;
 unsigned int io_unit_shift = 12;
 
-#if SUPPORT_ZNS
-unsigned int zone_size_mb = 128; //MB
-unsigned int nr_active_zones = 0;
-unsigned int nr_open_zones = 0;
-unsigned int nr_zrwa_zones = 0;
-#endif
-
 char *cpus;
 unsigned int debug = 0;
 
@@ -119,14 +110,6 @@ module_param(cpus, charp, 0444);
 MODULE_PARM_DESC(cpus, "CPU list for process, completion(int.) threads, Seperated by Comma(,)");
 module_param(debug, uint, 0644);
 
-#if SUPPORT_ZNS
-module_param(zone_size_mb, uint, 0644);
-MODULE_PARM_DESC(zone_size_mb, "Zone Size in MB");
-module_param(nr_active_zones, uint, 0644);
-MODULE_PARM_DESC(nr_active_zones, "# of active zone");
-module_param(nr_open_zones, uint, 0644);
-MODULE_PARM_DESC(nr_open_zones, "# of open zone");
-#endif
 static void nvmev_proc_dbs(void)
 {
 	int qid;
@@ -475,45 +458,6 @@ static bool __load_configs(struct nvmev_config *config)
 
 	config->nr_io_cpu = 0;
 	config->cpu_nr_dispatcher = -1;
-
-#if SUPPORT_ZNS
-	config->storage_size = (memmap_size - 1) << 20;
-	
-	config->zone_size = MB(zone_size_mb);
-	config->nr_zones = config->storage_size / config->zone_size;
-	
-	if (nr_active_zones == 0)
-		config->nr_active_zones = config->nr_zones;
-	else
-		config->nr_active_zones = min(nr_active_zones, config->nr_zones);
-
-	if (nr_open_zones == 0)
-		config->nr_open_zones = config->nr_zones;
-	else
-		config->nr_open_zones = min(nr_open_zones, config->nr_zones);
-	
-	if (nr_zrwa_zones == 0)
-		config->nr_zrwa_zones = config->nr_zones;
-	else
-		config->nr_zrwa_zones = min(nr_zrwa_zones, config->nr_zones);
-
-	config->nr_io_units_per_zone = 1;
-
-	if (config->nr_open_zones > config->nr_zones || 
-		config->nr_active_zones > config->nr_zones || 
-		config->nr_zrwa_zones > config->nr_zones )
-	{
-		NVMEV_ERROR("Invalid # of open zone : %d, # of active zones : %d, # of zrwa zones : %d,  # of zone : %d\n", 
-										config->nr_open_zones, config->nr_active_zones, config->nr_zrwa_zones, config->nr_zones);
-		return false;
-	}
-	
-	if (config->storage_size % config->nr_zones)
-	{
-		NVMEV_ERROR("Invalid # of zone : %d. Not aligned.. \n", config->nr_zones);
-		return false;
-	}
-#endif
 
 	while ((cpu = strsep(&cpus, ",")) != NULL) {
 		cpu_nr = (unsigned int)simple_strtol(cpu, NULL, 10);

@@ -226,4 +226,18 @@
 
 #define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_PARTITIONS)     
 #define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_PARTITION_BITS)
+
+static const uint32_t ns_csi[] = {NS_CSI_0, NS_CSI_1};
+static const uint64_t ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
+
+#define NS_CSI(ns) (ns_csi[ns])
+#define NS_CAPACITY(ns) (ns_capacity[ns])
+
+#if NR_NAMESPACE >= 3
+	#error "ONLY SUPPORT NR_NAMESPACE <= 2"
+#elif NR_NAMESPACE == 2
+	#if NS_CSI_0 == NS_CSI_1 
+		#error "ONLY SUPPORT 1 ZNS Namepsace, 1 Conv Namespace"
+	#endif
+#endif 
 #endif

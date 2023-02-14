@@ -2,7 +2,6 @@
 #include "ssd.h"
 #include "zns.h"
 
-#if SUPPORT_ZNS 
 void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release);
 
 static inline  uint32_t __nr_lbas_from_rw_cmd(struct nvme_rw_command * cmd)
@@ -428,4 +427,3 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 	ret->nsecs_target = nsecs_latest; 
 	return true;
 }
-#endif

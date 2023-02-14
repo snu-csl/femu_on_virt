@@ -8,7 +8,6 @@
 #include "ssd.h"
 #include "zns.h"
 
-#if SUPPORT_ZNS 
 uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer, uint64_t length, uint32_t io)
 {
 	size_t offset;
@@ -139,4 +138,3 @@ void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret)
 	ret->status = status;
 	return;
 }
-#endif

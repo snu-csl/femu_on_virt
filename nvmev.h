@@ -24,25 +24,10 @@
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
-#define SUPPORT_ZNS 1
 #define SUPPORT_MULTI_IO_WORKER_BY_SQ	1 
 #define SUPPORT_VIRTUAL_CAPACITY		0
 
 /*************************/
-static const uint32_t ns_csi[] = {NS_CSI_0, NS_CSI_1};
-static const uint64_t ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
-
-#define NS_CSI(ns) (ns_csi[ns])
-#define NS_CAPACITY(ns) (ns_capacity[ns])
-
-#if NR_NAMESPACE >= 3
-	#error "ONLY SUPPORT NR_NAMESPACE <= 2"
-#elif NR_NAMESPACE == 2
-	#if NS_CSI_0 != NVME_CSI_ZNS || NS_CSI_1 != NVME_CSI_NVM
-		#error "ONLY SUPPORT 1 ZNS Namepsace, 1 Conv Namespace"
-	#endif
-#endif 
-
 #define NVMEV_DRV_NAME "NVMeVirt"
 
 #define NVMEV_INFO(string, args...) \
@@ -70,6 +55,7 @@ static const uint64_t ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
 #define NR_MAX_PARALLEL_IO 16384
 
 #define PAGE_OFFSET_MASK (PAGE_SIZE - 1)
+#define PRP_PFN(x)	((unsigned long)((x) >> PAGE_SHIFT))
 
 #define KB(k) ((k) * 1024)
 #define MB(m) (KB((m) * 1024))
@@ -176,16 +162,6 @@ struct nvmev_config {
 	unsigned int cpu_nr_dispatcher;
 	unsigned int nr_io_cpu;
 	unsigned int cpu_nr_proc_io[32];
-
-#if SUPPORT_ZNS
-	unsigned int zone_size;	// byte
-	unsigned int nr_zones;	
-	unsigned int nr_active_zones;
-	unsigned int nr_open_zones;
-	unsigned int nr_zrwa_zones;
-
-	unsigned int nr_io_units_per_zone;
-#endif
 };
 
 struct nvmev_proc_table {
