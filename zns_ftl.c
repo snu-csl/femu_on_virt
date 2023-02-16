@@ -3,25 +3,25 @@
 
 #include "nvmev.h"
 #include "ssd.h"
-#include "zns.h"
+#include "zns_ftl.h"
 
-struct zns_ssd *g_zns_ssd = NULL;
+struct zns_ftl *g_zns_ftl = NULL;
 
-static void zns_init_descriptor(struct zns_ssd *zns_ssd)
+static void zns_init_descriptor(struct zns_ftl *zns_ftl)
 {
 	struct zone_descriptor *zone_descs;
-	uint32_t zone_size = zns_ssd->zp.zone_size;
-	uint32_t nr_zones = zns_ssd->zp.nr_zones;
+	uint32_t zone_size = zns_ftl->zp.zone_size;
+	uint32_t nr_zones = zns_ftl->zp.nr_zones;
 	uint64_t zslba = 0;
 	uint32_t i = 0;
-	const uint32_t zrwa_buffer_size = zns_ssd->zp.zrwa_buffer_size;
+	const uint32_t zrwa_buffer_size = zns_ftl->zp.zrwa_buffer_size;
 
-	zns_ssd->zone_descs = (struct zone_descriptor *) kmalloc(sizeof(struct zone_descriptor) * nr_zones, GFP_ATOMIC);
-	zns_ssd->report_buffer = (struct zone_report *) kmalloc(sizeof(struct zone_report) + sizeof(struct zone_descriptor) * (nr_zones - 1), GFP_ATOMIC);
-	zns_ssd->zwra_buffer = (struct buffer *) kmalloc(sizeof(struct buffer) * nr_zones, GFP_ATOMIC);
+	zns_ftl->zone_descs = (struct zone_descriptor *) kmalloc(sizeof(struct zone_descriptor) * nr_zones, GFP_ATOMIC);
+	zns_ftl->report_buffer = (struct zone_report *) kmalloc(sizeof(struct zone_report) + sizeof(struct zone_descriptor) * (nr_zones - 1), GFP_ATOMIC);
+	zns_ftl->zwra_buffer = (struct buffer *) kmalloc(sizeof(struct buffer) * nr_zones, GFP_ATOMIC);
 	
-	zone_descs = zns_ssd->zone_descs;
-	memset(zone_descs, 0, sizeof(struct zone_descriptor) * zns_ssd->zp.nr_zones);
+	zone_descs = zns_ftl->zone_descs;
+	memset(zone_descs, 0, sizeof(struct zone_descriptor) * zns_ftl->zp.nr_zones);
 
 	for (i = 0; i < nr_zones; i++) {
 		zone_descs[i].state = ZONE_STATE_EMPTY;
@@ -32,23 +32,23 @@ static void zns_init_descriptor(struct zns_ssd *zns_ssd)
 		zslba += BYTE_TO_LBA(zone_size);
 		zone_descs[i].zone_capacity = BYTE_TO_LBA(zone_size);
 		
-		buffer_init(&(zns_ssd->zwra_buffer[i]), zrwa_buffer_size); 
+		buffer_init(&(zns_ftl->zwra_buffer[i]), zrwa_buffer_size); 
 
 		NVMEV_ZNS_DEBUG("[i] zslba 0x%llx zone capacity 0x%llx\n", zone_descs[i].zslba, zone_descs[i].zone_capacity);
 	}
 }
 
-static void zns_init_resource(struct zns_ssd *zns_ssd)
+static void zns_init_resource(struct zns_ftl *zns_ftl)
 {
-	struct zone_resource_info *res_infos = zns_ssd->res_infos;
+	struct zone_resource_info *res_infos = zns_ftl->res_infos;
 
-	res_infos[ACTIVE_ZONE].total_cnt = zns_ssd->zp.nr_zones;
+	res_infos[ACTIVE_ZONE].total_cnt = zns_ftl->zp.nr_zones;
 	res_infos[ACTIVE_ZONE].acquired_cnt = 0;
 
-	res_infos[OPEN_ZONE].total_cnt = zns_ssd->zp.nr_zones;
+	res_infos[OPEN_ZONE].total_cnt = zns_ftl->zp.nr_zones;
 	res_infos[OPEN_ZONE].acquired_cnt = 0;
 
-	res_infos[ZRWA_ZONE].total_cnt = zns_ssd->zp.nr_zones;
+	res_infos[ZRWA_ZONE].total_cnt = zns_ftl->zp.nr_zones;
 	res_infos[ZRWA_ZONE].acquired_cnt = 0;
 
 }
@@ -72,38 +72,38 @@ static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, uint64
 
 void zns_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace)
 {
-	struct zns_ssd *zns_ssd;
+	struct zns_ftl *zns_ftl;
 	struct ssdparams spp;
 
 	const uint32_t nparts = 1; /* Not support multi partitions for zns*/
 
-	zns_ssd = kmalloc(sizeof(struct zns_ssd) * nparts, GFP_KERNEL);
+	zns_ftl = kmalloc(sizeof(struct zns_ftl) * nparts, GFP_KERNEL);
 
 	ssd_init_params(&spp, capacity, nparts);
-	zns_init_params(&zns_ssd->zp, &spp, capacity);
+	zns_init_params(&zns_ftl->zp, &spp, capacity);
 	
-	ssd_init(&zns_ssd->ssd, &spp, cpu_nr_dispatcher);
+	ssd_init(&zns_ftl->ssd, &spp, cpu_nr_dispatcher);
 
-	zns_ssd->ns = namespace;
-	zns_ssd->storage_base_addr = storage_base_addr;
+	zns_ftl->ns = namespace;
+	zns_ftl->storage_base_addr = storage_base_addr;
 	
 	/* It should be 4KB aligned, according to lpn size */
-	NVMEV_ASSERT((zns_ssd->zp.zone_size % spp.pgsz) == 0); 
+	NVMEV_ASSERT((zns_ftl->zp.zone_size % spp.pgsz) == 0); 
 	
-	zns_init_descriptor(zns_ssd);
-	zns_init_resource(zns_ssd);
+	zns_init_descriptor(zns_ftl);
+	zns_init_resource(zns_ftl);
 
-	NVMEV_ASSERT(g_zns_ssd == NULL);
-	g_zns_ssd = zns_ssd;
+	NVMEV_ASSERT(g_zns_ftl == NULL);
+	g_zns_ftl = zns_ftl;
 }
 
 void zns_exit(void)
 {
-	struct zns_ssd * zns_ssd = zns_ssd_instance();
+	struct zns_ftl * zns_ftl = zns_ftl_instance();
 	NVMEV_ZNS_DEBUG("%s \n", __FUNCTION__);
 	
-	kfree(zns_ssd->zone_descs);
-	kfree(zns_ssd->report_buffer);
+	kfree(zns_ftl->zone_descs);
+	kfree(zns_ftl->report_buffer);
 }
 
 void zns_flush(struct nvme_request * req, struct nvme_result * ret)

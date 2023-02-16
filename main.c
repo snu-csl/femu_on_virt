@@ -28,7 +28,7 @@
 
 #include "nvmev.h"
 #include "conv_ftl.h"
-#include "zns.h"
+#include "zns_ftl.h"
 #include "dma.h"
 
 /****************************************************************

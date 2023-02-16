@@ -1,10 +1,10 @@
 #include "nvmev.h"
 #include "ssd.h"
-#include "zns.h"
+#include "zns_ftl.h"
 
-static uint32_t __zmgmt_send_close_zone(struct zns_ssd *zns_ssd, uint64_t zid)
+static uint32_t __zmgmt_send_close_zone(struct zns_ftl *zns_ftl, uint64_t zid)
 {
-	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
 	enum zone_state cur_state = zone_descs[zid].state;	
 	uint32_t status = NVME_SC_SUCCESS;
 
@@ -12,9 +12,9 @@ static uint32_t __zmgmt_send_close_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 		case ZONE_STATE_OPENED_IMPL:
 		case ZONE_STATE_OPENED_EXPL:
 		{	
-			change_zone_state(zns_ssd, zid, ZONE_STATE_CLOSED);
+			change_zone_state(zns_ftl, zid, ZONE_STATE_CLOSED);
 
-			release_zone_resource(zns_ssd, OPEN_ZONE);
+			release_zone_resource(zns_ftl, OPEN_ZONE);
 			break;
 		}
 		
@@ -32,9 +32,9 @@ static uint32_t __zmgmt_send_close_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 	return status;
 }
 
-static uint32_t __zmgmt_send_finish_zone(struct zns_ssd *zns_ssd, uint64_t zid)
+static uint32_t __zmgmt_send_finish_zone(struct zns_ftl *zns_ftl, uint64_t zid)
 {
-	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
 	enum zone_state cur_state = zone_descs[zid].state;
 	bool is_zrwa_zone = zone_descs[zid].zrwav;		
 	uint32_t status = NVME_SC_SUCCESS;
@@ -43,23 +43,23 @@ static uint32_t __zmgmt_send_finish_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 		case ZONE_STATE_OPENED_IMPL:
 		case ZONE_STATE_OPENED_EXPL:
 		{			
-			release_zone_resource(zns_ssd, OPEN_ZONE);
+			release_zone_resource(zns_ftl, OPEN_ZONE);
 			//go through
 		}
 		case ZONE_STATE_CLOSED:
 		{
-			release_zone_resource(zns_ssd, ACTIVE_ZONE);
+			release_zone_resource(zns_ftl, ACTIVE_ZONE);
 
 			if (is_zrwa_zone)
-				release_zone_resource(zns_ssd, ZRWA_ZONE);
+				release_zone_resource(zns_ftl, ZRWA_ZONE);
 
-			change_zone_state(zns_ssd, zid, ZONE_STATE_FULL);
+			change_zone_state(zns_ftl, zid, ZONE_STATE_FULL);
 			break;
 		}
 		
 		case ZONE_STATE_EMPTY:
 		{
-			change_zone_state(zns_ssd, zid, ZONE_STATE_FULL);
+			change_zone_state(zns_ftl, zid, ZONE_STATE_FULL);
 			break;		
 		}
 		case ZONE_STATE_FULL:
@@ -76,9 +76,9 @@ static uint32_t __zmgmt_send_finish_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 	return status;
 }
 
-static uint32_t __zmgmt_send_open_zone(struct zns_ssd *zns_ssd, uint64_t zid, uint32_t zrwa)
+static uint32_t __zmgmt_send_open_zone(struct zns_ftl *zns_ftl, uint64_t zid, uint32_t zrwa)
 {
-	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
 	enum zone_state cur_state = zone_descs[zid].state;		
 	uint32_t status = NVME_SC_SUCCESS;
 
@@ -86,35 +86,35 @@ static uint32_t __zmgmt_send_open_zone(struct zns_ssd *zns_ssd, uint64_t zid, ui
 
 		case ZONE_STATE_EMPTY:
 		{
-			if (is_zone_resource_full(zns_ssd, ACTIVE_ZONE))
+			if (is_zone_resource_full(zns_ftl, ACTIVE_ZONE))
 				return NVME_SC_ZNS_NO_ACTIVE_ZONE;
 
-			if (is_zone_resource_full(zns_ssd, OPEN_ZONE))
+			if (is_zone_resource_full(zns_ftl, OPEN_ZONE))
 				return NVME_SC_ZNS_NO_OPEN_ZONE;
 			
 			if (zrwa)
 			{
-				if (is_zone_resource_full(zns_ssd, ZRWA_ZONE))
+				if (is_zone_resource_full(zns_ftl, ZRWA_ZONE))
 					return NVME_SC_ZNS_ZRWA_RSRC_UNAVAIL;
 
-				acquire_zone_resource(zns_ssd, ZRWA_ZONE);
+				acquire_zone_resource(zns_ftl, ZRWA_ZONE);
 				zone_descs[zid].zrwav = 1;
 			}
 
-			acquire_zone_resource(zns_ssd, ACTIVE_ZONE);
+			acquire_zone_resource(zns_ftl, ACTIVE_ZONE);
 			// go through
 		}
 
 		case ZONE_STATE_CLOSED:
 		{
-			if (acquire_zone_resource(zns_ssd, OPEN_ZONE) == false)
+			if (acquire_zone_resource(zns_ftl, OPEN_ZONE) == false)
 				return NVME_SC_ZNS_NO_OPEN_ZONE;
 
  			//go through
 		}
 		case ZONE_STATE_OPENED_IMPL:
 		{
-			change_zone_state(zns_ssd, zid, ZONE_STATE_OPENED_EXPL);
+			change_zone_state(zns_ftl, zid, ZONE_STATE_OPENED_EXPL);
 			break;
 		}
 		
@@ -131,26 +131,26 @@ static uint32_t __zmgmt_send_open_zone(struct zns_ssd *zns_ssd, uint64_t zid, ui
 	return status;
 }
 
-static void __reset_zone(struct zns_ssd * zns_ssd, uint64_t zid)
+static void __reset_zone(struct zns_ftl * zns_ftl, uint64_t zid)
 {
-	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
-	uint32_t zone_size = zns_ssd->zp.zone_size;
-	uint8_t * zone_start_addr = (uint8_t *)get_storage_addr_from_zid(zns_ssd, zid);
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
+	uint32_t zone_size = zns_ftl->zp.zone_size;
+	uint8_t * zone_start_addr = (uint8_t *)get_storage_addr_from_zid(zns_ftl, zid);
 	
 	NVMEV_ZNS_DEBUG("%s ns %d zid %lu  0x%llx, start addres 0x%llx zone_size %x \n", 
-			__FUNCTION__, zns_ssd->ns, zid, (void*)vdev->ns_mapped[zns_ssd->ns], (uint64_t)zone_start_addr, zone_size);
+			__FUNCTION__, zns_ftl->ns, zid, (void*)vdev->ns_mapped[zns_ftl->ns], (uint64_t)zone_start_addr, zone_size);
 
 	memset(zone_start_addr, 0, zone_size);
 
 	zone_descs[zid].wp = zone_descs[zid].zslba;
 	zone_descs[zid].zrwav = 0;
 
-	buffer_refill(&zns_ssd->zwra_buffer[zid]);
+	buffer_refill(&zns_ftl->zwra_buffer[zid]);
 }
 
-static uint32_t __zmgmt_send_reset_zone(struct zns_ssd *zns_ssd, uint64_t zid)
+static uint32_t __zmgmt_send_reset_zone(struct zns_ftl *zns_ftl, uint64_t zid)
 {
-	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
 	enum zone_state cur_state = zone_descs[zid].state;
 	bool is_zrwa_zone = zone_descs[zid].zrwav;	
 	uint32_t status = NVME_SC_SUCCESS;
@@ -160,22 +160,22 @@ static uint32_t __zmgmt_send_reset_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 		case ZONE_STATE_OPENED_IMPL:
 		case ZONE_STATE_OPENED_EXPL:
 		{
-			release_zone_resource(zns_ssd, OPEN_ZONE);
+			release_zone_resource(zns_ftl, OPEN_ZONE);
 			// go through
 		}
 		case ZONE_STATE_CLOSED:
 		{
-			release_zone_resource(zns_ssd, ACTIVE_ZONE);
+			release_zone_resource(zns_ftl, ACTIVE_ZONE);
 
 			if (is_zrwa_zone)
-				release_zone_resource(zns_ssd, ZRWA_ZONE);
+				release_zone_resource(zns_ftl, ZRWA_ZONE);
 			// go through
 		}
 		case ZONE_STATE_FULL:
 		case ZONE_STATE_EMPTY:
 		{
-			change_zone_state(zns_ssd, zid, ZONE_STATE_EMPTY);
-			__reset_zone(zns_ssd, zid);
+			change_zone_state(zns_ftl, zid, ZONE_STATE_EMPTY);
+			__reset_zone(zns_ftl, zid);
 			break;
 		}
 		
@@ -189,15 +189,15 @@ static uint32_t __zmgmt_send_reset_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 	return status;
 }
 
-static uint32_t __zmgmt_send_offline_zone(struct zns_ssd *zns_ssd, uint64_t zid)
+static uint32_t __zmgmt_send_offline_zone(struct zns_ftl *zns_ftl, uint64_t zid)
 {
-	enum zone_state cur_state = zns_ssd->zone_descs[zid].state;	
+	enum zone_state cur_state = zns_ftl->zone_descs[zid].state;	
 	uint32_t status = NVME_SC_SUCCESS;
 
 	switch(cur_state) {
 		case ZONE_STATE_READ_ONLY:
 		{
-			change_zone_state(zns_ssd, zid, ZONE_STATE_OFFLINE);
+			change_zone_state(zns_ftl, zid, ZONE_STATE_OFFLINE);
 			break;
 		}
 		
@@ -214,20 +214,20 @@ static uint32_t __zmgmt_send_offline_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 	return status;
 }
 
-static uint32_t __zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, uint64_t slba)
+static uint32_t __zmgmt_send_flush_explicit_zrwa(struct zns_ftl *zns_ftl, uint64_t slba)
 {
-	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
-	uint64_t zid = lba_to_zone(zns_ssd, slba);
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
+	uint64_t zid = lba_to_zone(zns_ftl, slba);
 	uint64_t wp = zone_descs[zid].wp;
 	uint32_t status = NVME_SC_SUCCESS;
 	enum zone_state cur_state = zone_descs[zid].state;	
 	uint64_t zone_capacity = zone_descs[zid].zone_capacity;
 
-	const uint32_t lbas_per_zrwafg = zns_ssd->zp.lbas_per_zrwafg;
-	const uint32_t lbas_per_zrwa = zns_ssd->zp.lbas_per_zrwa;
+	const uint32_t lbas_per_zrwafg = zns_ftl->zp.lbas_per_zrwafg;
+	const uint32_t lbas_per_zrwa = zns_ftl->zp.lbas_per_zrwa;
 
 	uint64_t zrwa_start = wp;
-	uint64_t zrwa_end = min(zrwa_start + lbas_per_zrwa - 1, (size_t)zone_to_slba(zns_ssd, zid) + zone_capacity - 1); 
+	uint64_t zrwa_end = min(zrwa_start + lbas_per_zrwa - 1, (size_t)zone_to_slba(zns_ftl, zid) + zone_capacity - 1); 
 	uint64_t nr_lbas_flush = slba - wp + 1;
 	
 	NVMEV_ZNS_DEBUG("%s slba 0x%llx zrwa_start 0x%llx zrwa_end 0x%llx zone_descs[zid].zrwav %d\n", 
@@ -249,13 +249,13 @@ static uint32_t __zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, uint64
 		{	
 			zone_descs[zid].wp = slba + 1;
 
-			if (zone_descs[zid].wp == (zone_to_slba(zns_ssd, zid) + zone_capacity)) {
+			if (zone_descs[zid].wp == (zone_to_slba(zns_ftl, zid) + zone_capacity)) {
 				//change state to ZSF
 				if (cur_state != ZONE_STATE_CLOSED)
-					release_zone_resource(zns_ssd, OPEN_ZONE);
-				release_zone_resource(zns_ssd, ACTIVE_ZONE);
-				release_zone_resource(zns_ssd, ZRWA_ZONE);
-				change_zone_state(zns_ssd, zid, ZONE_STATE_FULL);
+					release_zone_resource(zns_ftl, OPEN_ZONE);
+				release_zone_resource(zns_ftl, ACTIVE_ZONE);
+				release_zone_resource(zns_ftl, ZRWA_ZONE);
+				change_zone_state(zns_ftl, zid, ZONE_STATE_FULL);
 			}
 			break;
 		}
@@ -269,40 +269,40 @@ static uint32_t __zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, uint64
 	return status;
 }
 
-static uint32_t __zmgmt_send(struct zns_ssd *zns_ssd, uint64_t slba, uint32_t action, uint32_t option)
+static uint32_t __zmgmt_send(struct zns_ftl *zns_ftl, uint64_t slba, uint32_t action, uint32_t option)
 {	
 	uint32_t status;
-	uint64_t zid = lba_to_zone(zns_ssd, slba);
+	uint64_t zid = lba_to_zone(zns_ftl, slba);
 
 	switch(action) {
 		case ZSA_CLOSE_ZONE:
 		{
-			status = __zmgmt_send_close_zone(zns_ssd, zid);
+			status = __zmgmt_send_close_zone(zns_ftl, zid);
 			break;
 		}
 		case ZSA_FINISH_ZONE:
 		{
-			status = __zmgmt_send_finish_zone(zns_ssd, zid);
+			status = __zmgmt_send_finish_zone(zns_ftl, zid);
 			break;
 		}
 		case ZSA_OPEN_ZONE:
 		{
-			status = __zmgmt_send_open_zone(zns_ssd, zid, option);
+			status = __zmgmt_send_open_zone(zns_ftl, zid, option);
 			break;
 		}
 		case ZSA_RESET_ZONE:
 		{
-			status = __zmgmt_send_reset_zone(zns_ssd, zid);
+			status = __zmgmt_send_reset_zone(zns_ftl, zid);
 			break;
 		}
 		case ZSA_OFFLINE_ZONE:
 		{
-			status = __zmgmt_send_offline_zone(zns_ssd, zid);
+			status = __zmgmt_send_offline_zone(zns_ftl, zid);
 			break;
 		}
 		case ZSA_FLUSH_EXPL_ZRWA:
 		{
-			status = __zmgmt_send_flush_explicit_zrwa(zns_ssd, slba);
+			status = __zmgmt_send_flush_explicit_zrwa(zns_ftl, slba);
 			break;
 		}
 	}
@@ -313,20 +313,20 @@ static uint32_t __zmgmt_send(struct zns_ssd *zns_ssd, uint64_t slba, uint32_t ac
 void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 {
 	struct nvme_zone_mgmt_send * cmd = (struct nvme_zone_mgmt_send *)req->cmd;
-	struct zns_ssd *zns_ssd= zns_ssd_instance();
+	struct zns_ftl *zns_ftl= zns_ftl_instance();
 	uint32_t select_all = cmd->select_all;
 	uint32_t status = NVME_SC_SUCCESS;
 	
 	uint32_t action = cmd->zsa;
 	uint32_t option = cmd->zsaso;
 	uint64_t slba = cmd->slba;
-	uint64_t zid = lba_to_zone(zns_ssd, slba);
+	uint64_t zid = lba_to_zone(zns_ftl, slba);
 
 	if (select_all) {
-		for (zid = 0; zid < zns_ssd->zp.nr_zones; zid++)
-			__zmgmt_send(zns_ssd, zone_to_slba(zns_ssd, zid), action, option);
+		for (zid = 0; zid < zns_ftl->zp.nr_zones; zid++)
+			__zmgmt_send(zns_ftl, zone_to_slba(zns_ftl, zid), action, option);
 	} else {
-		status = __zmgmt_send(zns_ssd, slba, action, option);
+		status = __zmgmt_send(zns_ftl, slba, action, option);
 	}
 	
 	NVMEV_ZNS_DEBUG("%s slba %llx zid %lu select_all %lu action %u status %lu option %lu\n", 

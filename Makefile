@@ -4,7 +4,7 @@ PWD     := $(shell pwd)
 obj-m   := nvmev.o
 nvmev-objs := main.o pci.o admin.o io.o 
 nvmev-objs += ssd.o conv_ftl.o pqueue.o dma.o
-nvmev-objs += zns.o zns_read_write.o zns_mgmt_send.o zns_mgmt_recv.o 
+nvmev-objs += zns_ftl.o zns_read_write.o zns_mgmt_send.o zns_mgmt_recv.o 
 nvmev-objs += channel_model.o 
 
 ccflags-y += -Wno-implicit-fallthrough -Wno-unused-function -Wno-declaration-after-statement -Wno-unused-variable

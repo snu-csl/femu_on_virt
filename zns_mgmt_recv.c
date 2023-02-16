@@ -6,7 +6,7 @@
 
 #include "nvmev.h"
 #include "ssd.h"
-#include "zns.h"
+#include "zns_ftl.h"
 
 static uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer, uint64_t length, uint32_t io)
 {
@@ -67,18 +67,18 @@ static uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer,
 	return length;
 }
 
-static void __fill_zone_report(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cmd, struct zone_report * report)
+static void __fill_zone_report(struct zns_ftl *zns_ftl, struct nvme_zone_mgmt_recv * cmd, struct zone_report * report)
 {
-	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
+	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
 	uint64_t slba = cmd->slba;
-	uint64_t start_zid = lba_to_zone(zns_ssd, slba);
+	uint64_t start_zid = lba_to_zone(zns_ftl, slba);
 	
 	uint64_t bytes_transfer = (cmd->nr_dw + 1) * sizeof(uint32_t);
 
 	uint64_t nr_zone_to_report; 
 
 	if (cmd->zra_specific_features == 0) // all
-		nr_zone_to_report = zns_ssd->zp.nr_zones - start_zid;
+		nr_zone_to_report = zns_ftl->zp.nr_zones - start_zid;
 	else // partial. # of zone desc transferred
 		nr_zone_to_report = (bytes_transfer / sizeof(struct zone_descriptor))  - 1;
 
@@ -87,9 +87,9 @@ static void __fill_zone_report(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_re
 	memcpy(report->zd, &(zone_descs[start_zid]), sizeof(struct zone_descriptor) * nr_zone_to_report);
 }
 
-static bool __check_zmgmt_rcv_option_supported(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cmd)
+static bool __check_zmgmt_rcv_option_supported(struct zns_ftl *zns_ftl, struct nvme_zone_mgmt_recv * cmd)
 {
-	if (lba_to_zone(zns_ssd, cmd->slba) >= zns_ssd->zp.nr_zones) {
+	if (lba_to_zone(zns_ftl, cmd->slba) >= zns_ftl->zp.nr_zones) {
 		NVMEV_ERROR("Invalid lba range\n");
 	}
 
@@ -108,8 +108,8 @@ static bool __check_zmgmt_rcv_option_supported(struct zns_ssd *zns_ssd, struct n
 
 void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret)
 {
-	struct zns_ssd *zns_ssd = zns_ssd_instance(); 
-	struct zone_report * buffer = zns_ssd->report_buffer;
+	struct zns_ftl *zns_ftl = zns_ftl_instance(); 
+	struct zone_report * buffer = zns_ftl->report_buffer;
 	struct nvme_zone_mgmt_recv * cmd = (struct nvme_zone_mgmt_recv *) req->cmd;
 	
 	uint64_t prp1 = (uint64_t)cmd->prp1;
@@ -120,9 +120,9 @@ void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret)
 	NVMEV_ZNS_DEBUG("%s slba 0x%llx nr_dw 0x%lx  action %u partial %u action_specific 0x%x\n",
 					__FUNCTION__, cmd->slba, length, cmd->zra, cmd->zra_specific_features, cmd->zra_specific_field);
 	
-	if (__check_zmgmt_rcv_option_supported(zns_ssd, cmd)) {
+	if (__check_zmgmt_rcv_option_supported(zns_ftl, cmd)) {
 		
-		__fill_zone_report(zns_ssd, cmd, buffer);
+		__fill_zone_report(zns_ftl, cmd, buffer);
 
 		__prp_transfer_data(prp1, prp2, buffer, length, 0);
 		status = NVME_SC_SUCCESS;
