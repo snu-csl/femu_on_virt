@@ -235,7 +235,7 @@ void ssd_init(struct ssd * ssd, struct ssdparams *spp, uint32_t cpu_nr_dispatche
     /*copy spp*/
     ssd->sp = *spp;
 
-        /* initialize conv_ssd internal layout architecture */
+        /* initialize conv_ftl internal layout architecture */
     ssd->ch = kmalloc(sizeof(struct ssd_channel) * spp->nchs, GFP_KERNEL); // 40 * 8 = 320
     for (i = 0; i < spp->nchs; i++) {
         ssd_init_ch(&(ssd->ch[i]), spp);
@@ -380,7 +380,7 @@ void adjust_ftl_latency(int target, int lat)
     int i;
 
     for (i = 0; i < SSD_PARTITIONS; i++) {
-        spp = &(g_conv_ssds[i].sp); 
+        spp = &(g_conv_ftls[i].sp); 
         NVMEV_INFO("Before latency: %d %d %d, change to %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat, lat);
         switch (target) {
             case NAND_READ:

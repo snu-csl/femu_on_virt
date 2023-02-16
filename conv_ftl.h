@@ -1,5 +1,5 @@
-#ifndef _NVMEVIRT_CONV_SSD_H
-#define _NVMEVIRT_CONV_SSD_H
+#ifndef _NVMEVIRT_CONV_FTL_H
+#define _NVMEVIRT_CONV_FTL_H
 
 #include <linux/types.h>
 #include "queue.h"
@@ -41,13 +41,12 @@ struct line_mgmt {
     int full_line_cnt;
 };
 
-
 struct write_flow_control {
     int write_credits;
     int credits_to_refill;
 };
 
-struct conv_ssd {
+struct conv_ftl {
 
     union {
         struct ssd ssd;
@@ -72,6 +71,6 @@ bool conv_read(struct nvme_request * req, struct nvme_result * ret);
 bool conv_write(struct nvme_request * req, struct nvme_result * ret);
 void conv_flush(struct nvme_request * req, struct nvme_result * ret);
 void conv_gc_bg(void);
-void conv_gc(struct conv_ssd *ssd);
+void conv_gc(struct conv_ftl *ssd);
 
 #endif

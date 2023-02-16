@@ -13,7 +13,7 @@
  **********************************************************************/
 
 #include "nvmev.h"
-#include "conv_ssd.h"
+#include "conv_ftl.h"
 #include "zns.h"
 
 #define sq_entry(entry_id) \

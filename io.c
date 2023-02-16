@@ -18,7 +18,7 @@
 #include <linux/sched/clock.h>
 
 #include "nvmev.h"
-#include "conv_ssd.h"
+#include "conv_ftl.h"
 #include "zns.h"
 #include "dma.h"
 
