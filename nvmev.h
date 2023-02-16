@@ -147,7 +147,7 @@ struct nvmev_config {
 	unsigned long virtual_storage_size;
 #endif	
 
-	unsigned long ns_size[NR_NAMESPACE];  // byte
+	unsigned long ns_size[NR_NAMESPACES];  // byte
 
 	unsigned int read_delay;	// ns
 	unsigned int read_time;		// ns
@@ -226,7 +226,7 @@ struct nvmev_dev {
 	struct task_struct *nvmev_manager;
 
 	void *storage_mapped;
-	void * ns_mapped[NR_NAMESPACE];
+	void * ns_mapped[NR_NAMESPACES];
 
 	struct nvmev_proc_info *proc_info;
 	unsigned int proc_turn;

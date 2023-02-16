@@ -2,7 +2,7 @@
 #include "ssd.h"
 #include "zns.h"
 
-uint32_t __zmgmt_send_close_zone(struct zns_ssd *zns_ssd, uint64_t zid)
+static uint32_t __zmgmt_send_close_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	enum zone_state cur_state = zone_descs[zid].state;	
@@ -32,7 +32,7 @@ uint32_t __zmgmt_send_close_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 	return status;
 }
 
-uint32_t __zmgmt_send_finish_zone(struct zns_ssd *zns_ssd, uint64_t zid)
+static uint32_t __zmgmt_send_finish_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	enum zone_state cur_state = zone_descs[zid].state;
@@ -76,7 +76,7 @@ uint32_t __zmgmt_send_finish_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 	return status;
 }
 
-uint32_t __zmgmt_send_open_zone(struct zns_ssd *zns_ssd, uint64_t zid, uint32_t zrwa)
+static uint32_t __zmgmt_send_open_zone(struct zns_ssd *zns_ssd, uint64_t zid, uint32_t zrwa)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	enum zone_state cur_state = zone_descs[zid].state;		
@@ -131,7 +131,7 @@ uint32_t __zmgmt_send_open_zone(struct zns_ssd *zns_ssd, uint64_t zid, uint32_t 
 	return status;
 }
 
-void __reset_zone(struct zns_ssd * zns_ssd, uint64_t zid)
+static void __reset_zone(struct zns_ssd * zns_ssd, uint64_t zid)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	uint32_t zone_size = zns_ssd->zp.zone_size;
@@ -148,7 +148,7 @@ void __reset_zone(struct zns_ssd * zns_ssd, uint64_t zid)
 	buffer_refill(&zns_ssd->zwra_buffer[zid]);
 }
 
-uint32_t __zmgmt_send_reset_zone(struct zns_ssd *zns_ssd, uint64_t zid)
+static uint32_t __zmgmt_send_reset_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	enum zone_state cur_state = zone_descs[zid].state;
@@ -189,7 +189,7 @@ uint32_t __zmgmt_send_reset_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 	return status;
 }
 
-uint32_t __zmgmt_send_offline_zone(struct zns_ssd *zns_ssd, uint64_t zid)
+static uint32_t __zmgmt_send_offline_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 {
 	enum zone_state cur_state = zns_ssd->zone_descs[zid].state;	
 	uint32_t status = NVME_SC_SUCCESS;
@@ -214,7 +214,7 @@ uint32_t __zmgmt_send_offline_zone(struct zns_ssd *zns_ssd, uint64_t zid)
 	return status;
 }
 
-uint32_t __zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, uint64_t slba)
+static uint32_t __zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, uint64_t slba)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	uint64_t zid = lba_to_zone(zns_ssd, slba);
@@ -269,7 +269,7 @@ uint32_t __zmgmt_send_flush_explicit_zrwa(struct zns_ssd *zns_ssd, uint64_t slba
 	return status;
 }
 
-uint32_t __zmgmt_send(struct zns_ssd *zns_ssd, uint64_t slba, uint32_t action, uint32_t option)
+static uint32_t __zmgmt_send(struct zns_ssd *zns_ssd, uint64_t slba, uint32_t action, uint32_t option)
 {	
 	uint32_t status;
 	uint64_t zid = lba_to_zone(zns_ssd, slba);

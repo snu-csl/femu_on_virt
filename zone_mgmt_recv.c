@@ -8,7 +8,7 @@
 #include "ssd.h"
 #include "zns.h"
 
-uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer, uint64_t length, uint32_t io)
+static uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer, uint64_t length, uint32_t io)
 {
 	size_t offset;
 	size_t remaining;
@@ -18,9 +18,6 @@ uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer, uint64
 	uint64_t * paddr_list = NULL;
 	size_t mem_offs = 0;
 	
-	//NVMEV_ZNS_DEBUG("[PRP Transfer] prp1 0x%llx prp2 0x%llx buffer 0x%p length 0x%lx io %ld \n", 
-			//prp1, prp2, buffer, length, io); 
-
 	offset = 0;
 	remaining = length;
 	
@@ -70,7 +67,7 @@ uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer, uint64
 	return length;
 }
 
-void __fill_zone_report(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cmd, struct zone_report * report)
+static void __fill_zone_report(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cmd, struct zone_report * report)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	uint64_t slba = cmd->slba;
@@ -90,7 +87,7 @@ void __fill_zone_report(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cm
 	memcpy(report->zd, &(zone_descs[start_zid]), sizeof(struct zone_descriptor) * nr_zone_to_report);
 }
 
-bool __check_zmgmt_rcv_option_supported(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cmd)
+static bool __check_zmgmt_rcv_option_supported(struct zns_ssd *zns_ssd, struct nvme_zone_mgmt_recv * cmd)
 {
 	if (lba_to_zone(zns_ssd, cmd->slba) >= zns_ssd->zp.nr_zones) {
 		NVMEV_ERROR("Invalid lba range\n");

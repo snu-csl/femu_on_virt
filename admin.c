@@ -164,7 +164,7 @@ static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 	ctrl = page_address(pfn_to_page(sq_entry(eid).identify.prp1 >> PAGE_SHIFT));
 	memset(ctrl, 0x00, sizeof(*ctrl));
 
-	ctrl->nn = NR_NAMESPACE;
+	ctrl->nn = NR_NAMESPACES;
 	ctrl->oncs = 0; //optional command
 	ctrl->acl = 3; //minimum 4 required, 0's based value
 	ctrl->vwc = 0;
@@ -266,7 +266,7 @@ static void __nvmev_admin_identify_namespaces(int eid, int cq_head)
 	ns = prp_address(cmd->prp1);
 	memset(ns, 0x00, PAGE_SIZE * 2);
 
-	for (i = 1; i <= NR_NAMESPACE; i++) {
+	for (i = 1; i <= NR_NAMESPACES; i++) {
 		if (i > cmd->nsid) {
 			printk("[%s] ns %d %px\n", __FUNCTION__, i, ns);
 			*ns = i;

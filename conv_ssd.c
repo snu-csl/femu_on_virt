@@ -955,7 +955,6 @@ bool conv_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
     size_t csi = NS_CSI(cmd->common.nsid - 1);
     NVMEV_ASSERT(csi == NVME_CSI_NVM);
 
-    //printk("%s csi=%d opcode=%d\n",__FUNCTION__, csi, cmd->common.opcode);
     switch(cmd->common.opcode) {
         case nvme_cmd_write:
             if (!conv_write(req, ret))

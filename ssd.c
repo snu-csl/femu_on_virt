@@ -4,7 +4,7 @@
 #include "nvmev.h"
 #include "ssd.h"
 
-static inline unsigned long long __get_ioclock(struct ssd *ssd)
+static inline uint64_t __get_ioclock(struct ssd *ssd)
 {
 	return cpu_clock(ssd->cpu_nr_dispatcher);
 }
@@ -18,7 +18,6 @@ void buffer_init(struct buffer * buf, uint32_t size)
 
 uint32_t buffer_allocate(struct buffer * buf, uint32_t size)
 {
-    #if 1
     while(!spin_trylock(&buf->lock));
     
     if (buf->remaining < size) {
@@ -29,17 +28,6 @@ uint32_t buffer_allocate(struct buffer * buf, uint32_t size)
     buf->remaining-=size;
     spin_unlock(&buf->lock);
     return size;
-    #elif 0
-    uint32_t num;
-    while(!spin_trylock(&buffer_lock));
-    num = min(remaining_buf_size, nr_buffers);
-    num = min(num, 16);
-    remaining_buf_size -= num;
-    spin_unlock(&buffer_lock);
-    return num;
-    #else 
-    return nr_buffers;
-    #endif
 }
 
 bool buffer_release(struct buffer * buf, uint32_t size)
@@ -95,6 +83,9 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
         blk_size = BLK_SIZE;
         spp->blks_per_pl = DIV_ROUND_UP(capacity, blk_size * spp->pls_per_lun * spp->luns_per_ch * spp->nchs);
     }
+
+    NVMEV_ASSERT((ONESHOT_PAGE_SIZE % spp->pgsz) == 0 && (FLASH_PAGE_SIZE % spp->pgsz) == 0);
+    NVMEV_ASSERT((ONESHOT_PAGE_SIZE % FLASH_PAGE_SIZE) == 0);
 
     spp->pgs_per_oneshotpg = ONESHOT_PAGE_SIZE / (spp->pgsz);
     spp->oneshotpgs_per_blk = DIV_ROUND_UP(blk_size, ONESHOT_PAGE_SIZE); 

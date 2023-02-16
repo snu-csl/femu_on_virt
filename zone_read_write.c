@@ -4,17 +4,17 @@
 
 void enqueue_writeback_io_req(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release);
 
-static inline  uint32_t __nr_lbas_from_rw_cmd(struct nvme_rw_command * cmd)
+static inline uint32_t __nr_lbas_from_rw_cmd(struct nvme_rw_command * cmd)
 {
 	return cmd->length + 1;
 }
 
-bool __check_boundary_error(struct zns_ssd *zns_ssd, uint64_t slba, uint32_t nr_lba)
+static bool __check_boundary_error(struct zns_ssd *zns_ssd, uint64_t slba, uint32_t nr_lba)
 {	
 	return lba_to_zone(zns_ssd, slba) == lba_to_zone(zns_ssd, slba + nr_lba - 1);
 }
 
-void __increase_write_ptr(struct zns_ssd *zns_ssd, uint32_t zid, uint32_t nr_lba)
+static void __increase_write_ptr(struct zns_ssd *zns_ssd, uint32_t zid, uint32_t nr_lba)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
 	uint64_t cur_write_ptr = zone_descs[zid].wp;

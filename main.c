@@ -483,7 +483,7 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 	void * ns_addr = (void*)vdev->storage_mapped;
 	int i;
 	
-	for (i = 0; i < NR_NAMESPACE; i++){
+	for (i = 0; i < NR_NAMESPACES; i++){
 		if (NS_CAPACITY(i) == 0)
 			vdev->config.ns_size[i] = remaining_capacity; 
 		else
