@@ -64,13 +64,11 @@ struct conv_ftl {
     struct write_flow_control wfc;
 };
 
-uint64_t conv_init(uint64_t capacity, uint32_t cpu_nr_dispatcher);
+struct conv_ftl * conv_create_and_init(uint64_t capacity, uint32_t cpu_nr_dispatcher);
 
-bool conv_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
-bool conv_read(struct nvme_request * req, struct nvme_result * ret);
-bool conv_write(struct nvme_request * req, struct nvme_result * ret);
-void conv_flush(struct nvme_request * req, struct nvme_result * ret);
-void conv_gc_bg(void);
-void conv_gc(struct conv_ftl *ssd);
+bool conv_proc_nvme_io_cmd(struct conv_ftl conv_ftls[], struct nvme_request *req, struct nvme_result *ret);
+bool conv_read(struct conv_ftl conv_ftls[], struct nvme_request *req, struct nvme_result *ret);
+bool conv_write(struct conv_ftl conv_ftls[], struct nvme_request *req, struct nvme_result *ret);
+void conv_flush(struct conv_ftl conv_ftls[], struct nvme_request *req, struct nvme_result *ret);
 
 #endif
