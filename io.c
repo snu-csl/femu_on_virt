@@ -31,7 +31,7 @@
 	cq->cq[CQ_ENTRY_TO_PAGE_NUM(entry_id)][CQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
 
 extern struct nvmev_dev *vdev;
-extern struct conv_ftl *g_conv_ftls;
+extern struct nvmev_ns *vns;
 extern struct zns_ftl *g_zns_ftl; 
 
 int dma_flag = 0;
@@ -124,9 +124,9 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 		}
 		
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
-			memcpy(vdev->ns_mapped[nsid] + offset, vaddr + mem_offs, io_size);
+			memcpy(vns[nsid].mapped + offset, vaddr + mem_offs, io_size);
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
-			memcpy(vaddr + mem_offs, vdev->ns_mapped[nsid] + offset, io_size);
+			memcpy(vaddr + mem_offs, vns[nsid].mapped + offset, io_size);
 		}
 
 		kunmap_atomic(vaddr);
@@ -241,7 +241,7 @@ static size_t __cmd_io_size(struct nvme_rw_command *cmd)
 	return (cmd->length + 1) << 9;
 }
 
-static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long long nsecs_start, struct nvme_result * ret)
+static void __enqueue_io_req(int sqid, int cqid, int sq_entry, unsigned long long nsecs_start, struct nvmev_result * ret)
 {
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 
@@ -450,13 +450,15 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	struct nvmev_submission_queue *sq = vdev->sqes[sqid];
 	unsigned long long nsecs_start = __get_wallclock();
 	struct nvme_command *cmd = &sq_entry(sq_entry);
-	struct nvme_request req;
-	struct nvme_result ret = {0,};
-	size_t csi = NS_CSI(cmd->common.nsid - 1);
+	struct nvmev_request req;
+	struct nvmev_result ret = {0,};
 
+	uint32_t nsid = cmd->common.nsid - 1;
+	struct nvmev_ns *ns = &vns[nsid];
+	
 	req.cmd = cmd;
-	req.nsecs_start = nsecs_start;
 	req.sq_id = sqid;
+	req.nsecs_start = nsecs_start;
 	ret.nsecs_target = nsecs_start;
 	ret.status = NVME_SC_SUCCESS;
 #ifdef PERF_DEBUG
@@ -470,10 +472,10 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	static unsigned long long counter = 0;
 #endif
 
-	if (csi == NVME_CSI_NVM) {
-		if (!conv_proc_nvme_io_cmd(g_conv_ftls, &req, &ret))
+	if (ns->csi == NVME_CSI_NVM) {
+		if (!conv_proc_nvme_io_cmd(ns, &req, &ret))
 			return false; 
-	} else if (csi == NVME_CSI_ZNS) {
+	} else if (ns->csi == NVME_CSI_ZNS) {
 		if (!zns_proc_nvme_io_cmd(g_zns_ftl, &req, &ret))
 			return false; 
 	}

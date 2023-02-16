@@ -5,7 +5,7 @@
 #define SAMSUNG_970PRO 0
 #define ZNS_PROTOTYPE 1
 
-#define BASE_SSD   (ZNS_PROTOTYPE)
+#define BASE_SSD   (SAMSUNG_970PRO)
 
 /* Macros for specific setting. Modify these macros for your target */
 #if  (BASE_SSD == SAMSUNG_970PRO)

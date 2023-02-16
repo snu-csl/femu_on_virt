@@ -252,17 +252,28 @@ struct nvmev_dev {
 	unsigned long long *io_unit_stat;
 };
 
-struct nvme_request {
+struct nvmev_request {
     struct nvme_command * cmd;
     uint32_t sq_id;
     uint64_t nsecs_start;
 };
 
-struct nvme_result {
+struct nvmev_result {
     uint32_t status;
     uint64_t nsecs_target;
     uint32_t early_completion;
     uint64_t wp; // only for zone append
+};
+
+struct nvmev_ns {
+    uint32_t id;
+	uint32_t csi;
+	uint64_t size;
+	void * mapped;
+	
+	/*conv ftl or zns*/
+	uint32_t nr_parts; // partitions
+	void * ftls; 	   // ftl instances. one ftl per partition
 };
 
 // VDEV Init, Final Function
@@ -284,5 +295,6 @@ void NVMEV_IO_PROC_FINAL(struct nvmev_dev *vdev);
 int nvmev_proc_io_sq(int qid, int new_db, int old_db);
 void nvmev_proc_io_cq(int qid, int new_db, int old_db);
 
+extern struct nvmev_ns * vns;
 
 #endif /* _LIB_NVMEV_H */

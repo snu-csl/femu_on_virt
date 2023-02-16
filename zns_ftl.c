@@ -102,7 +102,7 @@ void zns_exit(struct zns_ftl *zns_ftl)
 	kfree(zns_ftl->report_buffer);
 }
 
-void zns_flush(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_result *ret)
+void zns_flush(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret)
 {   
 	unsigned long long latest = 0;
 
@@ -120,7 +120,7 @@ void zns_flush(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_re
 	return;
 }
 
- bool zns_proc_nvme_io_cmd(struct zns_ftl *zns_ftl, struct nvme_request * req, struct nvme_result * ret)
+ bool zns_proc_nvme_io_cmd(struct zns_ftl *zns_ftl, struct nvmev_request * req, struct nvmev_result * ret)
  {
     struct nvme_command *cmd = req->cmd;
     size_t csi = NS_CSI(cmd->common.nsid - 1);

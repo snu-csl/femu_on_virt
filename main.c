@@ -68,6 +68,7 @@
  ****************************************************************/
 
 struct nvmev_dev *vdev = NULL;
+struct nvmev_ns *vns = NULL;
 
 unsigned long memmap_start = 0;
 unsigned long memmap_size = 0;
@@ -86,7 +87,7 @@ unsigned int io_unit_shift = 12;
 char *cpus;
 unsigned int debug = 0;
 
-struct conv_ftl *g_conv_ftls = NULL;
+
 struct zns_ftl *g_zns_ftl = NULL; 
 
 module_param(memmap_start, ulong, 0444);
@@ -482,28 +483,23 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 {
 	unsigned long long remaining_capacity = vdev->config.storage_size;	// byte
 	void * ns_addr = (void*)vdev->storage_mapped;
+	const int nr_ns = NR_NAMESPACES;
 	int i;
-	
-	for (i = 0; i < NR_NAMESPACES; i++){
-		if (NS_CAPACITY(i) == 0)
-			vdev->config.ns_size[i] = remaining_capacity; 
-		else
-			vdev->config.ns_size[i] = min(NS_CAPACITY(i), remaining_capacity);
 		
-		remaining_capacity -= vdev->config.ns_size[i];
-		vdev->ns_mapped[i] = ns_addr;
-		ns_addr += vdev->config.ns_size[i];
+	struct nvmev_ns *ns = kmalloc(sizeof(struct nvmev_ns) * nr_ns, GFP_KERNEL);
+
+	for (i = 0; i < nr_ns; i++){
+		if (NS_CAPACITY(i) == 0)
+			ns[i].size = remaining_capacity; 
+		else
+			ns[i].size = min(NS_CAPACITY(i), remaining_capacity);
+		
+		remaining_capacity -= ns[i].size;
+		ns[i].mapped = ns_addr;
+		ns_addr += ns[i].size;
 
 		if (NS_CSI(i) == NVME_CSI_NVM) {
-			unsigned long logical_space;
-			NVMEV_ASSERT(g_conv_ftls == NULL);
-			g_conv_ftls = conv_create_and_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher);
-
-			logical_space = (uint64_t)((vdev->config.ns_size[i] * 100) / g_conv_ftls[0].sp.pba_pcent);
-			logical_space = logical_space - (logical_space % PAGE_SIZE);
-			vdev->config.ns_size[i] = logical_space;
-			NVMEV_INFO("FTL physical space: %ld, logical space: %ld (physical/logical * 100 = %d)\n", 
-							vdev->config.ns_size[i], logical_space, g_conv_ftls[0].sp.pba_pcent);
+			conv_init_namespace(&ns[i], i, ns[i].size, vdev->config.cpu_nr_dispatcher);
 		}
 		else if (NS_CSI(i) == NVME_CSI_ZNS) {
 			NVMEV_ASSERT(g_zns_ftl == NULL);
@@ -513,8 +509,10 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 			NVMEV_ASSERT(0);
 		}
 
-		NVMEV_INFO("[%s] ns=%d ns_addr=%p ns_size=%ld(MiB) \n", __FUNCTION__, i, vdev->ns_mapped[i], BYTE_TO_MB(vdev->config.ns_size[i]));	
+		NVMEV_INFO("[%s] ns=%d ns_addr=%p ns_size=%lld(MiB) \n", __FUNCTION__, i, ns[i].mapped, BYTE_TO_MB(ns[i].size));	
 	}
+
+	vns = ns;
 }
 
 void NVMEV_NAMESPACE_FINAL(struct nvmev_dev *vdev)

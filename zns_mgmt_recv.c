@@ -106,7 +106,7 @@ static bool __check_zmgmt_rcv_option_supported(struct zns_ftl *zns_ftl, struct n
 	return true;
 }
 
-void zns_zmgmt_recv(struct zns_ftl * zns_ftl, struct nvme_request * req, struct nvme_result * ret)
+void zns_zmgmt_recv(struct zns_ftl * zns_ftl, struct nvmev_request * req, struct nvmev_result * ret)
 {
 	struct zone_report * buffer = zns_ftl->report_buffer;
 	struct nvme_zone_mgmt_recv * cmd = (struct nvme_zone_mgmt_recv *) req->cmd;

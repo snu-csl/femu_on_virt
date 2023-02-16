@@ -310,7 +310,7 @@ static uint32_t __zmgmt_send(struct zns_ftl *zns_ftl, uint64_t slba, uint32_t ac
 	return status;
 }
 
-void zns_zmgmt_send(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_result *ret)
+void zns_zmgmt_send(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret)
 {
 	struct nvme_zone_mgmt_send * cmd = (struct nvme_zone_mgmt_send *)req->cmd;
 	uint32_t select_all = cmd->select_all;

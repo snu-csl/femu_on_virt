@@ -314,7 +314,7 @@ static void init_rmap(struct conv_ftl *conv_ftl)
     }
 }
 
-static void conv_init_ftl(struct conv_ftl *conv_ftl)
+static void init_ftl(struct conv_ftl *conv_ftl)
 {
     struct ssdparams *spp = &(conv_ftl->sp);
     
@@ -342,25 +342,24 @@ static void conv_init_ftl(struct conv_ftl *conv_ftl)
     return;
 }
 
-struct conv_ftl * conv_create_and_init(uint64_t capacity, uint32_t cpu_nr_dispatcher)
+void conv_init_namespace(struct nvmev_ns * ns, uint32_t id, uint64_t size, uint32_t cpu_nr_dispatcher)
 {
     struct ssdparams spp;
     struct conv_ftl *conv_ftls;
     uint32_t i;
-    uint64_t logical_space;
-    const uint32_t nparts =  SSD_PARTITIONS;
+    const uint32_t nr_parts =  SSD_PARTITIONS;
+
+    ssd_init_params(&spp, size, nr_parts);
+
+    conv_ftls = kmalloc(sizeof(struct conv_ftl) * nr_parts, GFP_KERNEL);
     
-    ssd_init_params(&spp, capacity, nparts);
-    
-    conv_ftls = kmalloc(sizeof(struct conv_ftl) * nparts, GFP_KERNEL);
-    
-    for (i = 0; i < nparts; i++) { 
+    for (i = 0; i < nr_parts; i++) { 
         ssd_init(&conv_ftls[i].ssd, &spp, cpu_nr_dispatcher);
-        conv_init_ftl(&conv_ftls[i]);
+        init_ftl(&conv_ftls[i]);
     }
 
-     /* PCIe, Write buffer are shared by all instances*/
-    for (i = 1; i < nparts; i++) {
+        /* PCIe, Write buffer are shared by all instances*/
+    for (i = 1; i < nr_parts; i++) {
         kfree(conv_ftls[i].ssd.pcie);
         kfree(conv_ftls[i].ssd.write_buffer);
 
@@ -368,7 +367,14 @@ struct conv_ftl * conv_create_and_init(uint64_t capacity, uint32_t cpu_nr_dispat
         conv_ftls[i].ssd.write_buffer = conv_ftls[0].ssd.write_buffer;
     }
 
-    return conv_ftls;
+    ns->id = id;
+    ns->csi = NVME_CSI_NVM;
+    ns->nr_parts = nr_parts;
+    ns->ftls = (void*)conv_ftls;
+    ns->size = (uint64_t)((size * 100) / spp.pba_pcent);
+    NVMEV_INFO("FTL physical space: %lld, logical space: %lld (physical/logical * 100 = %d)\n", 
+							size, ns->size, spp.pba_pcent);
+    return;
 }
 
 static inline bool valid_ppa(struct conv_ftl *conv_ftl, struct ppa *ppa)
@@ -732,11 +738,14 @@ static bool is_same_flash_page(struct conv_ftl *conv_ftl, struct ppa ppa1, struc
            (ppa1_page == ppa2_page);
 }
 
-bool conv_read(struct conv_ftl conv_ftls[], struct nvme_request * req, struct nvme_result * ret)
+bool conv_read(struct nvmev_ns *ns, struct nvmev_request * req, struct nvmev_result * ret)
 {
-    struct nvme_command * cmd = req->cmd;
+    struct conv_ftl *conv_ftls = (struct conv_ftl *)ns->ftls;
     struct conv_ftl *conv_ftl = &conv_ftls[0];
+    /* spp are shared by all instances*/
     struct ssdparams *spp = &conv_ftl->sp;
+
+    struct nvme_command * cmd = req->cmd;
     uint64_t lba = cmd->rw.slba;
     uint64_t nr_lba = (cmd->rw.length + 1);
     uint64_t start_lpn = lba / spp->secs_per_pg;
@@ -745,36 +754,38 @@ bool conv_read(struct conv_ftl conv_ftls[], struct nvme_request * req, struct nv
     uint64_t nsecs_start = req->nsecs_start;
     uint64_t nsecs_completed, nsecs_latest = nsecs_start;
     uint32_t xfer_size, i;
-    struct ppa cur_ppa;
-    struct ppa prev_ppa;
+    uint32_t nr_parts = ns->nr_parts; 
+
+    struct ppa cur_ppa, prev_ppa;
     struct nand_cmd srd;
     srd.type = USER_IO;
     srd.cmd = NAND_READ;
     srd.stime = nsecs_start;
     srd.interleave_pci_dma = true;
 
+    NVMEV_ASSERT(conv_ftls);
     NVMEV_DEBUG("conv_read: start_lpn=%lld, len=%d, end_lpn=%ld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn) >= spp->tt_pgs) {
         NVMEV_ERROR("conv_read: lpn passed FTL range(start_lpn=%lld,tt_pgs=%ld)\n", start_lpn, spp->tt_pgs);
         return false;
     }
 
-    if (LBA_TO_BYTE(nr_lba) <= (KB(4) * SSD_PARTITIONS))
+    if (LBA_TO_BYTE(nr_lba) <= (KB(4) * nr_parts))
         srd.stime += spp->fw_4kb_rd_lat;
     else
         srd.stime += spp->fw_rd_lat;
 
 
-    for (i = 0; (i < SSD_PARTITIONS) && (start_lpn <= end_lpn); i++, start_lpn++) {
-        conv_ftl = &conv_ftls[LPN_TO_SSD_ID(lpn)];
+    for (i = 0; (i < nr_parts) && (start_lpn <= end_lpn); i++, start_lpn++) {
+        conv_ftl = &conv_ftls[lpn % nr_parts];
         xfer_size = 0;
-        prev_ppa = get_maptbl_ent(conv_ftl, LPN_TO_LOCAL_LPN(start_lpn));
+        prev_ppa = get_maptbl_ent(conv_ftl, start_lpn/nr_parts);
         
-        NVMEV_DEBUG("[%s] conv_ftl=%p, ftl_ins=%lld, local_lpn=%lld",__FUNCTION__, conv_ftl, LPN_TO_SSD_ID(lpn), LPN_TO_LOCAL_LPN(lpn));
+        NVMEV_DEBUG("[%s] conv_ftl=%p, ftl_ins=%lld, local_lpn=%lld",__FUNCTION__, conv_ftl, lpn%nr_parts, lpn/nr_parts);
 
         /* normal IO read path */
-        for (lpn = start_lpn; lpn <= end_lpn; lpn+=SSD_PARTITIONS) {
-            local_lpn = LPN_TO_LOCAL_LPN(lpn);
+        for (lpn = start_lpn; lpn <= end_lpn; lpn+=nr_parts) {
+            local_lpn = lpn / nr_parts;
             cur_ppa = get_maptbl_ent(conv_ftl, local_lpn);
 			if (!mapped_ppa(&cur_ppa) || !valid_ppa(conv_ftl, &cur_ppa))
             {
@@ -815,20 +826,24 @@ bool conv_read(struct conv_ftl conv_ftls[], struct nvme_request * req, struct nv
     return true;
 }
 
-bool conv_write(struct conv_ftl conv_ftls[], struct nvme_request * req, struct nvme_result * ret)
+bool conv_write(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret)
 {
-    struct nvme_command * cmd = req->cmd;
-  
+    struct conv_ftl *conv_ftls = (struct conv_ftl *)ns->ftls;
     struct conv_ftl *conv_ftl = &conv_ftls[0];
+
+    /*wbuf and spp are shared by all instances*/
     struct ssdparams *spp = &conv_ftl->sp;
     struct buffer * wbuf = conv_ftl->write_buffer;
 
+    struct nvme_command *cmd = req->cmd;
     uint64_t lba = cmd->rw.slba;
     uint64_t nr_lba = (cmd->rw.length + 1);
     uint64_t start_lpn = lba / spp->secs_per_pg;
     uint64_t end_lpn = (lba + nr_lba - 1) / spp->secs_per_pg;
    
     uint64_t lpn, local_lpn;
+    uint32_t nr_parts = ns->nr_parts; 
+
     uint64_t nsecs_start = req->nsecs_start;
     uint64_t nsecs_completed = 0, nsecs_latest;
     uint64_t nsecs_xfer_completed;
@@ -836,6 +851,7 @@ bool conv_write(struct conv_ftl conv_ftls[], struct nvme_request * req, struct n
     struct ppa ppa;
     struct nand_cmd swr;
 
+    NVMEV_ASSERT(conv_ftls);
     NVMEV_DEBUG("conv_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
     if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_pgs) {
         NVMEV_ERROR("conv_write: lpn passed FTL range(start_lpn=%lld,tt_pgs=%ld)\n", start_lpn, spp->tt_pgs);
@@ -858,8 +874,8 @@ bool conv_write(struct conv_ftl conv_ftls[], struct nvme_request * req, struct n
     swr.interleave_pci_dma = false;
 
     for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
-        conv_ftl = &conv_ftls[LPN_TO_SSD_ID(lpn)];
-        local_lpn = LPN_TO_LOCAL_LPN(lpn); 
+        conv_ftl = &conv_ftls[lpn % nr_parts];
+        local_lpn = lpn / nr_parts; 
         ppa = get_maptbl_ent(conv_ftl, local_lpn); // 현재 LPN에 대해 전에 이미 쓰인 PPA가 있는지 확인
         if (mapped_ppa(&ppa)) {
             /* update old page information first */
@@ -907,7 +923,7 @@ bool conv_write(struct conv_ftl conv_ftls[], struct nvme_request * req, struct n
 }
 
 /*TODO*/
-void conv_flush(struct conv_ftl conv_ftls[], struct nvme_request * req, struct nvme_result * ret)
+void conv_flush(struct nvmev_ns *ns, struct nvmev_request * req, struct nvmev_result * ret)
 {   
 	unsigned long long latest = 0;
 
@@ -925,23 +941,23 @@ void conv_flush(struct conv_ftl conv_ftls[], struct nvme_request * req, struct n
 	return;
 }
 
-bool conv_proc_nvme_io_cmd(struct conv_ftl conv_ftls[], struct nvme_request * req, struct nvme_result * ret)
+bool conv_proc_nvme_io_cmd(struct nvmev_ns * ns, struct nvmev_request * req, struct nvmev_result * ret)
 {
     struct nvme_command *cmd = req->cmd;
-    size_t csi = NS_CSI(cmd->common.nsid - 1);
-    NVMEV_ASSERT(csi == NVME_CSI_NVM);
+   
+    NVMEV_ASSERT(ns->csi == NVME_CSI_NVM);
 
     switch(cmd->common.opcode) {
         case nvme_cmd_write:
-            if (!conv_write(conv_ftls, req, ret))
+            if (!conv_write(ns, req, ret))
                 return false;
             break;
         case nvme_cmd_read:
-            if (!conv_read(conv_ftls, req, ret))
+            if (!conv_read(ns, req, ret))
                 return false;
             break;
         case nvme_cmd_flush:
-            conv_flush(conv_ftls, req, ret);
+            conv_flush(ns, req, ret);
             break;
         case nvme_cmd_write_uncor:
         case nvme_cmd_compare:
