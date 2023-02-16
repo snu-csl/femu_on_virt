@@ -184,7 +184,8 @@ bool __zns_write(struct zns_ftl *zns_ftl, struct nvme_request * req, struct nvme
 
 out :
 	ret->status = status;
-	if (cmd->control & NVME_RW_FUA) /*Wait all flash operations*/
+	if ((cmd->control & NVME_RW_FUA) || 
+        (spp->write_early_completion == 0)) /*Wait all flash operations*/
 		ret->nsecs_target = nsecs_latest;
 	else /*Early completion*/
 		ret->nsecs_target = nsecs_xfer_completed;
@@ -335,7 +336,8 @@ bool __zns_write_zrwa(struct zns_ftl *zns_ftl, struct nvme_request * req, struct
 out : 
 	ret->status = status;
 
-	if (cmd->control & NVME_RW_FUA) /*Wait all flash operations*/
+	if ((cmd->control & NVME_RW_FUA) || 
+        (spp->write_early_completion == 0)) /*Wait all flash operations*/
 		ret->nsecs_target = nsecs_latest;
 	else /*Early completion*/
 		ret->nsecs_target = nsecs_xfer_completed;

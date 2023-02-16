@@ -49,6 +49,7 @@
 #define OP_AREA_PERCENT       (0.07)
 
 #define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * ONESHOT_PAGE_SIZE * 2)
+#define WRITE_EARLY_COMPLETION   1
 
 /***Don't touch. Not used ******/
 #define ZONE_SIZE       (1) //byte
@@ -76,13 +77,19 @@
 #define NAND_CHANNELS         (8)
 #define LUNS_PER_NAND_CH      (16)
 #define FLASH_PAGE_SIZE       (64*1024)
-#define ONESHOT_PAGE_SIZE     (FLASH_PAGE_SIZE * 3)
 #define PLNS_PER_LUN          (1) /* not used*/
-#define ZONE_SIZE             (128*1024*1024) //byte. kernal only support zone size which is power of 2  
 #define DIES_PER_ZONE         (1)
 
+#if 1 /*Real device configuration. Need to modify kernel to support zone size which is power of 2*/
+#define ONESHOT_PAGE_SIZE     (FLASH_PAGE_SIZE * 3)
+#define ZONE_SIZE             (96*1024*1024) //byte. kernal only support zone size which is power of 2  
+#else /*If kernel is not modified, use this config for just testing ZNS*/
+#define ONESHOT_PAGE_SIZE     (FLASH_PAGE_SIZE * 2)
+#define ZONE_SIZE             (128*1024*1024) 
+#endif
+
 #define MAX_CH_XFER_SIZE    (FLASH_PAGE_SIZE) /* to overlap with pcie transfer */
-#define WRITE_UNIT_SIZE     (ONESHOT_PAGE_SIZE)
+#define WRITE_UNIT_SIZE     (ONESHOT_PAGE_SIZE) 
 
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			   (3200ull) //MB/s
@@ -93,17 +100,20 @@
 #define NAND_ERASE_LATENCY (0)
 
 #define FW_4KB_READ_LATENCY (37540 - 7390 + 2000)
-#define FW_READ_LATENCY     (0)
+#define FW_READ_LATENCY     (37540 - 7390 + 2000)
 #define FW_WBUF_LATENCY0    (0)
 #define FW_WBUF_LATENCY1    (0)
 #define FW_CH_XFER_LATENCY  (413)
 #define OP_AREA_PERCENT     (0)
 
-#define WRITE_BUFFER_SIZE   (ONESHOT_PAGE_SIZE)
+#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * ONESHOT_PAGE_SIZE * 2)
+#define WRITE_EARLY_COMPLETION   0
 
 /*Don't touch. BLK_SIZE is caculated by ZONE_SIZE, DIES_PER_ZONE*/
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
 #define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
+
+static_assert((ZONE_SIZE % DIES_PER_ZONE) == 0);
 
 /*for ZRWA */
 #define MAX_ZRWA_ZONES (0) 
@@ -111,6 +121,8 @@
 #define ZRWA_SIZE   (0)
 #define ZRWA_BUFFER_SIZE   (0)
 #endif // BASE_SSD == ZNS_PROTOTYPE
+///////////////////////////////////////////////////////////////////////////
+
 
 #define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_PARTITIONS)     
 #define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_PARTITION_BITS)
@@ -127,5 +139,8 @@ static const uint64_t ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
 	#if NS_CSI_0 == NS_CSI_1 
 		#error "ONLY SUPPORT 1 ZNS Namepsace, 1 Conv Namespace"
 	#endif
-#endif 
+#endif
+
+
+static_assert((ONESHOT_PAGE_SIZE % FLASH_PAGE_SIZE) == 0);
 #endif

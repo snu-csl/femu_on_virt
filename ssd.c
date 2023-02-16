@@ -113,9 +113,10 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
     spp->pcie_bandwidth = PCIE_BANDWIDTH; 
     
     spp->write_buffer_size = WRITE_BUFFER_SIZE;
-
+    spp->write_early_completion = WRITE_EARLY_COMPLETION;
+    
     spp->op_area_pcent = OP_AREA_PERCENT;
-
+    
     spp->gc_thres_lines_high = 2; /* Need only two lines.(host write, gc)*/
     spp->enable_gc_delay = 1;
 

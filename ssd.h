@@ -158,18 +158,19 @@ struct ssdparams {
     /* Unit size of NVMe write command 
        Transfer size should be multiple of it */
     int write_unit_size;  
-
+    bool write_early_completion;
+    
     int pg_4kb_rd_lat;/* NAND page 4KB read latency in nanoseconds. sensing time (half tR) */
     int pg_rd_lat;    /* NAND page read latency in nanoseconds. sensing time (tR) */
     int pg_wr_lat;    /* NAND page program latency in nanoseconds. pgm time (tPROG)*/
     int blk_er_lat;   /* NAND block erase latency in nanoseconds. erase time (tERASE) */
     int max_ch_xfer_size;
 
-    int fw_4kb_rd_lat;    /* Firmware overhead of read 0 of read in nanoseconds */
-    int fw_rd_lat;        /* Firmware overhead of read 1 of read in nanoseconds */
-    int fw_wbuf_lat0;       /* Firmware overhead of write in nanoseconds */
-    int fw_wbuf_lat1;       /* Firmware overhead of write in nanoseconds */
-    int fw_ch_xfer_lat;      /* Firmware overhead of nand channel data transfer(4KB) in nanoseconds */
+    int fw_4kb_rd_lat;    /* Firmware overhead of 4KB read of read in nanoseconds */
+    int fw_rd_lat;        /* Firmware overhead of read of read in nanoseconds */
+    int fw_wbuf_lat0;     /* Firmware overhead0 of write buffer in nanoseconds */
+    int fw_wbuf_lat1;     /* Firmware overhead1 of write buffer in nanoseconds */
+    int fw_ch_xfer_lat;   /* Firmware overhead of nand channel data transfer(4KB) in nanoseconds */
 
     uint64_t ch_bandwidth; /*NAND CH Maximum bandwidth in MiB/s*/
     uint64_t pcie_bandwidth; /*PCIE Maximum bandwidth in MiB/s*/
@@ -181,7 +182,7 @@ struct ssdparams {
     bool enable_gc_delay;
 
     double op_area_pcent;
-
+    
     /* below are all calculated values */
     unsigned long secs_per_blk; /* # of sectors per block */
     unsigned long secs_per_pl;  /* # of sectors per plane */

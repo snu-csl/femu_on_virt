@@ -920,7 +920,8 @@ bool conv_write(struct nvme_request * req, struct nvme_result * ret)
         check_and_refill_write_credit(conv_ftl);
     }
     
-    if (cmd->rw.control & NVME_RW_FUA) /*Wait all flash operations*/
+    if ((cmd->rw.control & NVME_RW_FUA) || 
+        (spp->write_early_completion == 0)) /*Wait all flash operations*/
 		ret->nsecs_target = nsecs_latest;
 	else /*Early completion*/
 		ret->nsecs_target = nsecs_xfer_completed;
