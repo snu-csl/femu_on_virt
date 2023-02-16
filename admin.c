@@ -237,7 +237,7 @@ static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 	ns->lbaf[6].ds = 12;
 	ns->lbaf[6].rp = NVME_LBAF_RP_BEST;
 
-	ns->nsze = (vns[nsid].size >> ns->lbaf[ns->flbas].ds);
+	ns->nsze = (vdev->ns[nsid].size >> ns->lbaf[ns->flbas].ds);
 
 	ns->ncap = ns->nsze;
 	ns->nuse = ns->nsze;
@@ -300,14 +300,15 @@ static void __nvmev_admin_identify_namespace_desc(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
-extern struct zns_ftl *g_zns_ftl; 
-
 static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	struct nvme_id_zns_ns *ns;
-	struct zns_ftl * zns_ftl = g_zns_ftl;
+	struct zns_ftl * zns_ftl = (struct zns_ftl *) vdev->ns[cmd->nsid - 1].ftls;
+	struct znsparams *zpp = &zns_ftl->zp;
+
+	NVMEV_ASSERT(vdev->ns[cmd->nsid - 1].csi == NVME_CSI_ZNS);
 	NVMEV_DEBUG("%s\n", __func__);
 	
 	ns = prp_address(cmd->prp1);
@@ -320,30 +321,30 @@ static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 	ns->ozcs = 0;
 	
 	//Maximum Active Resources
-	ns->mar = zns_ftl->zp.nr_active_zones - 1; // 0-based
+	ns->mar = zpp->nr_active_zones - 1; // 0-based
 	
 	//Maximum Open Resources
-	ns->mor = zns_ftl->zp.nr_open_zones - 1; // 0-based
+	ns->mor = zpp->nr_open_zones - 1; // 0-based
 
 	/*zrwa enabled*/
-	if (zns_ftl->zp.nr_zrwa_zones > 0) {
+	if (zpp->nr_zrwa_zones > 0) {
 		ns->ozcs |= OZCS_ZRWA; //Support ZRWA 
 
 		//Maximum ZRWA Resources
-		ns->numzrwa = zns_ftl->zp.nr_zrwa_zones - 1;
+		ns->numzrwa = zpp->nr_zrwa_zones - 1;
 
 		// ZRWA Flush Granurarity
-		ns->zrwafg = zns_ftl->zp.zrwafg_size;
+		ns->zrwafg = zpp->zrwafg_size;
 		
 		// ZRWA Size
-		ns->zrwasz = zns_ftl->zp.zrwa_size;
+		ns->zrwasz = zpp->zrwa_size;
 
 		// ZRWA Capability
 		ns->zrwacap = 0;
 		ns->zrwacap |= ZRWACAP_EXPFLUSHSUP;
 	}
 	//Zone Size
-	ns->lbaf[0].zsze = BYTE_TO_LBA(zns_ftl->zp.zone_size);
+	ns->lbaf[0].zsze = BYTE_TO_LBA(zpp->zone_size);
 
 	//Zone Descriptor Extension Size 
 	ns->lbaf[0].zdes = 0; // currently not support

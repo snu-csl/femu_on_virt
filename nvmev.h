@@ -143,8 +143,6 @@ struct nvmev_config {
 	unsigned long storage_start; //byte
 	unsigned long storage_size;	// byte
 
-	unsigned long ns_size[NR_NAMESPACES];  // byte
-
 	unsigned int read_delay;	// ns
 	unsigned int read_time;		// ns
 	unsigned int read_trailing;	// ns
@@ -222,8 +220,7 @@ struct nvmev_dev {
 	struct task_struct *nvmev_manager;
 
 	void *storage_mapped;
-	void * ns_mapped[NR_NAMESPACES];
-
+	
 	struct nvmev_proc_info *proc_info;
 	unsigned int proc_turn;
 
@@ -250,6 +247,8 @@ struct nvmev_dev {
 	struct proc_dir_entry *proc_stat;
 
 	unsigned long long *io_unit_stat;
+
+	struct nvmev_ns * ns;
 };
 
 struct nvmev_request {
@@ -294,7 +293,5 @@ void NVMEV_IO_PROC_INIT(struct nvmev_dev *vdev);
 void NVMEV_IO_PROC_FINAL(struct nvmev_dev *vdev);
 int nvmev_proc_io_sq(int qid, int new_db, int old_db);
 void nvmev_proc_io_cq(int qid, int new_db, int old_db);
-
-extern struct nvmev_ns * vns;
 
 #endif /* _LIB_NVMEV_H */

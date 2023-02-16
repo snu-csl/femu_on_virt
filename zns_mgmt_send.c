@@ -137,8 +137,8 @@ static void __reset_zone(struct zns_ftl * zns_ftl, uint64_t zid)
 	uint32_t zone_size = zns_ftl->zp.zone_size;
 	uint8_t * zone_start_addr = (uint8_t *)get_storage_addr_from_zid(zns_ftl, zid);
 	
-	NVMEV_ZNS_DEBUG("%s ns %d zid %lu  0x%llx, start addres 0x%llx zone_size %x \n", 
-			__FUNCTION__, zns_ftl->ns, zid, (void*)vdev->ns_mapped[zns_ftl->ns], (uint64_t)zone_start_addr, zone_size);
+	NVMEV_ZNS_DEBUG("%s ns %d zid %lu start addres 0x%llx zone_size %x \n", 
+			__FUNCTION__, zns_ftl->ns, zid, (uint64_t)zone_start_addr, zone_size);
 
 	memset(zone_start_addr, 0, zone_size);
 
@@ -310,8 +310,9 @@ static uint32_t __zmgmt_send(struct zns_ftl *zns_ftl, uint64_t slba, uint32_t ac
 	return status;
 }
 
-void zns_zmgmt_send(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret)
+void zns_zmgmt_send(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret)
 {
+	struct zns_ftl *zns_ftl = (struct zns_ftl *)ns->ftls;
 	struct nvme_zone_mgmt_send * cmd = (struct nvme_zone_mgmt_send *)req->cmd;
 	uint32_t select_all = cmd->select_all;
 	uint32_t status = NVME_SC_SUCCESS;

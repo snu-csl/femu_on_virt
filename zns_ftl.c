@@ -65,25 +65,26 @@ static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, uint64
 	zpp->lbas_per_zrwa = zpp->zrwa_size / spp->secsz;
 	zpp->lbas_per_zrwafg = zpp->zrwafg_size / spp->secsz;
 
+	NVMEV_ASSERT((capacity % zpp->zone_size) == 0);
 	NVMEV_INFO("zone_size=%d(KB), # zones=%d # die/zone=%d \n", zpp->zone_size, zpp->nr_zones, zpp->dies_per_zone);
 }
 
-struct zns_ftl * zns_create_and_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace)
+void zns_init_namespace(struct nvmev_ns *ns, uint32_t id,  uint64_t size, void * mapped_addr, uint32_t cpu_nr_dispatcher)
 {
 	struct zns_ftl *zns_ftl;
 	struct ssdparams spp;
 
-	const uint32_t nparts = 1; /* Not support multi partitions for zns*/
+	const uint32_t nr_parts = 1; /* Not support multi partitions for zns*/
+	NVMEV_ASSERT(ns->nr_parts == 1);
 
-	zns_ftl = kmalloc(sizeof(struct zns_ftl) * nparts, GFP_KERNEL);
+	zns_ftl = kmalloc(sizeof(struct zns_ftl) * nr_parts, GFP_KERNEL);
 
-	ssd_init_params(&spp, capacity, nparts);
-	zns_init_params(&zns_ftl->zp, &spp, capacity);
+	ssd_init_params(&spp, size, nr_parts);
+	zns_init_params(&zns_ftl->zp, &spp, size);
 	
 	ssd_init(&zns_ftl->ssd, &spp, cpu_nr_dispatcher);
 
-	zns_ftl->ns = namespace;
-	zns_ftl->storage_base_addr = storage_base_addr;
+	zns_ftl->storage_base_addr = mapped_addr;
 	
 	/* It should be 4KB aligned, according to lpn size */
 	NVMEV_ASSERT((zns_ftl->zp.zone_size % spp.pgsz) == 0); 
@@ -91,7 +92,13 @@ struct zns_ftl * zns_create_and_init(uint64_t capacity, uint32_t cpu_nr_dispatch
 	zns_init_descriptor(zns_ftl);
 	zns_init_resource(zns_ftl);
 
-	return zns_ftl;
+	ns->id = id;
+    ns->csi = NVME_CSI_ZNS;
+    ns->nr_parts = nr_parts;
+    ns->ftls = (void*)zns_ftl;
+    ns->size = size;
+	ns->mapped = mapped_addr;
+	return;
 }
 
 void zns_exit(struct zns_ftl *zns_ftl)
@@ -102,7 +109,7 @@ void zns_exit(struct zns_ftl *zns_ftl)
 	kfree(zns_ftl->report_buffer);
 }
 
-void zns_flush(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret)
+void zns_flush(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret)
 {   
 	unsigned long long latest = 0;
 
@@ -120,22 +127,24 @@ void zns_flush(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_
 	return;
 }
 
- bool zns_proc_nvme_io_cmd(struct zns_ftl *zns_ftl, struct nvmev_request * req, struct nvmev_result * ret)
+ bool zns_proc_nvme_io_cmd(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret)
  {
     struct nvme_command *cmd = req->cmd;
-    size_t csi = NS_CSI(cmd->common.nsid - 1);
-    NVMEV_ASSERT(csi == NVME_CSI_ZNS);
+    NVMEV_ASSERT(ns->csi == NVME_CSI_ZNS);
+	/*still not support multi partitions ...*/
+	NVMEV_ASSERT(ns->nr_parts == 1);
+
     switch(cmd->common.opcode) {
         case nvme_cmd_write:
-            if (!zns_write(zns_ftl, req, ret))
+            if (!zns_write(ns, req, ret))
                 return false;
             break;
         case nvme_cmd_read:
-            if (!zns_read(zns_ftl, req, ret))
+            if (!zns_read(ns, req, ret))
                 return false;
             break;
         case nvme_cmd_flush:
-            zns_flush(zns_ftl, req, ret);
+            zns_flush(ns, req, ret);
             break;
         case nvme_cmd_write_uncor:
         case nvme_cmd_compare:
@@ -147,10 +156,10 @@ void zns_flush(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_
         case nvme_cmd_resv_release:
             break;
         case nvme_cmd_zone_mgmt_send:
-			zns_zmgmt_send(zns_ftl, req, ret);
+			zns_zmgmt_send(ns, req, ret);
 			break;
 		case nvme_cmd_zone_mgmt_recv:
-			zns_zmgmt_recv(zns_ftl, req, ret);
+			zns_zmgmt_recv(ns, req, ret);
 			break;
 		case nvme_cmd_zone_append:
 		default:

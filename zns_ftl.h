@@ -35,7 +35,6 @@ struct zns_ftl {
 
     struct znsparams zp;
 
-    uint32_t ns;
     void * storage_base_addr;
     
     struct zone_resource_info res_infos[RES_TYPE_COUNT];
@@ -119,11 +118,11 @@ static inline uint64_t lba_to_lpn(struct zns_ftl *zns_ftl, uint64_t lba)
 }
 
 /* zns external interface */
-struct zns_ftl * zns_create_and_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace);
+void zns_init_namespace(struct nvmev_ns *ns, uint32_t id,  uint64_t size, void * mapped_addr, uint32_t cpu_nr_dispatcher);
 
-void zns_zmgmt_recv(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret);
-void zns_zmgmt_send(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret);
-bool zns_write(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret);
-bool zns_read(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret);
-bool zns_proc_nvme_io_cmd(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret);
+void zns_zmgmt_recv(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret);
+void zns_zmgmt_send(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret);
+bool zns_write(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret);
+bool zns_read(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret);
+bool zns_proc_nvme_io_cmd(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret);
 #endif

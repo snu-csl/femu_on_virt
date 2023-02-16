@@ -31,8 +31,6 @@
 	cq->cq[CQ_ENTRY_TO_PAGE_NUM(entry_id)][CQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
 
 extern struct nvmev_dev *vdev;
-extern struct nvmev_ns *vns;
-extern struct zns_ftl *g_zns_ftl; 
 
 int dma_flag = 0;
 
@@ -124,9 +122,9 @@ static unsigned int __do_perform_io(int sqid, int sq_entry)
 		}
 		
 		if (sq_entry(sq_entry).rw.opcode == nvme_cmd_write) {
-			memcpy(vns[nsid].mapped + offset, vaddr + mem_offs, io_size);
+			memcpy(vdev->ns[nsid].mapped + offset, vaddr + mem_offs, io_size);
 		} else if (sq_entry(sq_entry).rw.opcode == nvme_cmd_read) {
-			memcpy(vaddr + mem_offs, vns[nsid].mapped + offset, io_size);
+			memcpy(vaddr + mem_offs, vdev->ns[nsid].mapped + offset, io_size);
 		}
 
 		kunmap_atomic(vaddr);
@@ -454,7 +452,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	struct nvmev_result ret = {0,};
 
 	uint32_t nsid = cmd->common.nsid - 1;
-	struct nvmev_ns *ns = &vns[nsid];
+	struct nvmev_ns *ns = &vdev->ns[nsid];
 	
 	req.cmd = cmd;
 	req.sq_id = sqid;
@@ -476,7 +474,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 		if (!conv_proc_nvme_io_cmd(ns, &req, &ret))
 			return false; 
 	} else if (ns->csi == NVME_CSI_ZNS) {
-		if (!zns_proc_nvme_io_cmd(g_zns_ftl, &req, &ret))
+		if (!zns_proc_nvme_io_cmd(ns, &req, &ret))
 			return false; 
 	}
 	else

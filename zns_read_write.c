@@ -347,8 +347,9 @@ out :
 	return true;
 }
 
-bool zns_write(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret)
+bool zns_write(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret)
 {
+	struct zns_ftl *zns_ftl = (struct zns_ftl *)ns->ftls;
 	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	
@@ -369,8 +370,9 @@ bool zns_write(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_
 		return __zns_write_zrwa(zns_ftl, req, ret);
 }
 
-bool zns_read(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret)
+bool zns_read(struct nvmev_ns *ns,  struct nvmev_request *req, struct nvmev_result *ret)
 {
+	struct zns_ftl *zns_ftl = (struct zns_ftl *)ns->ftls;
 	struct ssdparams *spp = &(zns_ftl->sp);
 	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);

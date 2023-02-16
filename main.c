@@ -68,7 +68,6 @@
  ****************************************************************/
 
 struct nvmev_dev *vdev = NULL;
-struct nvmev_ns *vns = NULL;
 
 unsigned long memmap_start = 0;
 unsigned long memmap_size = 0;
@@ -86,9 +85,6 @@ unsigned int io_unit_shift = 12;
 
 char *cpus;
 unsigned int debug = 0;
-
-
-struct zns_ftl *g_zns_ftl = NULL; 
 
 module_param(memmap_start, ulong, 0444);
 MODULE_PARM_DESC(memmap_start, "Memmap start in GiB");
@@ -484,8 +480,9 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 	unsigned long long remaining_capacity = vdev->config.storage_size;	// byte
 	void * ns_addr = (void*)vdev->storage_mapped;
 	const int nr_ns = NR_NAMESPACES;
+	const unsigned int disp_no = vdev->config.cpu_nr_dispatcher;
 	int i;
-		
+	
 	struct nvmev_ns *ns = kmalloc(sizeof(struct nvmev_ns) * nr_ns, GFP_KERNEL);
 
 	for (i = 0; i < nr_ns; i++){
@@ -498,21 +495,18 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 		ns[i].mapped = ns_addr;
 		ns_addr += ns[i].size;
 
-		if (NS_CSI(i) == NVME_CSI_NVM) {
-			conv_init_namespace(&ns[i], i, ns[i].size, vdev->config.cpu_nr_dispatcher);
-		}
-		else if (NS_CSI(i) == NVME_CSI_ZNS) {
-			NVMEV_ASSERT(g_zns_ftl == NULL);
-			g_zns_ftl = zns_create_and_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher, vdev->ns_mapped[i], i); 
-		}
-		else {
+		if (NS_CSI(i) == NVME_CSI_NVM) 
+			conv_init_namespace(&ns[i], i, ns[i].size, ns[i].mapped, disp_no);
+		else if (NS_CSI(i) == NVME_CSI_ZNS) 	
+			zns_init_namespace(&ns[i], i, ns[i].size, ns[i].mapped, disp_no); 
+		else 
 			NVMEV_ASSERT(0);
-		}
+		
 
 		NVMEV_INFO("[%s] ns=%d ns_addr=%p ns_size=%lld(MiB) \n", __FUNCTION__, i, ns[i].mapped, BYTE_TO_MB(ns[i].size));	
 	}
 
-	vns = ns;
+	vdev->ns = ns;
 }
 
 void NVMEV_NAMESPACE_FINAL(struct nvmev_dev *vdev)

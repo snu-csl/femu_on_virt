@@ -342,7 +342,7 @@ static void init_ftl(struct conv_ftl *conv_ftl)
     return;
 }
 
-void conv_init_namespace(struct nvmev_ns * ns, uint32_t id, uint64_t size, uint32_t cpu_nr_dispatcher)
+void conv_init_namespace(struct nvmev_ns * ns, uint32_t id, uint64_t size, void * mapped_addr, uint32_t cpu_nr_dispatcher)
 {
     struct ssdparams spp;
     struct conv_ftl *conv_ftls;
@@ -372,6 +372,7 @@ void conv_init_namespace(struct nvmev_ns * ns, uint32_t id, uint64_t size, uint3
     ns->nr_parts = nr_parts;
     ns->ftls = (void*)conv_ftls;
     ns->size = (uint64_t)((size * 100) / spp.pba_pcent);
+    ns->mapped = mapped_addr;
     NVMEV_INFO("FTL physical space: %lld, logical space: %lld (physical/logical * 100 = %d)\n", 
 							size, ns->size, spp.pba_pcent);
     return;

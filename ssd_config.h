@@ -5,7 +5,7 @@
 #define SAMSUNG_970PRO 0
 #define ZNS_PROTOTYPE 1
 
-#define BASE_SSD   (SAMSUNG_970PRO)
+#define BASE_SSD   (ZNS_PROTOTYPE)
 
 /* Macros for specific setting. Modify these macros for your target */
 #if  (BASE_SSD == SAMSUNG_970PRO)
@@ -85,7 +85,7 @@
 #define ZONE_SIZE             (96*1024*1024) //byte. kernal only support zone size which is power of 2  
 #else /*If kernel is not modified, use this config for just testing ZNS*/
 #define ONESHOT_PAGE_SIZE     (FLASH_PAGE_SIZE * 2)
-#define ZONE_SIZE             (128*1024*1024) 
+#define ZONE_SIZE             (32*1024*1024) 
 #endif
 
 #define MAX_CH_XFER_SIZE    (FLASH_PAGE_SIZE) /* to overlap with pcie transfer */
