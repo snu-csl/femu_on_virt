@@ -300,12 +300,14 @@ static void __nvmev_admin_identify_namespace_desc(int eid, int cq_head)
 	cq_entry(cq_head).status = queue->phase | NVME_SC_SUCCESS << 1;
 }
 
+extern struct zns_ftl *g_zns_ftl; 
+
 static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 {
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	struct nvme_id_zns_ns *ns;
-	struct zns_ftl * zns_ftl = zns_ftl_instance();
+	struct zns_ftl * zns_ftl = g_zns_ftl;
 	NVMEV_DEBUG("%s\n", __func__);
 	
 	ns = prp_address(cmd->prp1);

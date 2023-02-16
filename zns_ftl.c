@@ -5,8 +5,6 @@
 #include "ssd.h"
 #include "zns_ftl.h"
 
-struct zns_ftl *g_zns_ftl = NULL;
-
 static void zns_init_descriptor(struct zns_ftl *zns_ftl)
 {
 	struct zone_descriptor *zone_descs;
@@ -70,7 +68,7 @@ static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, uint64
 	NVMEV_INFO("zone_size=%d(KB), # zones=%d # die/zone=%d \n", zpp->zone_size, zpp->nr_zones, zpp->dies_per_zone);
 }
 
-void zns_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace)
+struct zns_ftl * zns_create_and_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace)
 {
 	struct zns_ftl *zns_ftl;
 	struct ssdparams spp;
@@ -93,20 +91,18 @@ void zns_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base
 	zns_init_descriptor(zns_ftl);
 	zns_init_resource(zns_ftl);
 
-	NVMEV_ASSERT(g_zns_ftl == NULL);
-	g_zns_ftl = zns_ftl;
+	return zns_ftl;
 }
 
-void zns_exit(void)
+void zns_exit(struct zns_ftl *zns_ftl)
 {
-	struct zns_ftl * zns_ftl = zns_ftl_instance();
 	NVMEV_ZNS_DEBUG("%s \n", __FUNCTION__);
 	
 	kfree(zns_ftl->zone_descs);
 	kfree(zns_ftl->report_buffer);
 }
 
-void zns_flush(struct nvme_request * req, struct nvme_result * ret)
+void zns_flush(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_result *ret)
 {   
 	unsigned long long latest = 0;
 
@@ -124,22 +120,22 @@ void zns_flush(struct nvme_request * req, struct nvme_result * ret)
 	return;
 }
 
- bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret)
+ bool zns_proc_nvme_io_cmd(struct zns_ftl *zns_ftl, struct nvme_request * req, struct nvme_result * ret)
  {
     struct nvme_command *cmd = req->cmd;
     size_t csi = NS_CSI(cmd->common.nsid - 1);
     NVMEV_ASSERT(csi == NVME_CSI_ZNS);
     switch(cmd->common.opcode) {
         case nvme_cmd_write:
-            if (!zns_write(req, ret))
+            if (!zns_write(zns_ftl, req, ret))
                 return false;
             break;
         case nvme_cmd_read:
-            if (!zns_read(req, ret))
+            if (!zns_read(zns_ftl, req, ret))
                 return false;
             break;
         case nvme_cmd_flush:
-            zns_flush(req, ret);
+            zns_flush(zns_ftl, req, ret);
             break;
         case nvme_cmd_write_uncor:
         case nvme_cmd_compare:
@@ -151,10 +147,10 @@ void zns_flush(struct nvme_request * req, struct nvme_result * ret)
         case nvme_cmd_resv_release:
             break;
         case nvme_cmd_zone_mgmt_send:
-			zns_zmgmt_send(req, ret);
+			zns_zmgmt_send(zns_ftl, req, ret);
 			break;
 		case nvme_cmd_zone_mgmt_recv:
-			zns_zmgmt_recv(req, ret);
+			zns_zmgmt_recv(zns_ftl, req, ret);
 			break;
 		case nvme_cmd_zone_append:
 		default:

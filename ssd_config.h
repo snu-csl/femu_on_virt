@@ -5,7 +5,7 @@
 #define SAMSUNG_970PRO 0
 #define ZNS_PROTOTYPE 1
 
-#define BASE_SSD   (SAMSUNG_970PRO)
+#define BASE_SSD   (ZNS_PROTOTYPE)
 
 /* Macros for specific setting. Modify these macros for your target */
 #if  (BASE_SSD == SAMSUNG_970PRO)
@@ -80,7 +80,7 @@
 #define PLNS_PER_LUN          (1) /* not used*/
 #define DIES_PER_ZONE         (1)
 
-#if 1 /*Real device configuration. Need to modify kernel to support zone size which is power of 2*/
+#if 0 /*Real device configuration. Need to modify kernel to support zone size which is power of 2*/
 #define ONESHOT_PAGE_SIZE     (FLASH_PAGE_SIZE * 3)
 #define ZONE_SIZE             (96*1024*1024) //byte. kernal only support zone size which is power of 2  
 #else /*If kernel is not modified, use this config for just testing ZNS*/

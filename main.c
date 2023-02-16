@@ -86,7 +86,8 @@ unsigned int io_unit_shift = 12;
 char *cpus;
 unsigned int debug = 0;
 
-struct conv_ftl * g_conv_ftls = NULL;
+struct conv_ftl *g_conv_ftls = NULL;
+struct zns_ftl *g_zns_ftl = NULL; 
 
 module_param(memmap_start, ulong, 0444);
 MODULE_PARM_DESC(memmap_start, "Memmap start in GiB");
@@ -505,7 +506,8 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 							vdev->config.ns_size[i], logical_space, g_conv_ftls[0].sp.pba_pcent);
 		}
 		else if (NS_CSI(i) == NVME_CSI_ZNS) {
-			zns_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher, vdev->ns_mapped[i], i); 
+			NVMEV_ASSERT(g_zns_ftl == NULL);
+			g_zns_ftl = zns_create_and_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher, vdev->ns_mapped[i], i); 
 		}
 		else {
 			NVMEV_ASSERT(0);

@@ -31,7 +31,8 @@
 	cq->cq[CQ_ENTRY_TO_PAGE_NUM(entry_id)][CQ_ENTRY_TO_PAGE_OFFSET(entry_id)]
 
 extern struct nvmev_dev *vdev;
-extern struct conv_ftl * g_conv_ftls;
+extern struct conv_ftl *g_conv_ftls;
+extern struct zns_ftl *g_zns_ftl; 
 
 int dma_flag = 0;
 
@@ -473,7 +474,7 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 		if (!conv_proc_nvme_io_cmd(g_conv_ftls, &req, &ret))
 			return false; 
 	} else if (csi == NVME_CSI_ZNS) {
-		if (!zns_proc_nvme_io_cmd(&req, &ret))
+		if (!zns_proc_nvme_io_cmd(g_zns_ftl, &req, &ret))
 			return false; 
 	}
 	else

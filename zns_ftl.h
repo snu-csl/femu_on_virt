@@ -5,8 +5,6 @@
 #include "nvmev.h"
 #include "nvme_zns.h"
 
-extern struct zns_ftl * g_zns_ftl;
-
 #define NVMEV_ZNS_DEBUG(string, args...) //printk(KERN_INFO "%s: " string, NVMEV_DRV_NAME, ##args)
 
 // Zoned Namespace Command Set Specification Revision 1.1a
@@ -120,17 +118,12 @@ static inline uint64_t lba_to_lpn(struct zns_ftl *zns_ftl, uint64_t lba)
 	return lba / zns_ftl->sp.secs_per_pg;
 }
 
-static inline struct zns_ftl * zns_ftl_instance(void) {
-    return g_zns_ftl;
-}
-
 /* zns external interface */
-void zns_zmgmt_recv(struct nvme_request * req, struct nvme_result * ret);
-void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret);
-bool zns_write(struct nvme_request * req, struct nvme_result * ret);
-bool zns_read(struct nvme_request * req, struct nvme_result * ret);
-bool zns_proc_nvme_io_cmd(struct nvme_request * req, struct nvme_result * ret);
+struct zns_ftl * zns_create_and_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace);
 
-void zns_init(uint64_t capacity, uint32_t cpu_nr_dispatcher, void * storage_base_addr, uint32_t namespace);
-void zns_exit(void);
+void zns_zmgmt_recv(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_result *ret);
+void zns_zmgmt_send(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_result *ret);
+bool zns_write(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_result *ret);
+bool zns_read(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_result *ret);
+bool zns_proc_nvme_io_cmd(struct zns_ftl *zns_ftl, struct nvme_request *req, struct nvme_result *ret);
 #endif
