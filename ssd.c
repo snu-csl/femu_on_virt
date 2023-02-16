@@ -153,9 +153,11 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
 
     total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->pgs_per_blk * spp->secsz * spp->secs_per_pg;
     blk_size = spp->pgs_per_blk *  spp->secsz * spp->secs_per_pg;
-    NVMEV_INFO("Total Capacity=%llu(GB), %llu(MB) Block Size=%llu(Byte) luns=%lu lines=%lu pgs_per_line=%lu pgs_per_blk=%u gc_thresh_line=%d spp->gc_thres_lines_high=%d n", 
-                    BYTE_TO_GB(total_size), BYTE_TO_MB(total_size), blk_size, 
-                    spp->tt_luns, spp->tt_lines, spp->pgs_per_line, spp->pgs_per_blk, spp->gc_thres_lines, spp->gc_thres_lines_high);
+    NVMEV_INFO("Total Capacity(GiB,MiB)=%llu,%llu chs=%u luns=%lu lines=%lu blk-size(MiB,KiB)=%u,%u line-size(MiB,KiB)=%lu,%lu", 
+                    BYTE_TO_GB(total_size), BYTE_TO_MB(total_size), 
+                    spp->nchs, spp->tt_luns, spp->tt_lines,  
+                    BYTE_TO_MB(spp->pgs_per_blk * spp->pgsz), BYTE_TO_KB(spp->pgs_per_blk * spp->pgsz),
+                    BYTE_TO_MB(spp->pgs_per_line * spp->pgsz), BYTE_TO_KB(spp->pgs_per_line * spp->pgsz));
 }
 
 static void ssd_init_nand_page(struct nand_page *pg, struct ssdparams *spp)
@@ -293,7 +295,7 @@ uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd)
                             ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg, c, ppa->ppa);
 	
     if (ppa->ppa == UNMAPPED_PPA) {
-		NVMEV_INFO("Error ppa 0x%llx\n", ppa->ppa);
+		NVMEV_ERROR("Error ppa 0x%llx\n", ppa->ppa);
 		return cmd_stime;
 	}
 
@@ -333,9 +335,6 @@ uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd)
         break;
 
     case NAND_WRITE:
-        NVMEV_DEBUG("SSD: %p, Enter stime: %lld, ch %lu lun %lu blk %lu page %lu\n",
-                            ssd, ncmd->stime, ppa->g.ch, ppa->g.lun, ppa->g.blk, ppa->g.pg);
-
         /* write: transfer data through channel first */
         chnl_stime = (lun->next_lun_avail_time < cmd_stime) ? cmd_stime : \
                      lun->next_lun_avail_time;
@@ -382,7 +381,7 @@ void adjust_ftl_latency(int target, int lat)
 
     for (i = 0; i < SSD_PARTITIONS; i++) {
         spp = &(g_conv_ssds[i].sp); 
-        printk("Before latency: %d %d %d, change to %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat, lat);
+        NVMEV_INFO("Before latency: %d %d %d, change to %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat, lat);
         switch (target) {
             case NAND_READ:
                 spp->pg_rd_lat = lat;
@@ -399,7 +398,7 @@ void adjust_ftl_latency(int target, int lat)
             default:
                 NVMEV_ERROR("Unsupported NAND command\n");
         }
-        printk("After latency: %d %d %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat);
+        NVMEV_INFO("After latency: %d %d %d\n", spp->pg_rd_lat, spp->pg_wr_lat, spp->blk_er_lat);
     }
 #endif
 }

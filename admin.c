@@ -237,11 +237,8 @@ static void __nvmev_admin_identify_namespace(int eid, int cq_head)
 	ns->lbaf[6].ds = 12;
 	ns->lbaf[6].rp = NVME_LBAF_RP_BEST;
 
-#if SUPPORT_VIRTUAL_CAPACITY
-	ns->nsze = (vdev->config.virtual_storage_size >> ns->lbaf[ns->flbas].ds);
-#else
 	ns->nsze = (vdev->config.ns_size[nsid] >> ns->lbaf[ns->flbas].ds);
-#endif
+
 	ns->ncap = ns->nsze;
 	ns->nuse = ns->nsze;
 	ns->nlbaf = 6;
@@ -268,7 +265,7 @@ static void __nvmev_admin_identify_namespaces(int eid, int cq_head)
 
 	for (i = 1; i <= NR_NAMESPACES; i++) {
 		if (i > cmd->nsid) {
-			printk("[%s] ns %d %px\n", __FUNCTION__, i, ns);
+			NVMEV_DEBUG("[%s] ns %d %px\n", __FUNCTION__, i, ns);
 			*ns = i;
 			ns++;
 		}

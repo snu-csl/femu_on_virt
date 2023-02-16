@@ -240,6 +240,7 @@ static int __validate_configs(void)
 
 static void __print_perf_configs(void)
 {
+#if 0
 	unsigned long unit_perf_kb =
 			vdev->config.nr_io_units << (vdev->config.io_unit_shift - 10);
 	struct nvmev_config *cfg = &vdev->config;
@@ -257,6 +258,7 @@ static void __print_perf_configs(void)
 			(1000000000UL / (cfg->read_time + cfg->read_delay + cfg->read_trailing)) * unit_perf_kb >> 10);
 	NVMEV_INFO("  Write    : %lu MiB/s\n",
 			(1000000000UL / (cfg->write_time + cfg->write_delay + cfg->write_trailing)) * unit_perf_kb >> 10);
+#endif
 }
 
 static int __get_nr_entries(int dbs_idx, int queue_size)
@@ -475,10 +477,6 @@ static bool __load_configs(struct nvmev_config *config)
 
 void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 {
-#if SUPPORT_VIRTUAL_CAPACITY
-	unsigned long long tmp_size = ssd_init(vdev->config.cpu_nr_dispatcher, SUPPORT_VIRTUAL_CAPACITY);
-	vdev->config.virtual_storage_size = tmp_size - (tmp_size % PAGE_SIZE);
-#else
 	unsigned long long remaining_capacity = vdev->config.storage_size;	// byte
 	void * ns_addr = (void*)vdev->storage_mapped;
 	int i;
@@ -499,11 +497,12 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 		else if (NS_CSI(i) == NVME_CSI_ZNS) {
 			zns_init(vdev->config.ns_size[i], vdev->config.cpu_nr_dispatcher, vdev->ns_mapped[i], i); 
 		}
-		else
+		else {
 			NVMEV_ASSERT(0);
-		NVMEV_DEBUG("ns_addr 0x%llx ns_size %lld \n", vdev->ns_mapped[i], vdev->config.ns_size[i]/1024/1024);	
+		}
+
+		NVMEV_INFO("[%s] ns=%d ns_addr=%p ns_size=%ld(MiB) \n", __FUNCTION__, i, vdev->ns_mapped[i], BYTE_TO_MB(vdev->config.ns_size[i]));	
 	}
-#endif
 }
 
 void NVMEV_NAMESPACE_FINAL(struct nvmev_dev *vdev)

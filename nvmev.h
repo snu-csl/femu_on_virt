@@ -25,7 +25,6 @@
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
 #define SUPPORT_MULTI_IO_WORKER_BY_SQ	1 
-#define SUPPORT_VIRTUAL_CAPACITY		0
 
 /*************************/
 #define NVMEV_DRV_NAME "NVMeVirt"
@@ -143,9 +142,6 @@ struct nvmev_config {
 
 	unsigned long storage_start; //byte
 	unsigned long storage_size;	// byte
-#if SUPPORT_VIRTUAL_CAPACITY
-	unsigned long virtual_storage_size;
-#endif	
 
 	unsigned long ns_size[NR_NAMESPACES];  // byte
 
