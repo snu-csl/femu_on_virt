@@ -123,10 +123,6 @@ static_assert((ZONE_SIZE % DIES_PER_ZONE) == 0);
 #endif // BASE_SSD == ZNS_PROTOTYPE
 ///////////////////////////////////////////////////////////////////////////
 
-
-#define LPN_TO_SSD_ID(lpn) ((lpn) % SSD_PARTITIONS)     
-#define LPN_TO_LOCAL_LPN(lpn)  ((lpn) >> SSD_PARTITION_BITS)
-
 static const uint32_t ns_csi[] = {NS_CSI_0, NS_CSI_1};
 static const uint64_t ns_capacity[] = {NS_CAPACITY_0, NS_CAPACITY_1}; // MB
 

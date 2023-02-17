@@ -273,6 +273,9 @@ struct nvmev_ns {
 	/*conv ftl or zns*/
 	uint32_t nr_parts; // partitions
 	void * ftls; 	   // ftl instances. one ftl per partition
+
+	/*io command handler*/
+	bool (*proc_io_cmd)(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret);
 };
 
 // VDEV Init, Final Function

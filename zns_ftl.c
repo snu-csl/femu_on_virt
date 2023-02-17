@@ -109,6 +109,8 @@ void zns_init_namespace(struct nvmev_ns *ns, uint32_t id,  uint64_t size, void *
     ns->ftls = (void*)zns_ftl;
     ns->size = size;
 	ns->mapped = mapped_addr;
+	/*register io command handler*/
+	ns->proc_io_cmd = zns_proc_nvme_io_cmd;
 	return;
 }
 

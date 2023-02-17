@@ -392,6 +392,9 @@ void conv_init_namespace(struct nvmev_ns * ns, uint32_t id, uint64_t size, void 
     ns->ftls = (void*)conv_ftls;
     ns->size = (uint64_t)((size * 100) / cpp.pba_pcent);
     ns->mapped = mapped_addr;
+    /*register io command handler*/
+    ns->proc_io_cmd = conv_proc_nvme_io_cmd;
+
     NVMEV_INFO("FTL physical space: %lld, logical space: %lld (physical/logical * 100 = %d)\n", 
 							size, ns->size, cpp.pba_pcent);
     return;
@@ -793,7 +796,7 @@ bool conv_read(struct nvmev_ns *ns, struct nvmev_request * req, struct nvmev_res
 
     NVMEV_ASSERT(conv_ftls);
     NVMEV_DEBUG("conv_read: start_lpn=%lld, len=%d, end_lpn=%ld", start_lpn, nr_lba, end_lpn);
-    if (LPN_TO_LOCAL_LPN(end_lpn) >= spp->tt_pgs) {
+    if ((end_lpn/nr_parts) >= spp->tt_pgs) {
         NVMEV_ERROR("conv_read: lpn passed FTL range(start_lpn=%lld,tt_pgs=%ld)\n", start_lpn, spp->tt_pgs);
         return false;
     }
@@ -881,7 +884,7 @@ bool conv_write(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_res
 
     NVMEV_ASSERT(conv_ftls);
     NVMEV_DEBUG("conv_write: start_lpn=%lld, len=%d, end_lpn=%lld", start_lpn, nr_lba, end_lpn);
-    if (LPN_TO_LOCAL_LPN(end_lpn)  >= spp->tt_pgs) {
+    if ((end_lpn/nr_parts) >= spp->tt_pgs) {
         NVMEV_ERROR("conv_write: lpn passed FTL range(start_lpn=%lld,tt_pgs=%ld)\n", start_lpn, spp->tt_pgs);
         return false;
     }

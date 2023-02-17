@@ -470,15 +470,8 @@ static size_t __nvmev_proc_io(int sqid, int sq_entry)
 	static unsigned long long counter = 0;
 #endif
 
-	if (ns->csi == NVME_CSI_NVM) {
-		if (!conv_proc_nvme_io_cmd(ns, &req, &ret))
-			return false; 
-	} else if (ns->csi == NVME_CSI_ZNS) {
-		if (!zns_proc_nvme_io_cmd(ns, &req, &ret))
-			return false; 
-	}
-	else
-		NVMEV_ASSERT(0);
+	if (!ns->proc_io_cmd(ns, &req, &ret))
+			return false;
 
 #ifdef PERF_DEBUG
 	prev_clock2 = local_clock();
