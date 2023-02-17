@@ -25,22 +25,14 @@ struct znsparams {
 };
 
 struct zns_ftl {
-     union {
-        struct ssd ssd;
-
-        struct {
-            STRUCT_SSD_ENTRIES
-        };
-    };
+    struct ssd *ssd;
 
     struct znsparams zp;
-
-    void * storage_base_addr;
-    
     struct zone_resource_info res_infos[RES_TYPE_COUNT];
     struct zone_descriptor *zone_descs;
     struct zone_report *report_buffer;
     struct buffer * zwra_buffer;
+    void * storage_base_addr;
 };
 
 /* zns internal functions */
@@ -84,11 +76,11 @@ static inline void change_zone_state(struct zns_ftl * zns_ftl, uint32_t zid, enu
 }
 
 static inline uint32_t lpn_to_zone(struct zns_ftl *zns_ftl, uint64_t lpn) {
-    return (lpn) / (zns_ftl->zp.zone_size / zns_ftl->sp.pgsz);
+    return (lpn) / (zns_ftl->zp.zone_size / zns_ftl->ssd->sp.pgsz);
 }
 
 static inline uint64_t zone_to_slpn(struct zns_ftl *zns_ftl, uint32_t zid) {
-    return (zid) * (zns_ftl->zp.zone_size / zns_ftl->sp.pgsz);
+    return (zid) * (zns_ftl->zp.zone_size / zns_ftl->ssd->sp.pgsz);
 }
 
 static inline uint32_t lba_to_zone(struct zns_ftl *zns_ftl, uint64_t lba) {
@@ -105,16 +97,16 @@ static inline  uint64_t zone_to_elba(struct zns_ftl *zns_ftl, uint32_t zid)
 }
 
 static inline uint32_t die_to_channel(struct zns_ftl *zns_ftl, uint32_t die) {
-    return (die) % zns_ftl->sp.nchs;
+    return (die) % zns_ftl->ssd->sp.nchs;
 }
 
 static inline uint32_t die_to_lun(struct zns_ftl *zns_ftl, uint32_t die) {
-    return (die) / zns_ftl->sp.nchs;
+    return (die) / zns_ftl->ssd->sp.nchs;
 }
 
 static inline uint64_t lba_to_lpn(struct zns_ftl *zns_ftl, uint64_t lba) 
 {
-	return lba / zns_ftl->sp.secs_per_pg;
+	return lba / zns_ftl->ssd->sp.secs_per_pg;
 }
 
 /* zns external interface */

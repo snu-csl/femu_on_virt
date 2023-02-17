@@ -175,14 +175,6 @@ struct ssdparams {
     uint64_t ch_bandwidth; /*NAND CH Maximum bandwidth in MiB/s*/
     uint64_t pcie_bandwidth; /*PCIE Maximum bandwidth in MiB/s*/
 
-    double gc_thres_pcent;
-    int gc_thres_lines;
-    double gc_thres_pcent_high;
-    int gc_thres_lines_high;
-    bool enable_gc_delay;
-
-    double op_area_pcent;
-    
     /* below are all calculated values */
     unsigned long secs_per_blk; /* # of sectors per block */
     unsigned long secs_per_pl;  /* # of sectors per plane */
@@ -209,19 +201,15 @@ struct ssdparams {
 
     unsigned long tt_luns;      /* total # of LUNs in the SSD */
 
-    int pba_pcent;    /* (physical space / logical space) * 100*/  
-
     unsigned long long write_buffer_size;
 };
 
-#define STRUCT_SSD_ENTRIES  struct ssdparams sp; \
-                          struct ssd_channel *ch; \
-                          struct ssd_pcie *pcie; \
-                          struct buffer *write_buffer; \
-                          unsigned int cpu_nr_dispatcher; \
-
 struct ssd {
-    STRUCT_SSD_ENTRIES
+    struct ssdparams sp; 
+    struct ssd_channel *ch; 
+    struct ssd_pcie *pcie; 
+    struct buffer *write_buffer; 
+    unsigned int cpu_nr_dispatcher; 
 };
 
 static inline struct ssd_channel *get_ch(struct ssd *ssd, struct ppa *ppa)

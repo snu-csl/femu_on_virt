@@ -9,14 +9,14 @@ static inline uint64_t __get_ioclock(struct ssd *ssd)
 	return cpu_clock(ssd->cpu_nr_dispatcher);
 }
 
-void buffer_init(struct buffer * buf, uint32_t size)
+void buffer_init(struct buffer *buf, uint32_t size)
 {
     spin_lock_init(&buf->lock);
     buf->initial = size;
     buf->remaining = size;
 }
 
-uint32_t buffer_allocate(struct buffer * buf, uint32_t size)
+uint32_t buffer_allocate(struct buffer *buf, uint32_t size)
 {
     while(!spin_trylock(&buf->lock));
     
@@ -30,7 +30,7 @@ uint32_t buffer_allocate(struct buffer * buf, uint32_t size)
     return size;
 }
 
-bool buffer_release(struct buffer * buf, uint32_t size)
+bool buffer_release(struct buffer *buf, uint32_t size)
 {
     while(!spin_trylock(&buf->lock));
     buf->remaining += size;
@@ -39,7 +39,7 @@ bool buffer_release(struct buffer * buf, uint32_t size)
     return true;
 }
 
-void buffer_refill(struct buffer * buf) 
+void buffer_refill(struct buffer *buf) 
 {
     while(!spin_trylock(&buf->lock));
     buf->remaining = buf->initial;
@@ -115,11 +115,6 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
     spp->write_buffer_size = WRITE_BUFFER_SIZE;
     spp->write_early_completion = WRITE_EARLY_COMPLETION;
     
-    spp->op_area_pcent = OP_AREA_PERCENT;
-    
-    spp->gc_thres_lines_high = 2; /* Need only two lines.(host write, gc)*/
-    spp->enable_gc_delay = 1;
-
     /* calculated values */
     spp->secs_per_blk = spp->secs_per_pg * spp->pgs_per_blk;
     spp->secs_per_pl = spp->secs_per_blk * spp->blks_per_pl;
@@ -147,9 +142,6 @@ void ssd_init_params(struct ssdparams *spp, uint64_t capacity, uint32_t nparts)
     spp->secs_per_line = spp->pgs_per_line * spp->secs_per_pg;
     spp->tt_lines = spp->blks_per_lun; /* TODO: to fix under multiplanes */ // lun size is super-block(line) size
 
-    spp->pba_pcent = (int)((1 + spp->op_area_pcent) * 100);
-
-    
     check_params(spp);
 
     total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->pgs_per_blk * spp->secsz * spp->secs_per_pg;

@@ -41,8 +41,8 @@ static void __increase_write_ptr(struct zns_ftl *zns_ftl, uint32_t zid, uint32_t
 
 static inline struct ppa __lpn_to_ppa(struct zns_ftl *zns_ftl, uint64_t lpn) 
 {
-	struct ssdparams *spp = &(zns_ftl->sp);
-	struct znsparams *zpp = &(zns_ftl->zp);
+	struct ssdparams *spp = &zns_ftl->ssd->sp;
+	struct znsparams *zpp = &zns_ftl->zp;
 	uint64_t zone = lpn_to_zone(zns_ftl, lpn); // find corresponding zone
 	uint64_t off = lpn - zone_to_slpn(zns_ftl, zone); 
 	
@@ -63,7 +63,7 @@ static inline struct ppa __lpn_to_ppa(struct zns_ftl *zns_ftl, uint64_t lpn)
 bool __zns_write(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret)
 {
 	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
-	struct ssdparams *spp = &(zns_ftl->sp);
+	struct ssdparams *spp = &zns_ftl->ssd->sp;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 
 	uint64_t slba = cmd->slba;
@@ -158,7 +158,7 @@ bool __zns_write(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvme
 
 	// get delay from nand model
 	nsecs_latest = nsecs_start;
-	nsecs_latest = ssd_advance_write_buffer(&zns_ftl->ssd,
+	nsecs_latest = ssd_advance_write_buffer(zns_ftl->ssd,
                                                 nsecs_latest, LBA_TO_BYTE(nr_lba));
 	nsecs_xfer_completed = nsecs_latest;
 
@@ -175,11 +175,11 @@ bool __zns_write(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvme
 			swr.xfer_size = spp->pgs_per_oneshotpg * spp->pgsz;
 			swr.interleave_pci_dma = false;
 			swr.ppa = &ppa;
-			nsecs_completed = ssd_advance_nand((struct ssd*)zns_ftl, &swr);
+			nsecs_completed = ssd_advance_nand(zns_ftl->ssd, &swr);
 			nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 			NVMEV_ZNS_DEBUG("%s Flush slba 0x%llx nr_lba 0x%lx zone_id %d state %d\n",__FUNCTION__, slba, nr_lba, zid, state);
 	
-			enqueue_writeback_io_req(req->sq_id, nsecs_completed, zns_ftl->write_buffer, spp->pgs_per_oneshotpg * spp->pgsz);
+			enqueue_writeback_io_req(req->sq_id, nsecs_completed, zns_ftl->ssd->write_buffer, spp->pgs_per_oneshotpg * spp->pgsz);
 		} 
 	}
 
@@ -197,8 +197,8 @@ out :
 bool __zns_write_zrwa(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct nvmev_result *ret)
 {
 	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
-	struct ssdparams *spp = &(zns_ftl->sp);
-	struct znsparams *zpp = &(zns_ftl->zp);
+	struct ssdparams *spp = &zns_ftl->ssd->sp;
+	struct znsparams *zpp = &zns_ftl->zp;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	uint64_t slba = cmd->slba;
 	uint64_t nr_lba = __nr_lbas_from_rw_cmd(cmd);
@@ -305,7 +305,7 @@ bool __zns_write_zrwa(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct
 	}
 	// get delay from nand model
 	nsecs_latest = nsecs_start;
-	nsecs_latest = ssd_advance_write_buffer(&zns_ftl->ssd,
+	nsecs_latest = ssd_advance_write_buffer(zns_ftl->ssd,
                                                 nsecs_latest, LBA_TO_BYTE(nr_lba));
 	nsecs_xfer_completed = nsecs_latest;
 
@@ -325,7 +325,7 @@ bool __zns_write_zrwa(struct zns_ftl *zns_ftl, struct nvmev_request *req, struct
 			swr.interleave_pci_dma = false;
 			swr.ppa = &ppa;
 
-			nsecs_completed = ssd_advance_nand((struct ssd*)zns_ftl, &swr);
+			nsecs_completed = ssd_advance_nand(zns_ftl->ssd, &swr);
 			nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 
 			enqueue_writeback_io_req(req->sq_id, nsecs_completed, &zns_ftl->zwra_buffer[zid], spp->pgs_per_oneshotpg * spp->pgsz);
@@ -361,7 +361,7 @@ bool zns_write(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_resu
 
 	NVMEV_DEBUG("%s slba 0x%llx nr_lba 0x%lx zone_id %d \n",__FUNCTION__, cmd->slba, nr_lba, zid);
 	
-	if (buffer_allocate(zns_ftl->write_buffer, LBA_TO_BYTE(nr_lba)) < LBA_TO_BYTE(nr_lba))
+	if (buffer_allocate(zns_ftl->ssd->write_buffer, LBA_TO_BYTE(nr_lba)) < LBA_TO_BYTE(nr_lba))
 			return false;
 
 	if (zone_descs[zid].zrwav == 0) 
@@ -373,7 +373,7 @@ bool zns_write(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_resu
 bool zns_read(struct nvmev_ns *ns,  struct nvmev_request *req, struct nvmev_result *ret)
 {
 	struct zns_ftl *zns_ftl = (struct zns_ftl *)ns->ftls;
-	struct ssdparams *spp = &(zns_ftl->sp);
+	struct ssdparams *spp = &zns_ftl->ssd->sp;
 	struct zone_descriptor *zone_descs = zns_ftl->zone_descs;
 	struct nvme_rw_command * cmd = &(req->cmd->rw);
 	
@@ -422,12 +422,12 @@ bool zns_read(struct nvmev_ns *ns,  struct nvmev_request *req, struct nvmev_resu
 		pgs = min(elpn - lpn + 1, (uint64_t)(spp->pgs_per_flashpg - pg_off));
 		swr.xfer_size = pgs * spp->pgsz;
 		swr.ppa = &ppa;
-		nsecs_completed = ssd_advance_nand(&zns_ftl->ssd, &swr);
+		nsecs_completed = ssd_advance_nand(zns_ftl->ssd, &swr);
 		nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 	} 
 
 	if (swr.interleave_pci_dma == false) {
-		nsecs_completed = ssd_advance_pcie(&zns_ftl->ssd, nsecs_latest, nr_lba * spp->secsz);
+		nsecs_completed = ssd_advance_pcie(zns_ftl->ssd, nsecs_latest, nr_lba * spp->secsz);
 		nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
 	}
 

@@ -5,7 +5,7 @@
 #include "ssd.h"
 #include "zns_ftl.h"
 
-static void zns_init_descriptor(struct zns_ftl *zns_ftl)
+static void __init_descriptor(struct zns_ftl *zns_ftl)
 {
 	struct zone_descriptor *zone_descs;
 	uint32_t zone_size = zns_ftl->zp.zone_size;
@@ -36,7 +36,7 @@ static void zns_init_descriptor(struct zns_ftl *zns_ftl)
 	}
 }
 
-static void zns_init_resource(struct zns_ftl *zns_ftl)
+static void __init_resource(struct zns_ftl *zns_ftl)
 {
 	struct zone_resource_info *res_infos = zns_ftl->res_infos;
 
@@ -66,31 +66,42 @@ static void zns_init_params(struct znsparams *zpp, struct ssdparams *spp, uint64
 	zpp->lbas_per_zrwafg = zpp->zrwafg_size / spp->secsz;
 
 	NVMEV_ASSERT((capacity % zpp->zone_size) == 0);
+	/* It should be 4KB aligned, according to lpn size */
+	NVMEV_ASSERT((zpp->zone_size % spp->pgsz) == 0); 
+
 	NVMEV_INFO("zone_size=%d(KB), # zones=%d # die/zone=%d \n", zpp->zone_size, zpp->nr_zones, zpp->dies_per_zone);
+}
+
+static void zns_init_ftl(struct zns_ftl *zns_ftl, struct znsparams *zpp, struct ssd *ssd, void * mapped_addr)
+{
+	/*copy znsparams*/
+	zns_ftl->zp = *zpp;
+
+	zns_ftl->ssd = ssd;
+	zns_ftl->storage_base_addr = mapped_addr;
+
+	__init_descriptor(zns_ftl);
+	__init_resource(zns_ftl);
 }
 
 void zns_init_namespace(struct nvmev_ns *ns, uint32_t id,  uint64_t size, void * mapped_addr, uint32_t cpu_nr_dispatcher)
 {
+	struct ssd *ssd;
 	struct zns_ftl *zns_ftl;
+	
 	struct ssdparams spp;
+	struct znsparams zpp;
 
 	const uint32_t nr_parts = 1; /* Not support multi partitions for zns*/
 	NVMEV_ASSERT(ns->nr_parts == 1);
 
-	zns_ftl = kmalloc(sizeof(struct zns_ftl) * nr_parts, GFP_KERNEL);
-
+	ssd = kmalloc(sizeof(struct ssd), GFP_KERNEL);
 	ssd_init_params(&spp, size, nr_parts);
-	zns_init_params(&zns_ftl->zp, &spp, size);
-	
-	ssd_init(&zns_ftl->ssd, &spp, cpu_nr_dispatcher);
+	ssd_init(ssd, &spp, cpu_nr_dispatcher);
 
-	zns_ftl->storage_base_addr = mapped_addr;
-	
-	/* It should be 4KB aligned, according to lpn size */
-	NVMEV_ASSERT((zns_ftl->zp.zone_size % spp.pgsz) == 0); 
-	
-	zns_init_descriptor(zns_ftl);
-	zns_init_resource(zns_ftl);
+	zns_ftl = kmalloc(sizeof(struct zns_ftl) * nr_parts, GFP_KERNEL);
+	zns_init_params(&zpp, &spp, size);
+	zns_init_ftl(zns_ftl, &zpp, ssd, mapped_addr);
 
 	ns->id = id;
     ns->csi = NVME_CSI_ZNS;

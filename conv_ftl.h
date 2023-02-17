@@ -7,6 +7,15 @@
 #include "ssd_config.h"
 #include "ssd.h"
 
+struct convparams {
+    uint32_t gc_thres_lines;
+    uint32_t gc_thres_lines_high;
+    bool enable_gc_delay;
+
+    double op_area_pcent;
+    int pba_pcent;    /* (physical space / logical space) * 100*/  
+};
+
 typedef struct line {
     int id;  /* line id, the same as corresponding block id */
     int ipc; /* invalid page count in this line */
@@ -19,11 +28,11 @@ typedef struct line {
 /* wp: record next write addr */
 struct write_pointer {
     struct line *curline;
-    int ch;
-    int lun;
-    int pg;
-    int blk;
-    int pl;
+    uint32_t ch;
+    uint32_t lun;
+    uint32_t pg;
+    uint32_t blk;
+    uint32_t pl;
 };
 
 struct line_mgmt {
@@ -35,27 +44,21 @@ struct line_mgmt {
     // //QTAILQ_HEAD(victim_line_list, line) victim_line_list;
     QTAILQ_HEAD(full_line_list, line) full_line_list;
 
-    int tt_lines;
-    int free_line_cnt;
-    int victim_line_cnt;
-    int full_line_cnt;
+    uint32_t tt_lines;
+    uint32_t free_line_cnt;
+    uint32_t victim_line_cnt;
+    uint32_t full_line_cnt;
 };
 
 struct write_flow_control {
-    int write_credits;
-    int credits_to_refill;
+    uint32_t write_credits;
+    uint32_t credits_to_refill;
 };
 
 struct conv_ftl {
-
-    union {
-        struct ssd ssd;
-
-        struct {
-            STRUCT_SSD_ENTRIES
-        };
-    };
-
+    struct ssd *ssd;
+    
+    struct convparams cp;
     struct ppa *maptbl; /* page level mapping table */
     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
     struct write_pointer wp;
