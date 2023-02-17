@@ -282,7 +282,7 @@ static void __nvmev_admin_identify_namespace_desc(int eid, int cq_head)
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	struct nvme_id_ns_desc * ns_desc;
-	size_t nsid = cmd->nsid - 1;
+	int nsid = cmd->nsid - 1;
 
 	NVMEV_DEBUG("[%s] ns %d\n", __FUNCTION__, cmd->nsid);
 
@@ -292,7 +292,7 @@ static void __nvmev_admin_identify_namespace_desc(int eid, int cq_head)
 	ns_desc->nidt = NVME_NIDT_CSI;
 	ns_desc->nidl = 1;
 
-	ns_desc->nid[0] = NS_CSI(nsid); // Zoned Name Space Command Set
+	ns_desc->nid[0] = vdev->ns[nsid].csi; // Zoned Name Space Command Set
 
 	cq_entry(cq_head).command_id = sq_entry(eid).features.command_id;
 	cq_entry(cq_head).sq_id = 0;
@@ -305,10 +305,12 @@ static void __nvmev_admin_identify_zns_namespace(int eid, int cq_head)
 	struct nvmev_admin_queue *queue = vdev->admin_q;
 	struct nvme_identify *cmd = &sq_entry(eid).identify;
 	struct nvme_id_zns_ns *ns;
-	struct zns_ftl * zns_ftl = (struct zns_ftl *) vdev->ns[cmd->nsid - 1].ftls;
+	int nsid = cmd->nsid - 1;
+	struct zns_ftl * zns_ftl = (struct zns_ftl *) vdev->ns[nsid].ftls;
 	struct znsparams *zpp = &zns_ftl->zp;
+	
 
-	NVMEV_ASSERT(vdev->ns[cmd->nsid - 1].csi == NVME_CSI_ZNS);
+	NVMEV_ASSERT(vdev->ns[nsid].csi == NVME_CSI_ZNS);
 	NVMEV_DEBUG("%s\n", __func__);
 	
 	ns = prp_address(cmd->prp1);

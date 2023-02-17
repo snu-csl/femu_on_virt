@@ -9,7 +9,7 @@
 
 /* Macros for specific setting. Modify these macros for your target */
 #if  (BASE_SSD == SAMSUNG_970PRO)
-#define NR_NAMESPACES	1 // Still.. only support single namespace.
+#define NR_NAMESPACES	1 
 
 /* NVME_CSI_NVM : Conv
    NVME_CSI_ZNS : ZNS
@@ -61,7 +61,7 @@
 #define ZRWA_BUFFER_SIZE   (0)
 /****************************/
 #elif (BASE_SSD == ZNS_PROTOTYPE)
-#define NR_NAMESPACES	1 // Still.. only support single namespace.
+#define NR_NAMESPACES	1 
 
 /* NVME_CSI_NVM : Conv
    NVME_CSI_ZNS : ZNS
