@@ -953,19 +953,19 @@ bool conv_write(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_res
     
 }
 
-/*TODO*/
 void conv_flush(struct nvmev_ns *ns, struct nvmev_request * req, struct nvmev_result * ret)
 {   
-	unsigned long long latest = 0;
+	uint64_t start, latest;
+    uint32_t i;
+    struct conv_ftl *conv_ftls = (struct conv_ftl *)ns->ftls; 
 
-	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
+    start = local_clock();
+    latest = start;
+    for (i = 0; i < ns->nr_parts; i++) {
+        latest = max(latest, ssd_next_idle_time(conv_ftls[i].ssd));
+    }
 
-    latest = local_clock();
-    #if 0
-	for (i = 0; i < vdev->config.nr_io_units; i++) {
-		latest = max(latest, vdev->io_unit_stat[i]);
-	}
-    #endif
+    NVMEV_DEBUG("%s latency=%llu\n",__FUNCTION__, latest - start);
 
 	ret->status = NVME_SC_SUCCESS;
 	ret->nsecs_target = latest;

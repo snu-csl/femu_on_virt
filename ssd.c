@@ -365,6 +365,26 @@ uint64_t ssd_advance_nand(struct ssd *ssd, struct nand_cmd *ncmd)
     return completed_time;
 }
 
+uint64_t ssd_next_idle_time(struct ssd *ssd)
+{
+    struct ssdparams *spp = &ssd->sp;
+    struct nand_lun *lun;
+    struct ssd_channel * ch;
+    uint32_t i, j;
+    uint64_t latest = __get_ioclock(ssd);
+
+    for (i = 0; i < spp->nchs; i++) {
+        ch = &ssd->ch[i];
+
+        for (j = 0; j < spp->luns_per_ch; j++) {
+            lun = &ch->lun[j];
+            latest = max(latest, lun->next_lun_avail_time);
+        }
+    }
+
+    return latest;
+}
+
 void adjust_ftl_latency(int target, int lat)
 {
 /*TODO ..*/

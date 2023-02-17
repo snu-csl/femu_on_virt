@@ -124,16 +124,17 @@ void zns_exit(struct zns_ftl *zns_ftl)
 
 void zns_flush(struct nvmev_ns *ns, struct nvmev_request *req, struct nvmev_result *ret)
 {   
-	unsigned long long latest = 0;
+	uint64_t start, latest;
+    uint32_t i;
+    struct zns_ftl *zns_ftl = (struct zns_ftl *)ns->ftls; 
 
-	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
+    start = local_clock();
+    latest = start;
+    for (i = 0; i < ns->nr_parts; i++) {
+        latest = max(latest, ssd_next_idle_time(zns_ftl[i].ssd));
+    }
 
-    latest = local_clock();
-    #if 0
-	for (i = 0; i < vdev->config.nr_io_units; i++) {
-		latest = max(latest, vdev->io_unit_stat[i]);
-	}
-    #endif
+    NVMEV_DEBUG("%s latency=%llu\n",__FUNCTION__, latest - start);
 
 	ret->status = NVME_SC_SUCCESS;
 	ret->nsecs_target = latest;
