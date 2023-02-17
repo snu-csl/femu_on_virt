@@ -41,7 +41,8 @@ struct zns_ftl {
 };
 
 /* zns internal functions */
-static inline void * get_storage_addr_from_zid(struct zns_ftl *zns_ftl, uint64_t zid) {
+static inline void * get_storage_addr_from_zid(struct zns_ftl *zns_ftl, uint64_t zid) 
+{
     return (void *) ((char*)zns_ftl->storage_base_addr + zid*zns_ftl->zp.zone_size);
 }
 
@@ -80,19 +81,23 @@ static inline void change_zone_state(struct zns_ftl * zns_ftl, uint32_t zid, enu
 	zns_ftl->zone_descs[zid].state = state;
 }
 
-static inline uint32_t lpn_to_zone(struct zns_ftl *zns_ftl, uint64_t lpn) {
+static inline uint32_t lpn_to_zone(struct zns_ftl *zns_ftl, uint64_t lpn) 
+{
     return (lpn) / (zns_ftl->zp.zone_size / zns_ftl->ssd->sp.pgsz);
 }
 
-static inline uint64_t zone_to_slpn(struct zns_ftl *zns_ftl, uint32_t zid) {
+static inline uint64_t zone_to_slpn(struct zns_ftl *zns_ftl, uint32_t zid) 
+{
     return (zid) * (zns_ftl->zp.zone_size / zns_ftl->ssd->sp.pgsz);
 }
 
-static inline uint32_t lba_to_zone(struct zns_ftl *zns_ftl, uint64_t lba) {
+static inline uint32_t lba_to_zone(struct zns_ftl *zns_ftl, uint64_t lba) 
+{
     return (lba) / (BYTE_TO_LBA(zns_ftl->zp.zone_size));
 }
 
-static inline uint64_t zone_to_slba(struct zns_ftl *zns_ftl, uint32_t zid) {
+static inline uint64_t zone_to_slba(struct zns_ftl *zns_ftl, uint32_t zid) 
+{
     return (zid) * (BYTE_TO_LBA(zns_ftl->zp.zone_size));
 }
 
@@ -101,11 +106,13 @@ static inline  uint64_t zone_to_elba(struct zns_ftl *zns_ftl, uint32_t zid)
 	return zone_to_slba(zns_ftl, zid + 1) - 1; 
 }
 
-static inline uint32_t die_to_channel(struct zns_ftl *zns_ftl, uint32_t die) {
+static inline uint32_t die_to_channel(struct zns_ftl *zns_ftl, uint32_t die) 
+{
     return (die) % zns_ftl->ssd->sp.nchs;
 }
 
-static inline uint32_t die_to_lun(struct zns_ftl *zns_ftl, uint32_t die) {
+static inline uint32_t die_to_lun(struct zns_ftl *zns_ftl, uint32_t die) 
+{
     return (die) / zns_ftl->ssd->sp.nchs;
 }
 

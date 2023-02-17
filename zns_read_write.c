@@ -33,8 +33,7 @@ static void __increase_write_ptr(struct zns_ftl *zns_ftl, uint32_t zid, uint32_t
 			ASSERT(0);
 
 		change_zone_state(zns_ftl, zid, ZONE_STATE_FULL);
-	}
-	else if (cur_write_ptr > (zone_to_slba(zns_ftl, zid) +  zone_capacity)) {
+	} else if (cur_write_ptr > (zone_to_slba(zns_ftl, zid) +  zone_capacity)) {
 		NVMEV_ERROR("[%s] Write Boundary error!!\n", __FUNCTION__);
 	}
 }
@@ -398,8 +397,7 @@ bool zns_read(struct nvmev_ns *ns,  struct nvmev_request *req, struct nvmev_resu
 
 	if (zone_descs[zid].state == ZONE_STATE_OFFLINE) {
 		status = NVME_SC_ZNS_ERR_OFFLINE; 
-	}
-	else if (__check_boundary_error(zns_ftl, slba, nr_lba) == false) {
+	} else if (__check_boundary_error(zns_ftl, slba, nr_lba) == false) {
 		// return boundary error
 		status = NVME_SC_ZNS_ERR_BOUNDARY; 
 	}

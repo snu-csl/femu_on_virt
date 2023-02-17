@@ -51,7 +51,6 @@ static uint64_t __prp_transfer_data(uint64_t prp1, uint64_t prp2, void * buffer,
 		
 		if (io == 0) // output (buffer -> plp)
 			memcpy(vaddr + mem_offs, buffer + offset, io_size);
-
 		else // input (prp -> buffer)
 			memcpy(buffer + offset, vaddr + mem_offs, io_size);
 
@@ -126,8 +125,7 @@ void zns_zmgmt_recv(struct nvmev_ns *ns, struct nvmev_request * req, struct nvme
 
 		__prp_transfer_data(prp1, prp2, buffer, length, 0);
 		status = NVME_SC_SUCCESS;
-	}
-	else {
+	} else {
 		status = NVME_SC_INVALID_FIELD; 
 	}
 

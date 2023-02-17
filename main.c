@@ -502,7 +502,6 @@ void NVMEV_NAMESPACE_INIT(struct nvmev_dev *vdev)
 		else 
 			NVMEV_ASSERT(0);
 		
-
 		NVMEV_INFO("[%s] ns=%d ns_addr=%p ns_size=%lld(MiB) \n", __FUNCTION__, i, ns[i].mapped, BYTE_TO_MB(ns[i].size));	
 	}
 
