@@ -5,19 +5,19 @@
 
 /* admin command */
 struct nvme_id_zns_ctrl {
-	uint8_t		zasl;
-	uint8_t		rsvd1[4095];
+	__u8		zasl;
+	__u8		rsvd1[4095];
 };
 
 struct nvme_zns_lbaf {
 	__le64		zsze;
-	uint8_t		zdes;
-	uint8_t		resv[7];
+	__u8		zdes;
+	__u8		resv[7];
 };
 
 struct nvme_id_zns_ns {
-	uint16_t		zoc;
-	uint16_t		ozcs;
+	__u16		zoc;
+	__u16		ozcs;
 	__le32		mar;
 	__le32		mor;
 	__le32		rrl;
@@ -26,11 +26,11 @@ struct nvme_id_zns_ns {
 	__le32		numzrwa; // number of zrwa resources (44:47)
 	__le16		zrwafg;  // zrwa flush granularity (lbas)
 	__le16		zrwasz;  // zrwa size (lbas)
-	uint8_t		zrwacap; // zrwa capability (bit 0: explicit zrwa flush)
-	uint8_t		rsv2[2763];
+	__u8		zrwacap; // zrwa capability (bit 0: explicit zrwa flush)
+	__u8		rsv2[2763];
 	struct nvme_zns_lbaf lbaf[16];
-	uint8_t		rsv3[768];
-	uint8_t		vs[256];
+	__u8		rsv3[768];
+	__u8		vs[256];
 };
 
 
@@ -84,27 +84,22 @@ enum zone_resource_type {
 	RES_TYPE_COUNT
 };
 
-struct zone_resource_info {
-	uint32_t acquired_cnt;
-	uint32_t total_cnt;
-};
-
 struct zone_descriptor {
-	uint8_t	type :4;
-	uint8_t	:4;
-	uint8_t	:4;
-	uint8_t	state :4;
+	__u8	type :4;
+	__u8	:4;
+	__u8	:4;
+	__u8	state :4;
 	
 	union {
-		uint8_t za; // zone attributes	
+		__u8 za; // zone attributes	
 		
 		struct {
-			uint8_t zfc :1; // zone finished by controller
-			uint8_t fzr :1; // finish zone recommended
-			uint8_t rzr :1; // reset zone recommended
-			uint8_t zrwav :1; //zone random write area valid
-			uint8_t :3;
-			uint8_t zdef :1; // zone descriptor extension valid
+			__u8 zfc :1; // zone finished by controller
+			__u8 fzr :1; // finish zone recommended
+			__u8 rzr :1; // reset zone recommended
+			__u8 zrwav :1; //zone random write area valid
+			__u8 :3;
+			__u8 zdef :1; // zone descriptor extension valid
 
 		};
 
@@ -112,25 +107,25 @@ struct zone_descriptor {
 
 	union {
 
-		uint8_t zai; //zone attributes information
+		__u8 zai; //zone attributes information
 		struct {
-			uint8_t fzrtl :2; // finish zone recommnded time limit
-			uint8_t rzrtl :2; // reset zone recommended time limit
-			uint8_t :4;
+			__u8 fzrtl :2; // finish zone recommnded time limit
+			__u8 rzrtl :2; // reset zone recommended time limit
+			__u8 :4;
 		};
 	};
 
-	uint32_t	reserved;
-	uint64_t	zone_capacity;
-	uint64_t	zslba; // zone start logical block address
-	uint64_t	wp; 
+	__u32	reserved;
+	__u64	zone_capacity;
+	__u64	zslba; // zone start logical block address
+	__u64	wp; 
 
-	uint32_t rsvd[8];
+	__u32 rsvd[8];
 };
 
 struct zone_report {
-	uint64_t	nr_zones;
-	uint64_t	rsvd[7];
+	__u64	nr_zones;
+	__u64	rsvd[7];
 
 	//several zone descriptors..
 	struct zone_descriptor zd[0]; 
@@ -138,9 +133,9 @@ struct zone_report {
 
 // zone management receive command
 struct nvme_zone_mgmt_recv {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
 	__le32			cdw2[2];
 	__le64			metadata;
@@ -153,10 +148,10 @@ struct nvme_zone_mgmt_recv {
 		__le32 	DW13;
 		struct 
 		{
-			uint8_t	zra; // zone recive action 00h : report zones, 01h : extended report zones
-			uint8_t 	zra_specific_field; 
-			uint16_t 	zra_specific_features :1;
-			uint16_t	reserved :15;
+			__u8	zra; // zone recive action 00h : report zones, 01h : extended report zones
+			__u8 	zra_specific_field; 
+			__u16 	zra_specific_features :1;
+			__u16	reserved :15;
 		};
 	};
 
@@ -176,9 +171,9 @@ enum zone_send_action
 
 // zone management send command
 struct nvme_zone_mgmt_send {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
 	__le32			cdw2[2];
 	__le64			metadata;
@@ -191,13 +186,13 @@ struct nvme_zone_mgmt_send {
 		__le32 	DW13;
 		struct 
 		{
-			uint32_t	zsa : 8; // zone send action 
+			__u32	zsa : 8; // zone send action 
 				     // 01h : close, 02h : finish 
 				     // 03h : open, 04h: reset 
 				     // 05h:offline, 10h:set zone descriptor extension 
-			uint32_t 	select_all : 1; // 1 : SLBA field is ignored, 
-			uint32_t 	zsaso : 1; // Zone send action specific option  
-			uint32_t 	:22;
+			__u32 	select_all : 1; // 1 : SLBA field is ignored, 
+			__u32 	zsaso : 1; // Zone send action specific option  
+			__u32 	:22;
 		};
 	};
 
@@ -205,9 +200,9 @@ struct nvme_zone_mgmt_send {
 };
 
 struct nvme_zone_append {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
 	__le32			cdw2[2];
 	__le64			metadata;

@@ -24,6 +24,11 @@ struct znsparams {
     uint32_t lbas_per_zrwa;
 };
 
+struct zone_resource_info {
+	__u32 acquired_cnt;
+	__u32 total_cnt;
+};
+
 struct zns_ftl {
     struct ssd *ssd;
 

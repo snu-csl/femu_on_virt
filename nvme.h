@@ -18,19 +18,19 @@
 #include <linux/types.h>
 
 struct nvme_bar {
-	uint64_t			cap;	/* Controller Capabilities */
-	uint32_t			vs;	/* Version */
-	uint32_t			intms;	/* Interrupt Mask Set */
-	uint32_t			intmc;	/* Interrupt Mask Clear */
-	uint32_t			cc;	/* Controller Configuration */
-	uint32_t			rsvd1;	/* Reserved */
-	uint32_t			csts;	/* Controller Status */
-	uint32_t			nssr;	/* Subsystem Reset */
-	uint32_t			aqa;	/* Admin Queue Attributes */
-	uint64_t			asq;	/* Admin SQ Base Address */
-	uint64_t			acq;	/* Admin CQ Base Address */
-	uint32_t			cmbloc; /* Controller Memory Buffer Location */
-	uint32_t			cmbsz;  /* Controller Memory Buffer Size */
+	__u64			cap;	/* Controller Capabilities */
+	__u32			vs;	/* Version */
+	__u32			intms;	/* Interrupt Mask Set */
+	__u32			intmc;	/* Interrupt Mask Clear */
+	__u32			cc;	/* Controller Configuration */
+	__u32			rsvd1;	/* Reserved */
+	__u32			csts;	/* Controller Status */
+	__u32			nssr;	/* Subsystem Reset */
+	__u32			aqa;	/* Admin Queue Attributes */
+	__u64			asq;	/* Admin SQ Base Address */
+	__u64			acq;	/* Admin CQ Base Address */
+	__u32			cmbloc; /* Controller Memory Buffer Location */
+	__u32			cmbsz;  /* Controller Memory Buffer Size */
 };
 
 #define NVME_CAP_MQES(cap)	((cap) & 0xffff)
@@ -75,20 +75,20 @@ enum {
 
 struct nvme_id_power_state {
 	__le16			max_power;	/* centiwatts */
-	uint8_t			rsvd2;
-	uint8_t			flags;
+	__u8			rsvd2;
+	__u8			flags;
 	__le32			entry_lat;	/* microseconds */
 	__le32			exit_lat;	/* microseconds */
-	uint8_t			read_tput;
-	uint8_t			read_lat;
-	uint8_t			write_tput;
-	uint8_t			write_lat;
+	__u8			read_tput;
+	__u8			read_lat;
+	__u8			write_tput;
+	__u8			write_lat;
 	__le16			idle_power;
-	uint8_t			idle_scale;
-	uint8_t			rsvd19;
+	__u8			idle_scale;
+	__u8			rsvd19;
 	__le16			active_power;
-	uint8_t			active_work_scale;
-	uint8_t			rsvd23[9];
+	__u8			active_work_scale;
+	__u8			rsvd23[9];
 };
 
 enum {
@@ -102,43 +102,43 @@ struct nvme_id_ctrl {
 	char			sn[20];
 	char			mn[40];
 	char			fr[8];
-	uint8_t			rab;
-	uint8_t			ieee[3];
-	uint8_t			mic;
-	uint8_t			mdts;
+	__u8			rab;
+	__u8			ieee[3];
+	__u8			mic;
+	__u8			mdts;
 	__le16			cntlid;
 	__le32			ver;
-	uint8_t			rsvd84[172];
+	__u8			rsvd84[172];
 	__le16			oacs;
-	uint8_t			acl;
-	uint8_t			aerl;
-	uint8_t			frmw;
-	uint8_t			lpa;
-	uint8_t			elpe;
-	uint8_t			npss;
-	uint8_t			avscc;
-	uint8_t			apsta;
+	__u8			acl;
+	__u8			aerl;
+	__u8			frmw;
+	__u8			lpa;
+	__u8			elpe;
+	__u8			npss;
+	__u8			avscc;
+	__u8			apsta;
 	__le16			wctemp;
 	__le16			cctemp;
-	uint8_t			rsvd270[242];
-	uint8_t			sqes;
-	uint8_t			cqes;
-	uint8_t			rsvd514[2];
+	__u8			rsvd270[242];
+	__u8			sqes;
+	__u8			cqes;
+	__u8			rsvd514[2];
 	__le32			nn;
 	__le16			oncs;
 	__le16			fuses;
-	uint8_t			fna;
-	uint8_t			vwc;
+	__u8			fna;
+	__u8			vwc;
 	__le16			awun;
 	__le16			awupf;
-	uint8_t			nvscc;
-	uint8_t			rsvd531;
+	__u8			nvscc;
+	__u8			rsvd531;
 	__le16			acwu;
-	uint8_t			rsvd534[2];
+	__u8			rsvd534[2];
 	__le32			sgls;
-	uint8_t			rsvd540[1508];
+	__u8			rsvd540[1508];
 	struct nvme_id_power_state	psd[32];
-	uint8_t			vs[1024];
+	__u8			vs[1024];
 };
 
 enum {
@@ -150,51 +150,51 @@ enum {
 
 struct nvme_lbaf {
 	__le16			ms;
-	uint8_t			ds;
-	uint8_t			rp;
+	__u8			ds;
+	__u8			rp;
 };
 
 struct nvme_id_ns {
 	__le64			nsze;
 	__le64			ncap;
 	__le64			nuse;
-	uint8_t			nsfeat;
-	uint8_t			nlbaf;
-	uint8_t			flbas;
-	uint8_t			mc;
-	uint8_t			dpc;
-	uint8_t			dps;
-	uint8_t			nmic;
-	uint8_t			rescap;
-	uint8_t			fpi;
-	uint8_t			rsvd33;
+	__u8			nsfeat;
+	__u8			nlbaf;
+	__u8			flbas;
+	__u8			mc;
+	__u8			dpc;
+	__u8			dps;
+	__u8			nmic;
+	__u8			rescap;
+	__u8			fpi;
+	__u8			rsvd33;
 	__le16			nawun;
 	__le16			nawupf;
 	__le16			nacwu;
 	__le16			nabsn;
 	__le16			nabo;
 	__le16			nabspf;
-	uint16_t			rsvd46;
+	__u16			rsvd46;
 	__le64			nvmcap[2];
-	uint8_t			rsvd64[40];
-	uint8_t			nguid[16];
-	uint8_t			eui64[8];
+	__u8			rsvd64[40];
+	__u8			nguid[16];
+	__u8			eui64[8];
 	struct nvme_lbaf	lbaf[16];
-	uint8_t			rsvd192[192];
-	uint8_t			vs[3712];
+	__u8			rsvd192[192];
+	__u8			vs[3712];
 };
 
 struct nvme_id_ns_desc {
-	uint8_t			nidt; //namespace id type
-	uint8_t			nidl; //namespace id length
-	uint8_t			rsvd[2];
-	uint8_t			nid[4092];
+	__u8			nidt; //namespace id type
+	__u8			nidl; //namespace id length
+	__u8			rsvd[2];
+	__u8			nid[4092];
 };
 
 struct nvme_lba_format_extension {
-	uint8_t		zsze[8];
-	uint8_t		zdes[8];
-	uint8_t		rsv[56];
+	__u8		zsze[8];
+	__u8		zdes[8];
+	__u8		rsv[56];
 };
 
 enum {
@@ -218,26 +218,26 @@ enum {
 };
 
 struct nvme_smart_log {
-	uint8_t			critical_warning;
-	uint8_t			temperature[2];
-	uint8_t			avail_spare;
-	uint8_t			spare_thresh;
-	uint8_t			percent_used;
-	uint8_t			rsvd6[26];
-	uint8_t			data_units_read[16];
-	uint8_t			data_units_written[16];
-	uint8_t			host_reads[16];
-	uint8_t			host_writes[16];
-	uint8_t			ctrl_busy_time[16];
-	uint8_t			power_cycles[16];
-	uint8_t			power_on_hours[16];
-	uint8_t			unsafe_shutdowns[16];
-	uint8_t			media_errors[16];
-	uint8_t			num_err_log_entries[16];
+	__u8			critical_warning;
+	__u8			temperature[2];
+	__u8			avail_spare;
+	__u8			spare_thresh;
+	__u8			percent_used;
+	__u8			rsvd6[26];
+	__u8			data_units_read[16];
+	__u8			data_units_written[16];
+	__u8			host_reads[16];
+	__u8			host_writes[16];
+	__u8			ctrl_busy_time[16];
+	__u8			power_cycles[16];
+	__u8			power_on_hours[16];
+	__u8			unsafe_shutdowns[16];
+	__u8			media_errors[16];
+	__u8			num_err_log_entries[16];
 	__le32			warning_temp_time;
 	__le32			critical_comp_time;
 	__le16			temp_sensor[8];
-	uint8_t			rsvd216[296];
+	__u8			rsvd216[296];
 };
 
 enum {
@@ -253,13 +253,13 @@ enum {
 };
 
 struct nvme_lba_range_type {
-	uint8_t			type;
-	uint8_t			attributes;
-	uint8_t			rsvd2[14];
-	uint64_t			slba;
-	uint64_t			nlb;
-	uint8_t			guid[16];
-	uint8_t			rsvd48[16];
+	__u8			type;
+	__u8			attributes;
+	__u8			rsvd2[14];
+	__u64			slba;
+	__u64			nlb;
+	__u8			guid[16];
+	__u8			rsvd48[16];
 };
 
 enum {
@@ -274,15 +274,15 @@ enum {
 
 struct nvme_reservation_status {
 	__le32	gen;
-	uint8_t	rtype;
-	uint8_t	regctl[2];
-	uint8_t	resv5[2];
-	uint8_t	ptpls;
-	uint8_t	resv10[13];
+	__u8	rtype;
+	__u8	regctl[2];
+	__u8	resv5[2];
+	__u8	ptpls;
+	__u8	resv10[13];
 	struct {
 		__le16	cntlid;
-		uint8_t	rcsts;
-		uint8_t	resv3[5];
+		__u8	rcsts;
+		__u8	resv3[5];
 		__le64	hostid;
 		__le64	rkey;
 	} regctl_ds[];
@@ -305,9 +305,9 @@ enum nvme_opcode {
 };
 
 struct nvme_common_command {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
 	__le32			cdw2[2];
 	__le64			metadata;
@@ -317,11 +317,11 @@ struct nvme_common_command {
 };
 
 struct nvme_rw_command {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
-	uint64_t			rsvd2;
+	__u64			rsvd2;
 	__le64			metadata;
 	__le64			prp1;
 	__le64			prp2;
@@ -359,16 +359,16 @@ enum {
 };
 
 struct nvme_dsm_cmd {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
-	uint64_t			rsvd2[2];
+	__u64			rsvd2[2];
 	__le64			prp1;
 	__le64			prp2;
 	__le32			nr;
 	__le32			attributes;
-	uint32_t			rsvd12[4];
+	__u32			rsvd12[4];
 };
 
 enum {
@@ -436,98 +436,98 @@ enum {
 };
 
 struct nvme_identify {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
-	uint64_t			rsvd2[2];
+	__u64			rsvd2[2];
 	__le64			prp1;
 	__le64			prp2;
 	__le32			cns;
-	uint32_t			rsvd11[5];
+	__u32			rsvd11[5];
 };
 
 struct nvme_features {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
-	uint64_t			rsvd2[2];
+	__u64			rsvd2[2];
 	__le64			prp1;
 	__le64			prp2;
 	__le32			fid;
 	__le32			dword11;
-	uint32_t			rsvd12[4];
+	__u32			rsvd12[4];
 };
 
 struct nvme_create_cq {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
-	uint32_t			rsvd1[5];
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
+	__u32			rsvd1[5];
 	__le64			prp1;
-	uint64_t			rsvd8;
+	__u64			rsvd8;
 	__le16			cqid;
 	__le16			qsize;
 	__le16			cq_flags;
 	__le16			irq_vector;
-	uint32_t			rsvd12[4];
+	__u32			rsvd12[4];
 };
 
 struct nvme_create_sq {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
-	uint32_t			rsvd1[5];
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
+	__u32			rsvd1[5];
 	__le64			prp1;
-	uint64_t			rsvd8;
+	__u64			rsvd8;
 	__le16			sqid;
 	__le16			qsize;
 	__le16			sq_flags;
 	__le16			cqid;
-	uint32_t			rsvd12[4];
+	__u32			rsvd12[4];
 };
 
 struct nvme_delete_queue {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
-	uint32_t			rsvd1[9];
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
+	__u32			rsvd1[9];
 	__le16			qid;
-	uint16_t			rsvd10;
-	uint32_t			rsvd11[5];
+	__u16			rsvd10;
+	__u32			rsvd11[5];
 };
 
 struct nvme_abort_cmd {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
-	uint32_t			rsvd1[9];
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
+	__u32			rsvd1[9];
 	__le16			sqid;
-	uint16_t			cid;
-	uint32_t			rsvd11[5];
+	__u16			cid;
+	__u32			rsvd11[5];
 };
 
 struct nvme_download_firmware {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
-	uint32_t			rsvd1[5];
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
+	__u32			rsvd1[5];
 	__le64			prp1;
 	__le64			prp2;
 	__le32			numd;
 	__le32			offset;
-	uint32_t			rsvd12[4];
+	__u32			rsvd12[4];
 };
 
 struct nvme_format_cmd {
-	uint8_t			opcode;
-	uint8_t			flags;
-	uint16_t			command_id;
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
 	__le32			nsid;
-	uint64_t			rsvd2[4];
+	__u64			rsvd2[4];
 	__le32			cdw10;
-	uint32_t			rsvd11[5];
+	__u32			rsvd11[5];
 };
 
 struct nvme_command {
@@ -612,7 +612,7 @@ struct nvme_completion {
 	__le32	result1;
 	__le16	sq_head;	/* how much of this queue may be reclaimed */
 	__le16	sq_id;		/* submission queue that generated this entry */
-	uint16_t	command_id;	/* of the command which completed */
+	__u16	command_id;	/* of the command which completed */
 	__le16	status;		/* did the command fail, and if so, why? */
 };
 
