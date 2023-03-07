@@ -16,7 +16,7 @@ void zns_reset_desc_durable(__u32 zid)
 	struct zns_ssd *zns_ssd = &g_zns_ssd;
 	zns_ssd->zone_descs_durable[zid].wp = zns_ssd->zone_descs[zid].wp; 
 
-	NVMEV_ERROR("%s zid=%d\n",__FUNCTION__, zid);
+	NVMEV_DEBUG("%s zid=%d\n",__FUNCTION__, zid);
 
 	memset(zns_ssd->wl_state[zid], 0, sizeof(__u8)*zns_ssd->wl_per_zone);
 }
@@ -136,7 +136,7 @@ void zns_advance_durable_write_pointer(__u64 lba)
 
 		zone_descs_durable[zid].wp = new_wp;
 
-		NVMEV_ERROR("New WP zid=%d wl_state=%d lba_off=0x%llx lba=0x%llx wl_off=%llu wp=0x%llx\n", 
+		NVMEV_DEBUG("New WP zid=%d wl_state=%d lba_off=0x%llx lba=0x%llx wl_off=%llu wp=0x%llx\n", 
 		zid, zns_ssd->wl_state[zid][wl_off], lba_off, lba, wl_off, zone_descs_durable[zid].wp);
 
 		if (zns_ssd->wl_state[zid][i] % secs_per_pgm_pg)
