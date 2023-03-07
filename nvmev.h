@@ -35,7 +35,7 @@
    NS_CAPACITY : MB (0 -> Full capacity) */
 
 #define NS_CSI_0 NVME_CSI_NVM
-#define NS_CAPACITY_0 (24*8*1024*1024) 
+#define NS_CAPACITY_0 (16*16*1024*1024) 
 #define NS_CSI_1 NVME_CSI_ZNS  
 #define NS_CAPACITY_1 (0)
 
