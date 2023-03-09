@@ -7,8 +7,13 @@ MOUNT_PATH=/mnt/virt
 
 ZNS_DEV_PATH=/dev/$ZNS_DEV
 CONV_DEV_PATH=/dev/$CONV_DEV
+MAX_TIME=30
+MAX_RAND_DELAY=25
+RAND_DELAY="$(($RANDOM% $MAX_RAND_DELAY+1))"
+#RAND_DELAY=20
+REMAINING_DELAY=$(($MAX_TIME - $RAND_DELAY + 2))
 
-delay=2
+delay=3
 READ_ONLY_DISABLE()
 {
    echo 1 1 1 > /proc/nvmev/write_times
@@ -34,14 +39,13 @@ PREPARE()
     bs="1M"
     qd=32
     cmd="write"
-    time=30  
     direct=1
-    fio_size="2G"
+    fio_size="4G"
     pattern=0xdeadface
 
     fio --directory=$mount_point --direct=$direct --iodepth=$qd --rw=$cmd \
         --ioengine=$aioengine --numjobs=1 --size=$fio_size --group_reporting --buffer_pattern=$pattern\
-        --name=write --filename=a.mp3 --invalidate=1 --end_fsync=1 --bs=$bs \
+        --name=write --filename=a.mp3 --invalidate=1 --end_fsync=1 --bs=$bs --create_on_open=1 \
  
 }
 
@@ -57,9 +61,9 @@ THREAD2()
     bs="4k"
     qd=32
     cmd="write"
-    time=30  
+    time=$MAX_TIME  
     direct=1
-    fio_size="2G"
+    fio_size="4G"
     pattern=0xdeadface
 
     fio --directory=$mount_point --direct=$direct --iodepth=$qd --rw=$cmd \
@@ -76,12 +80,12 @@ VERIFY()
     qd=32
     cmd="read"
     direct=1
-    fio_size="2G"
+    fio_size="4G"
     pattern=0xdeadface
 
     fio --directory=$mount_point --direct=$direct --iodepth=$qd --rw=$cmd \
-        --ioengine=$aioengine --numjobs=1 --size=$fio_size --group_reporting --verify_pattern=$pattern --verify=pattern\
-        --name=write --filename=a.mp3 --invalidate=1 --end_fsync=1 --fsync=1 --bs=$bs \
+        --ioengine=$aioengine --numjobs=1 --size=$fio_size --group_reporting --verify_pattern=$pattern --verify=pattern --do_verify=1\
+        --name=write --filename=a.mp3 --invalidate=1 --end_fsync=1 --fsync=1 --bs=$bs --unlink=1\
  
 }
 
@@ -100,7 +104,9 @@ THREAD_2st_PID=$!
 
 echo "THREAD PID : $THREAD_2st_PID"
 
-sleep 20
+sleep $RAND_DELAY
+
+echo "Wake Up $RAND_DELAY $REMAINING_DELAY"
 
 READ_ONLY_ENABLE
 
@@ -110,10 +116,13 @@ killall fio
 
 umount $MOUNT_PATH
 
+sleep $REMAINING_DELAY 
+
 RECOVERY_DEVICE
 
 READ_ONLY_DISABLE
 
+echo "Mount.."
 sudo mount -t f2fs -o fsync_mode=nobarrier $CONV_DEV_PATH $MOUNT_PATH 
 
 VERIFY
