@@ -36,7 +36,7 @@ struct zns_ssd {
     struct zone_resource_info res_infos[RES_TYPE_COUNT];
     struct zone_descriptor *zone_descs;
     struct zone_descriptor *zone_descs_durable;
-    __u8 ** wl_state;
+    __u16 ** wl_state;
     struct zone_report *report_buffer;
     struct buffer * zwra_buffer;
 

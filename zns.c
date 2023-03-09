@@ -18,7 +18,7 @@ void zns_reset_desc_durable(__u32 zid)
 
 	NVMEV_DEBUG("%s zid=%d\n",__FUNCTION__, zid);
 
-	memset(zns_ssd->wl_state[zid], 0, sizeof(__u8)*zns_ssd->wl_per_zone);
+	memset(zns_ssd->wl_state[zid], 0, sizeof(__u16)*zns_ssd->wl_per_zone);
 }
 
 void zns_flush_desc_durable(void)
@@ -124,8 +124,11 @@ void zns_advance_durable_write_pointer(__u64 lba)
 		zid, zns_ssd->wl_state[zid][wl_off], lba_off, lba, wl_off);
 	zns_ssd->wl_state[zid][wl_off] = lba_off + 1;
 
-	for (i = old_wl_off; i <= wl_off; i++) { 
+	for (i = old_wl_off; i <= wl_off; i++) {
 		if (zns_ssd->wl_state[zid][i] == 0)
+			break;
+
+		if (zns_ssd->wl_state[zid][i] != secs_per_pgm_pg)
 			break;
 
 		new_wp = zone_descs_durable[zid].zslba + 
@@ -134,13 +137,10 @@ void zns_advance_durable_write_pointer(__u64 lba)
 
 		NVMEV_ASSERT(zone_descs_durable[zid].wp < new_wp);
 
-		zone_descs_durable[zid].wp = new_wp;
+		NVMEV_DEBUG("New WP zid=%d wl=%d wl_state=%d lba_off=0x%llx lba=0x%llx wl_off=%llu wp_old=0x%llx wl_new=0x%llx remaining=0x%llx\n", 
+		zid, i, zns_ssd->wl_state[zid][i], lba_off, lba, wl_off, zone_descs_durable[zid].wp, new_wp,zns_write_buffer.remaining);
 
-		NVMEV_DEBUG("New WP zid=%d wl_state=%d lba_off=0x%llx lba=0x%llx wl_off=%llu wp=0x%llx\n", 
-		zid, zns_ssd->wl_state[zid][wl_off], lba_off, lba, wl_off, zone_descs_durable[zid].wp);
-
-		if (zns_ssd->wl_state[zid][i] % secs_per_pgm_pg)
-			break;
+		zone_descs_durable[zid].wp = new_wp;	
 	}
 }
 
@@ -162,7 +162,7 @@ void zns_init_descriptor(struct zns_ssd *zns_ssd)
 	zone_descs = zns_ssd->zone_descs;
 	memset(zone_descs, 0, sizeof(struct zone_descriptor) * zns_ssd->nr_zones);
 
-	zns_ssd->wl_state = (__u8 **) kmalloc(sizeof(__u8 *) * nr_zones, GFP_ATOMIC);
+	zns_ssd->wl_state = (__u16 **) kmalloc(sizeof(__u16 *) * nr_zones, GFP_ATOMIC);
 	
 	for (i = 0; i < nr_zones; i++) {
 		zone_descs[i].state = ZONE_STATE_EMPTY;
@@ -175,9 +175,9 @@ void zns_init_descriptor(struct zns_ssd *zns_ssd)
 		
 		buffer_init(&(zns_ssd->zwra_buffer[i]), zrwa_buffer_size); 
 		
-		zns_ssd->wl_state[i] = (__u8 *) kmalloc(zns_ssd->wl_per_zone, GFP_ATOMIC);
+		zns_ssd->wl_state[i] = (__u16 *) kmalloc(sizeof(__u16) * zns_ssd->wl_per_zone, GFP_ATOMIC);
 	
-		memset(zns_ssd->wl_state[i], 0, sizeof(__u8) * zns_ssd->wl_per_zone);
+		memset(zns_ssd->wl_state[i], 0, sizeof(__u16) * zns_ssd->wl_per_zone);
 		NVMEV_ZNS_DEBUG("[i] zslba 0x%llx zone capacity 0x%llx\n", zone_descs[i].zslba, zone_descs[i].zone_capacity);
 	}
 
