@@ -5,6 +5,7 @@
 #define SAMSUNG_970PRO 0
 #define SAMSUNG_ZNS_970PRO 1
 #define SKHYNIX_ZNS_PROTOTYPE 2
+#define WD_ZN540 3
 
 #define BASE_SSD   (SAMSUNG_ZNS_970PRO)
 
@@ -97,7 +98,7 @@
 #define NAND_CHANNELS        8
 #define LUNS_PER_NAND_CH     2
 #define PLNS_PER_LUN         1
-#define SSD_INSTANCE_BITS    2
+#define SSD_INSTANCE_BITS    0
 #define READ_PAGE_SIZE      (32*1024)
 #define PGM_PAGE_SIZE        (READ_PAGE_SIZE * 1)
 
@@ -107,8 +108,8 @@
 #define NAND_CHANNEL_BANDWIDTH	(800ull) //MB/s
 #define PCIE_BANDWIDTH			(3360ull) //MB/s
 
-#define NAND_4KB_READ_LATENCY (35760 - 10000)
-#define NAND_READ_LATENCY (36013 - 10000)
+#define NAND_4KB_READ_LATENCY (35760)
+#define NAND_READ_LATENCY (36013)
 #define NAND_PROG_LATENCY (185000 + 5000)
 #define NAND_ERASE_LATENCY 0
 
@@ -124,6 +125,47 @@
 #define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
 
 #define MAX_ZRWA_ZONES (0xFFFFFFFF) // No limit
+#define ZRWAFG_SIZE (PGM_PAGE_SIZE)
+#define ZRWA_SIZE   (MB(4))
+#define ZRWA_BUFFER_SIZE   (ZRWA_SIZE * 2)
+/*One of the two must be set to zero(BLKS_PER_PLN, BLK_SIZE)*/
+#define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
+#define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
+
+#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 2)
+
+#elif  (BASE_SSD == WD_ZN540)
+#define SSD_INSTANCES        1
+#define NAND_CHANNELS        8
+#define LUNS_PER_NAND_CH     4
+#define PLNS_PER_LUN         1
+#define SSD_INSTANCE_BITS    0
+#define READ_PAGE_SIZE      (32*1024)
+#define PGM_PAGE_SIZE        (READ_PAGE_SIZE*2)
+
+#define CH_MAX_XFER_SIZE  (READ_PAGE_SIZE) /* to overlap with pcie transfer */
+#define WRITE_UNIT_SIZE     (512) 
+
+#define NAND_CHANNEL_BANDWIDTH	(450ull) //MB/s
+#define PCIE_BANDWIDTH			(3050ull) //MB/s
+
+#define NAND_4KB_READ_LATENCY (50000)
+#define NAND_READ_LATENCY (51000)
+#define NAND_PROG_LATENCY (800000)
+#define NAND_ERASE_LATENCY 0
+
+#define FW_READ0_LATENCY (20000)
+#define FW_READ1_LATENCY (2000)
+#define FW_READ0_SIZE (4*1024)
+#define FW_PROG0_LATENCY  (6000)
+#define FW_PROG1_LATENCY (400)
+#define FW_XFER_LATENCY (0)
+#define OP_AREA_PERCENT      (0.07)
+
+#define ZONE_SIZE       (32*1024*1024) //byte
+#define DIES_PER_ZONE   (NAND_CHANNELS*LUNS_PER_NAND_CH)
+
+#define MAX_ZRWA_ZONES (0) // No limit
 #define ZRWAFG_SIZE (PGM_PAGE_SIZE)
 #define ZRWA_SIZE   (MB(4))
 #define ZRWA_BUFFER_SIZE   (ZRWA_SIZE * 2)
