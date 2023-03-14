@@ -170,7 +170,7 @@ static void __nvmev_admin_identify_ctrl(int eid, int cq_head)
 	ctrl->nn = NR_NAMESPACE;
 	ctrl->oncs = 0; //optional command
 	ctrl->acl = 3; //minimum 4 required, 0's based value
-	ctrl->vwc = 0;
+	ctrl->vwc = 1;
 	snprintf(ctrl->sn, sizeof(ctrl->sn), "CSL_Virt_SN_%02d", 1);
 	snprintf(ctrl->mn, sizeof(ctrl->mn), "CSL_Virt_MN_%02d", 1);
 	snprintf(ctrl->fr, sizeof(ctrl->fr), "CSL_%03d", 2);
