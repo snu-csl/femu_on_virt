@@ -151,9 +151,12 @@ void __reset_zone(struct zns_ssd * zns_ssd, __u64 zid)
 
 	zone_descs[zid].wp = zone_descs[zid].zslba;
 	zone_descs[zid].zrwav = 0;
-
+/*
 	zns_ssd->zone_descs_durable[zid].wp = zone_descs[zid].zslba;
+	memset(zns_ssd->wl_state[zid], 0, sizeof(__u16)*zns_ssd->wl_per_zone);
 	zns_ssd->zone_descs_durable[zid].zrwav = 0;
+*/
+	zns_reset_desc_durable(zid);
 
 	buffer_refill(&zns_ssd->zwra_buffer[zid]);
 }

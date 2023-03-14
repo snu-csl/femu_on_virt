@@ -107,6 +107,25 @@ static inline __u32 die_to_lun(struct zns_ssd *zns_ssd, __u32 die) {
     return (die) / zns_ssd->ssd.sp.nchs;
 }
 
+static inline struct ppa __lpn_to_ppa(struct zns_ssd *zns_ssd, uint64_t lpn) 
+{
+	__u64 zone = lpn_to_zone(zns_ssd, lpn); // find corresponding zone
+	__u64 off = lpn - zone_to_slpn(zns_ssd, zone); 
+	
+	__u32 sdie = (zone * zns_ssd->dies_per_zone) % zns_ssd->ssd.sp.tt_luns;
+	__u32 die = sdie + ((off / zns_ssd->ssd.sp.chunks_per_pgm_pg) % zns_ssd->dies_per_zone);
+
+	__u32 channel = die_to_channel(zns_ssd, die);
+	__u32 lun = die_to_lun(zns_ssd, die);
+	struct ppa ppa = {0};
+
+	ppa.g.lun = lun;
+	ppa.g.ch = channel;
+	ppa.g.chunk = off % zns_ssd->ssd.sp.chunks_per_pgm_pg;
+
+    return ppa;
+}
+
 static inline struct zns_ssd * get_zns_ssd_instance(void) {
     return &(g_zns_ssd);
 }
@@ -127,4 +146,5 @@ void zns_advance_durable_write_pointer(__u64 lba);
 void enqueue_writeback_io_req2(int sqid, unsigned long long nsecs_target, struct buffer * write_buffer, unsigned int buffs_to_release, 
 																											unsigned long long write_pointer);
 void zns_flush_desc_durable(void);
+void zns_flush_desc_durable_bg(void);
 #endif

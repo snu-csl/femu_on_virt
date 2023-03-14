@@ -14,7 +14,7 @@ const unsigned long long flush_interval = 5*1000*1000*1000;
 void zns_reset_desc_durable(__u32 zid)
 {
 	struct zns_ssd *zns_ssd = &g_zns_ssd;
-	zns_ssd->zone_descs_durable[zid].wp = zns_ssd->zone_descs[zid].wp; 
+	zns_ssd->zone_descs_durable[zid].wp = zns_ssd->zone_descs[zid].zslba; 
 
 	NVMEV_DEBUG("%s zid=%d\n",__FUNCTION__, zid);
 
@@ -22,6 +22,14 @@ void zns_reset_desc_durable(__u32 zid)
 }
 
 void zns_flush_desc_durable(void)
+{
+	struct zns_ssd *zns_ssd = &g_zns_ssd;
+	__u32 nr_zones = zns_ssd->nr_zones;
+
+	memcpy(zns_ssd->zone_descs_durable, zns_ssd->zone_descs, sizeof(struct zone_descriptor) * nr_zones);		
+}
+
+void zns_flush_desc_durable_bg(void)
 {
 	struct zns_ssd *zns_ssd = &g_zns_ssd;
 	__u32 nr_zones = zns_ssd->nr_zones;
@@ -35,16 +43,48 @@ void zns_flush_desc_durable(void)
 	}
 }
 
+static inline unsigned long long __get_ioclock(struct ssd *ssd)
+{
+	return cpu_clock(ssd->cpu_nr_dispatcher);
+}
+
 void zns_flush(struct nvme_request * req, struct nvme_result * ret)
 {   
-	unsigned long long latest = 0;
   	struct zns_ssd *zns_ssd = &g_zns_ssd;
 	__u32 nr_zones = zns_ssd->nr_zones;
 
-	NVMEV_ERROR("%s\n",__FUNCTION__ );
+	struct ssdparams *spp = &zns_ssd->ssd.sp;
+    uint32_t i, j;
+    uint64_t latest = __get_ioclock(&zns_ssd->ssd);
+	uint64_t lba,lpn;
+	struct ppa ppa;
+	struct nand_cmd swr;
 
-	memcpy(zns_ssd->zone_descs_durable, zns_ssd->zone_descs, sizeof(struct zone_descriptor) * nr_zones);
-	
+	for (i = 0; i < zns_ssd->nr_zones; i++) {
+		lba = zns_ssd->zone_descs[i].wp;
+		lpn = lba / spp->secs_per_chunk;
+		ppa = __lpn_to_ppa(zns_ssd, lpn);
+
+		if (ppa.g.chunk > 0) {
+			swr.type = USER_IO;
+			swr.cmd = NAND_WRITE;
+			swr.stime = latest;
+			swr.xfer_size = spp->chunks_per_pgm_pg * spp->chunksz;
+
+			ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);	
+		}
+		
+	}
+
+    for (i = 0; i < spp->nchs; i++) {
+		struct ssd_channel *ch = &zns_ssd->ssd.ch[i];
+
+        for (j = 0; j < spp->luns_per_ch; j++) {
+			struct nand_lun *lun = &ch->lun[j];
+            latest = max(latest, lun->next_lun_avail_time);
+        }
+    }
+
 	ret->status = NVME_SC_SUCCESS;
 	ret->nsecs_target = latest;
 	return;
@@ -61,7 +101,7 @@ void zns_recover_metadata(void)
 	__u32 wl_off;
 	__u64 elba;
 	bool error;
-	NVMEV_ERROR("%s\n",__FUNCTION__);
+	NVMEV_DEBUG("%s\n",__FUNCTION__);
 
 	buffer_refill(&zns_write_buffer);
 
@@ -119,9 +159,11 @@ void zns_advance_durable_write_pointer(__u64 lba)
 
 	//NVMEV_ASSERT(zns_ssd->wl_state[zid][wl_off] < (lba_off + 1));
 
+	/*
 	if (zns_ssd->wl_state[zid][wl_off] >= (lba_off + 1))
 		NVMEV_ERROR("zid=%d wl_state=%d lba_off=0x%llx lba=0x%llx wl_off=%llu\n", 
 		zid, zns_ssd->wl_state[zid][wl_off], lba_off, lba, wl_off);
+	*/
 	zns_ssd->wl_state[zid][wl_off] = lba_off + 1;
 
 	for (i = old_wl_off; i <= wl_off; i++) {
@@ -135,7 +177,7 @@ void zns_advance_durable_write_pointer(__u64 lba)
 								 	(i * secs_per_pgm_pg) + 
 									zns_ssd->wl_state[zid][i];
 
-		NVMEV_ASSERT(zone_descs_durable[zid].wp < new_wp);
+		//NVMEV_ASSERT(zone_descs_durable[zid].wp < new_wp);
 
 		NVMEV_DEBUG("New WP zid=%d wl=%d wl_state=%d lba_off=0x%llx lba=0x%llx wl_off=%llu wp_old=0x%llx wl_new=0x%llx remaining=0x%llx\n", 
 		zid, i, zns_ssd->wl_state[zid][i], lba_off, lba, wl_off, zone_descs_durable[zid].wp, new_wp,zns_write_buffer.remaining);

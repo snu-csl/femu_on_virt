@@ -713,7 +713,7 @@ static int nvmev_kthread_io(void *data)
 		volatile unsigned int curr = pi->io_seq;
 		int qidx;
 
-		zns_flush_desc_durable();
+		zns_flush_desc_durable_bg();
 		
 		while (curr != -1) {
 			struct nvmev_proc_table *pe = &pi->proc_table[curr];
@@ -758,6 +758,20 @@ static int nvmev_kthread_io(void *data)
 						NVMEV_ERROR("Skip lba=0x%llx time=%llu\n", pe->write_pointer, pe->nsecs_target/1000);
 
 				} else  {
+					int sdid = pe->sqid;
+					int sd_entry = pe->sq_entry;
+					struct nvmev_submission_queue *sq = vdev->sqes[sdid];
+					struct nvme_command *cmd = &sq_entry(sd_entry);
+					uint32_t nsid = cmd->common.nsid - 1;
+
+					if (vdev->config.write_time > 0 && 
+						cmd->common.opcode == nvme_cmd_flush && 
+						NS_CSI(nsid) == NVME_CSI_ZNS && 
+						pe->ignore == false) {
+						
+						zns_flush_desc_durable();
+					}
+
 					__fill_cq_result(pe);
 				}
 				

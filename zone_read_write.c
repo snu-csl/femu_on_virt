@@ -50,25 +50,6 @@ void __increase_write_ptr(struct zns_ssd *zns_ssd, __u32 zid, __u32 nr_lba)
 	}
 }
 
-static inline struct ppa __lpn_to_ppa(struct zns_ssd *zns_ssd, uint64_t lpn) 
-{
-	__u64 zone = lpn_to_zone(zns_ssd, lpn); // find corresponding zone
-	__u64 off = lpn - zone_to_slpn(zns_ssd, zone); 
-	
-	__u32 sdie = (zone * zns_ssd->dies_per_zone) % zns_ssd->ssd.sp.tt_luns;
-	__u32 die = sdie + ((off / zns_ssd->ssd.sp.chunks_per_pgm_pg) % zns_ssd->dies_per_zone);
-
-	__u32 channel = die_to_channel(zns_ssd, die);
-	__u32 lun = die_to_lun(zns_ssd, die);
-	struct ppa ppa = {0};
-
-	ppa.g.lun = lun;
-	ppa.g.ch = channel;
-	ppa.g.chunk = off % zns_ssd->ssd.sp.chunks_per_pgm_pg;
-
-    return ppa;
-}
-
 __u32 __proc_zns_write(struct zns_ssd *zns_ssd, struct nvme_rw_command * cmd)
 {
 	struct zone_descriptor *zone_descs = zns_ssd->zone_descs;
@@ -117,7 +98,7 @@ __u32 __proc_zns_write(struct zns_ssd *zns_ssd, struct nvme_rw_command * cmd)
 
 			acquire_zone_resource(zns_ssd, ACTIVE_ZONE);
 
-			zns_reset_desc_durable(zid);
+			//zns_reset_desc_durable(zid);
 			// go through
 		}
 		case ZONE_STATE_CLOSED:
