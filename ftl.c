@@ -15,7 +15,7 @@ static inline unsigned long long __get_ioclock(struct ssd *ssd)
 
 static inline bool last_chunk_in_wordline(struct ssd *ssd, struct ppa *ppa)
 {
-    return ppa->h.chunk_offs == (ssd->sp.chunks_per_pgm_pg - 1);
+    return (ppa->g.chunk % ssd->sp.chunks_per_pgm_pg) == (ssd->sp.chunks_per_pgm_pg - 1);
 }
 
 void buffer_init(struct buffer * buf, __u32 size)
@@ -386,7 +386,7 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
     spp->chunks_per_pgm_pg = PGM_PAGE_SIZE / (spp->chunksz);
     spp->pgm_pgs_per_blk = DIV_ROUND_UP(blk_size, PGM_PAGE_SIZE); 
 
-    spp->chunks_per_read_pg = (PGM_PAGE_SIZE / READ_PAGE_SIZE) * spp->chunks_per_pgm_pg;
+    spp->chunks_per_read_pg = READ_PAGE_SIZE / (spp->chunksz);
     spp->read_pgs_per_blk = (PGM_PAGE_SIZE / READ_PAGE_SIZE) * spp->pgm_pgs_per_blk;  
    
     spp->chunks_per_blk = spp->chunks_per_pgm_pg * spp->pgm_pgs_per_blk;
@@ -450,9 +450,9 @@ static void ssd_init_params(struct ssdparams *spp, unsigned long capacity)
 
     total_size = (unsigned long)spp->tt_luns * spp->blks_per_lun * spp->chunks_per_blk * spp->secsz * spp->secs_per_chunk;
     blk_size = spp->chunks_per_blk *  spp->secsz * spp->secs_per_chunk;
-    NVMEV_INFO("Total Capacity=%lu(GB), %lu(MB) Block Size=%lu(Byte) luns=%lu lines=%lu chunks_per_line=%lu chunks_per_blk=%u gc_thresh_line=%d spp->gc_thres_lines_high=%d n", 
+    NVMEV_INFO("Total Capacity=%lu(GB), %lu(MB) Block Size=%lu(Byte) luns=%lu lines=%lu chunks_per_line=%lu chunks_per_blk=%u pgm_pgs=%d read_pgs=%d n", 
                     BYTE_TO_GB(total_size), BYTE_TO_MB(total_size), blk_size, 
-                    spp->tt_luns, spp->tt_lines, spp->chunks_per_line, spp->chunks_per_blk, spp->gc_thres_lines, spp->gc_thres_lines_high);
+                    spp->tt_luns, spp->tt_lines, spp->chunks_per_line, spp->chunks_per_blk, spp->pgm_pgs_per_blk, spp->read_pgs_per_blk);
 }
 
 static void ssd_init_nand_page(struct nand_chunk *chunk, struct ssdparams *spp)
@@ -981,16 +981,22 @@ static void clean_one_flash_page(struct ssd *ssd, struct ppa *ppa)
     int cnt = 0;
     int chunk;
     uint64_t completed_time = 0;
+    struct ppa ppa_copy = *ppa;
+
+    NVMEV_ASSERT((ppa->g.chunk % spp->chunks_per_read_pg) == 0);
 
     for (chunk = 0; chunk < spp->chunks_per_read_pg; chunk++) {
-        ppa->h.chunk_offs = chunk;
-        chunk_iter = get_pg(ssd, ppa);
+        chunk_iter = get_pg(ssd, &ppa_copy);
         /* there shouldn't be any free page in victim blocks */
         NVMEV_ASSERT(chunk_iter->status != CHUNK_FREE);
         if (chunk_iter->status == CHUNK_VALID) 
             cnt++;
+        
+        ppa_copy.g.chunk++;
     }
 
+    ppa_copy = *ppa;
+    
     if (cnt > 0) {
         if (ssd->sp.enable_gc_delay) {
             struct nand_cmd gcr;
@@ -998,17 +1004,18 @@ static void clean_one_flash_page(struct ssd *ssd, struct ppa *ppa)
             gcr.cmd = NAND_READ;
             gcr.stime = 0;
             gcr.xfer_size = spp->chunksz * cnt;
-            completed_time = ssd_advance_status(ssd, ppa, &gcr);
+            completed_time = ssd_advance_status(ssd, &ppa_copy, &gcr);
         }
 
         for (chunk = 0; chunk < spp->chunks_per_read_pg; chunk++) {
-            ppa->h.chunk_offs = chunk;
-            chunk_iter = get_pg(ssd, ppa);
+            chunk_iter = get_pg(ssd, &ppa_copy);
 
             /* there shouldn't be any free page in victim blocks */
             if (chunk_iter->status == CHUNK_VALID) 
                 /* delay the maptbl update until "write" happens */
-                gc_write_page(ssd, ppa);
+                gc_write_page(ssd, &ppa_copy);
+
+            ppa_copy.g.chunk++;
         }
     }
 }
@@ -1046,7 +1053,7 @@ int do_gc(struct ssd *ssd, bool force)
 
     /* copy back valid data */
     for (flash_pg = 0; flash_pg < spp->read_pgs_per_blk; flash_pg++) {
-        ppa.h.wordline = flash_pg; 
+        ppa.g.chunk = flash_pg * ssd->sp.chunks_per_read_pg;
         for (ch = 0; ch < spp->nchs; ch++) {
             for (lun = 0; lun < spp->luns_per_ch; lun++) {
                 ppa.g.ch = ch;
@@ -1117,10 +1124,14 @@ void ssd_gc2(struct ssd *ssd) {
     }
 }
 
-bool is_same_flash_page(struct ppa ppa1, struct ppa ppa2) 
+bool is_same_flash_page(struct ssd *ssd, struct ppa ppa1, struct ppa ppa2) 
 {
+    struct ssdparams *spp = &ssd->sp;
+	uint32_t ppa1_page = ppa1.g.chunk / spp->chunks_per_read_pg;
+	uint32_t ppa2_page = ppa2.g.chunk / spp->chunks_per_read_pg;
+
     return (ppa1.h.blk_in_die == ppa2.h.blk_in_die) &&
-           (ppa1.h.wordline == ppa2.h.wordline);
+           (ppa1_page == ppa2_page);
 }
 
 bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
@@ -1175,7 +1186,7 @@ bool ssd_read(struct nvme_request * req, struct nvme_result * ret)
             }
 
             // aggregate read io in same flash page
-            if (mapped_ppa(&prev_ppa) && is_same_flash_page(cur_ppa, prev_ppa)) {
+            if (mapped_ppa(&prev_ppa) && is_same_flash_page(ssd_ins, cur_ppa, prev_ppa)) {
                 xfer_size += spp->chunksz;
                 continue;
             }
@@ -1325,7 +1336,7 @@ void ssd_flush(struct nvme_request * req, struct nvme_result * ret)
 {   
 	unsigned long long latest = 0;
 
-	NVMEV_DEBUG("qid %d entry %d\n", sqid, sq_entry);
+	NVMEV_DEBUG("%s \n",__FUNCTION__);
 
     latest = local_clock();
     #if 0

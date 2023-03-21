@@ -152,7 +152,7 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 	__u64 nsecs_completed = 0, nsecs_latest;
 	__u64 nsecs_xfer_completed;
 	__u32 status = NVME_SC_SUCCESS;
-
+	__u64 chunk_off;
 	struct ppa ppa;
 	struct nand_cmd swr;
 
@@ -248,9 +248,10 @@ __u32 __proc_zns_write_zrwa(struct zns_ssd *zns_ssd, struct nvme_request * req, 
 	/* Aggregate write io in flash page */
 	while (remaining > 0) {
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
-		chunks = min(remaining, (__u64)(spp->chunks_per_pgm_pg - ppa.h.chunk_offs));
+		chunk_off = ppa.g.chunk % spp->chunks_per_pgm_pg;
+		chunks = min(remaining, (__u64)(spp->chunks_per_pgm_pg - chunk_off));
 
-		if ((ppa.h.chunk_offs + chunks) == spp->chunks_per_pgm_pg) {	
+		if ((chunk_off+ chunks) == spp->chunks_per_pgm_pg) {	
 			swr.type = USER_IO;
 			swr.cmd = NAND_WRITE;
 			swr.stime = nsecs_xfer_completed;
@@ -374,7 +375,7 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 	__u32 status = NVME_SC_SUCCESS;
 	__u64 nsecs_start = req->nsecs_start;
 	__u64 nsecs_completed = 0, nsecs_latest = 0;	
-	__u64 chunks;
+	__u64 chunks, chunks_off;
 	struct ppa ppa;
 	struct nand_cmd swr;
 
@@ -391,14 +392,19 @@ bool zns_read(struct nvme_request * req, struct nvme_result * ret)
 
 	// get delay from nand model
 	nsecs_latest = nsecs_start;
-	nsecs_latest += spp->fw_rd0_lat;
+	if (LBA_TO_BYTE(nr_lba) <= spp->fw_rd0_size)
+        nsecs_latest += spp->fw_rd0_lat;
+    else
+        nsecs_latest += spp->fw_rd1_lat;
+
 	swr.type = USER_IO;
 	swr.cmd = NAND_READ;
 	swr.stime = nsecs_latest;
 
 	for (lpn = start_lpn; lpn <= end_lpn; lpn+=chunks) {
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
-		chunks = min(end_lpn - lpn + 1, (__u64)(spp->chunks_per_read_pg - ppa.g.chunk));
+		chunks_off = ppa.g.chunk % spp->chunks_per_read_pg;
+		chunks = min(end_lpn - lpn + 1, (__u64)(spp->chunks_per_read_pg - chunks_off));
 		swr.xfer_size = chunks * spp->chunksz;
 		nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
 		nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;

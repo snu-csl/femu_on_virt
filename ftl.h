@@ -66,12 +66,6 @@ enum {
 #define CH_BITS     (8)
 #define RSB_BITS    (TOTAL_PPA_BITS - (BLK_BITS + CHUNK_BITS + PL_BITS + LUN_BITS + CH_BITS))
 
-#if (READ_PAGE_SIZE == (64*1024))
-#define CHUNK_OFFS_BITS   (4) // 16 pages -> 1 wordline
-#elif (READ_PAGE_SIZE == (32*1024))
-#define CHUNK_OFFS_BITS   (3) // 8 pages -> 1 wordline
-#endif
-#define WORDLINE_BITS  (CHUNK_BITS - CHUNK_OFFS_BITS)
 /* describe a physical page addr */
 struct ppa {
     union {
@@ -85,8 +79,7 @@ struct ppa {
         } g;
 
         struct {
-            uint64_t chunk_offs : CHUNK_OFFS_BITS;
-            uint64_t wordline : WORDLINE_BITS;
+            uint64_t : CHUNK_BITS;
             uint64_t blk_in_die : BLK_BITS + PL_BITS + LUN_BITS + CH_BITS;
             uint64_t rsv : 1;
         } h;
