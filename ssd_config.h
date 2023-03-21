@@ -7,7 +7,7 @@
 #define SKHYNIX_ZNS_PROTOTYPE 2
 #define WD_ZN540 3
 
-#define BASE_SSD   (SAMSUNG_ZNS_970PRO)
+#define BASE_SSD   (WD_ZN540)
 
 /* Macros for specific setting. Modify these macros for your target */
 #if (BASE_SSD == SKHYNIX_ZNS_PROTOTYPE)
@@ -141,7 +141,7 @@
 #define PLNS_PER_LUN         1
 #define SSD_INSTANCE_BITS    0
 #define READ_PAGE_SIZE      (32*1024)
-#define PGM_PAGE_SIZE        (READ_PAGE_SIZE*2)
+#define PGM_PAGE_SIZE        (READ_PAGE_SIZE*3)
 
 #define CH_MAX_XFER_SIZE  (READ_PAGE_SIZE) /* to overlap with pcie transfer */
 #define WRITE_UNIT_SIZE     (512) 
@@ -150,7 +150,7 @@
 #define PCIE_BANDWIDTH			(3050ull) //MB/s
 
 #define NAND_4KB_READ_LATENCY (50000)
-#define NAND_READ_LATENCY (51000)
+#define NAND_READ_LATENCY (69000)
 #define NAND_PROG_LATENCY (800000)
 #define NAND_ERASE_LATENCY 0
 
@@ -173,7 +173,7 @@
 #define BLKS_PER_PLN         0 /* BLK_SIZE should not be 0 */
 #define BLK_SIZE             (ZONE_SIZE / DIES_PER_ZONE)
 
-#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 3)
+#define WRITE_BUFFER_SIZE   (NAND_CHANNELS * LUNS_PER_NAND_CH * PGM_PAGE_SIZE * 2)
 #endif // BASE_SSD == SAMSUNG_970_PRO
 
 #define NAND_CH_PER_SSD_INS  (NAND_CHANNELS/SSD_INSTANCES)
