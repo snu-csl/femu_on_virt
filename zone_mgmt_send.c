@@ -147,7 +147,7 @@ void __reset_zone(struct zns_ssd * zns_ssd, __u64 zid)
 	NVMEV_ZNS_DEBUG("%s ns %d zid %lu  0x%llx, start addres 0x%llx zone_size %x \n", 
 			__FUNCTION__, zns_ssd->ns, zid, (void*)vdev->ns_mapped[zns_ssd->ns], (__u64)zone_start_addr, zone_size);
 
-	memset(zone_start_addr, 0, zone_size);
+	//memset(zone_start_addr, 0, zone_size);
 
 	zone_descs[zid].wp = zone_descs[zid].zslba;
 	zone_descs[zid].zrwav = 0;
@@ -328,6 +328,7 @@ void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 {
 	struct nvme_zone_mgmt_send * cmd = (struct nvme_zone_mgmt_send *)req->cmd;
 	struct zns_ssd *zns_ssd= get_zns_ssd_instance();
+	struct ssdparams *spp = &(zns_ssd->ssd.sp);
 	__u32 select_all = cmd->select_all;
 	__u32 status = NVME_SC_SUCCESS;
 	
@@ -335,6 +336,10 @@ void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 	__u32 option = cmd->zsaso;
 	__u64 slba = cmd->slba;
 	__u64 zid = lba_to_zone(zns_ssd, slba);
+	int i,j;
+	struct ppa ppa;
+	struct nand_cmd swr;
+	uint64_t nsecs_latest = 0, nsecs_completed;
 	if (select_all) {
 		buffer_refill(&zns_write_buffer);
 		for (zid = 0; zid < zns_ssd->nr_zones; zid++)
@@ -346,7 +351,26 @@ void zns_zmgmt_send(struct nvme_request * req, struct nvme_result * ret)
 	NVMEV_ZNS_DEBUG("%s slba %llx zid %lu select_all %lu action %u status %lu option %lu\n", 
 			__FUNCTION__, cmd->slba, zid,  select_all, cmd->zsa, status, option);
 	
-	ret->nsecs_target = req->nsecs_start; // no delay
+	if (action == ZSA_RESET_ZONE) {
+
+		swr.type = USER_IO;
+		swr.cmd = NAND_ERASE;
+		swr.stime = req->nsecs_start;
+
+		for (i = 0; i < spp->nchs; i++) {
+			ppa.g.ch = i;
+
+			for (j = 0; j < spp->luns_per_ch; j++) {
+				ppa.g.lun = j;
+			
+				nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
+				nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
+			}
+    	}
+		ret->nsecs_target = nsecs_latest;	
+	} else {
+		ret->nsecs_target = req->nsecs_start ; // no delay
+	}
 	ret->status = status;
 	return;
 }

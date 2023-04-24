@@ -382,7 +382,7 @@ static ssize_t __proc_file_write(struct file *file, const char __user *buf, size
 	}
 
 out:
-	__print_perf_configs();
+	//__print_perf_configs();
 
 	return count;
 }
@@ -517,11 +517,13 @@ static bool __load_configs(struct nvmev_config *config)
 		return false;
 	}
 	
+	/*
 	if (config->storage_size % config->nr_zones)
 	{
 		NVMEV_ERROR("Invalid # of zone : %d. Not aligned.. \n", config->nr_zones);
 		return false;
 	}
+	*/
 #endif
 
 	while ((cpu = strsep(&cpus, ",")) != NULL) {
