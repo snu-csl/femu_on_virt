@@ -10,7 +10,7 @@ struct zns_ssd g_zns_ssd;
 struct buffer zns_write_buffer;
 extern struct nvmev_dev *vdev;
 unsigned long long latest_flush_nsecs = 0;
-const unsigned long long flush_interval = 5*1000*1000*1000;
+const unsigned long long flush_interval = 5ULL*1000*1000*1000;
 
 void zns_reset_desc_durable(__u32 zid)
 {
@@ -336,6 +336,7 @@ extern struct nvmev_dev *vdev;
 				ret->nsecs_target = req->nsecs_start;
 				ret->ignore = true;
 			} else {
+				ret->ignore = false;
             	zns_flush(req, ret);
 			}
             break;
