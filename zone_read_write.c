@@ -302,13 +302,19 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 	struct ppa ppa;
 	struct nand_cmd swr;
 	
-	NVMEV_DEBUG("%s slba 0x%llx nr_lba 0x%lx zone_id %d %d\n",__FUNCTION__, cmd->slba, nr_lba, zid, zns_write_buffer.remaining);
 	if (zone_descs[zid].zrwav == 0) {
 		if (buffer_allocate(&zns_write_buffer, LBA_TO_BYTE(nr_lba)) < LBA_TO_BYTE(nr_lba)) {
 			return false;
 		}
 		
 		status = __proc_zns_write(zns_ssd, cmd);
+
+		#if 0 // only for testing strict mode. strict mode seems to have a bug.
+		if (status == NVME_SC_ZNS_INVALID_WRITE) {
+			buffer_release(&zns_write_buffer, LBA_TO_BYTE(nr_lba));
+			return false;
+		}
+		#endif
 
 		// get delay from nand model
 		nsecs_latest = nsecs_start;
@@ -342,9 +348,27 @@ bool zns_write(struct nvme_request * req, struct nvme_result * ret)
 				//NVMEV_ERROR("%s slpn 0x%llx \n",__FUNCTION__,lpn);
 				enqueue_writeback_io_req2(req->sq_id, nsecs_completed, 
 										&zns_write_buffer, bufs, ((lpn + chunks)*spp->secs_per_chunk  - 1));
-			} 
-		}
+			} else if (cmd->control & NVME_RW_FUA) {
+				#if 0
+				swr.type = USER_IO;
+				swr.cmd = NAND_WRITE;
+				swr.stime = nsecs_xfer_completed;
+				swr.xfer_size = spp->chunks_per_pgm_pg * spp->chunksz;
 
+				nsecs_completed = ssd_advance_status(&zns_ssd->ssd, &ppa, &swr);
+				nsecs_latest = (nsecs_completed > nsecs_latest) ? nsecs_completed : nsecs_latest;
+				#endif
+			}
+		}
+#if MEASURE_QD
+		while(!spin_trylock(&zns_ssd->lock[zid]));
+		zone_descs[zid].qd_count++;
+		uint32_t qd_count = zone_descs[zid].qd_count;
+		spin_unlock(&zns_ssd->lock[zid]);
+
+		NVMEV_ERROR("%s slba 0x%llx nr_lba 0x%lx zone_id %d fua 0x%x sq %d qd_count %d\n",
+		__FUNCTION__, cmd->slba, nr_lba, zid, cmd->control & NVME_RW_FUA, req->sq_id, qd_count);
+#endif
 		ret->status = status;
 		if (cmd->control & NVME_RW_FUA) /*Wait all flash operations*/
 			ret->nsecs_target = nsecs_latest;

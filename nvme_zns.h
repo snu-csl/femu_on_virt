@@ -119,8 +119,11 @@ struct zone_descriptor {
 			__u8 :4;
 		};
 	};
-
+#if MEASURE_QD	
+	__u32	qd_count;
+#else
 	__u32	reserved;
+#endif
 	__u64	zone_capacity;
 	__u64	zslba; // zone start logical block address
 	__u64	wp; 

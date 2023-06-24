@@ -23,6 +23,9 @@
 
 #undef CONFIG_NVMEV_DEBUG_VERBOSE
 
+#define MEASURE_QD 0
+#define PERF_MEASURE 0
+
 #define SUPPORT_ZNS 1
 #define SUPPORT_MULTI_IO_WORKER_BY_SQ	1 
 #define SUPPORT_VIRTUAL_CAPACITY		0
@@ -35,7 +38,7 @@
    NS_CAPACITY : MB (0 -> Full capacity) */
 
 #define NS_CSI_0 NVME_CSI_NVM
-#define NS_CAPACITY_0 (16*16*1024*1024) 
+#define NS_CAPACITY_0 (32*6*1024*1024) 
 #define NS_CSI_1 NVME_CSI_ZNS  
 #define NS_CAPACITY_1 (0)
 

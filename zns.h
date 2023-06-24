@@ -40,6 +40,7 @@ struct zns_ssd {
     struct zone_report *report_buffer;
     struct buffer * zwra_buffer;
     struct buffer * write_buffer;
+    spinlock_t * lock;
 
     unsigned int cpu_nr_dispatcher;
 };

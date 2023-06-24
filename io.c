@@ -763,7 +763,20 @@ static int nvmev_kthread_io(void *data)
 					struct nvmev_submission_queue *sq = vdev->sqes[sdid];
 					struct nvme_command *cmd = &sq_entry(sd_entry);
 					uint32_t nsid = cmd->common.nsid - 1;
+#if MEASURE_QD
+					struct zns_ssd *zns_ssd = &g_zns_ssd;
+					uint32_t lba = cmd->rw.slba;
+					uint32_t zid = lba_to_zone(zns_ssd, lba);
 
+					if (cmd->common.opcode == nvme_cmd_write){
+						while(!spin_trylock(&zns_ssd->lock[zid]));
+						zns_ssd->zone_descs[zid].qd_count--;
+						uint32_t qd_count = zns_ssd->zone_descs[zid].qd_count;
+						spin_unlock(&zns_ssd->lock[zid]);
+						
+						NVMEV_ERROR("cmd=0x%llx lba=0x%llx qd=%d\n", cmd->common.opcode, cmd->rw.slba, qd_count);
+					}
+#endif
 					if (vdev->config.write_time > 0 && 
 						cmd->common.opcode == nvme_cmd_flush && 
 						NS_CSI(nsid) == NVME_CSI_ZNS && 

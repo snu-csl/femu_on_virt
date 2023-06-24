@@ -5,7 +5,6 @@
 #include <linux/sched/clock.h>
 #if SUPPORT_ZNS
 
-#define PERF_MEASURE 1
 struct zns_ssd g_zns_ssd;
 struct buffer zns_write_buffer;
 extern struct nvmev_dev *vdev;
@@ -67,12 +66,14 @@ void zns_flush(struct nvme_request * req, struct nvme_result * ret)
 	struct ppa ppa;
 	struct nand_cmd swr;
 
+	NVMEV_DEBUG("%s \n",__FUNCTION__);
+
 	for (i = 0; i < zns_ssd->nr_zones; i++) {
 		lba = zns_ssd->zone_descs[i].wp;
 		lpn = lba / spp->secs_per_chunk;
 		ppa = __lpn_to_ppa(zns_ssd, lpn);
 
-		if (ppa.g.chunk > 0) {
+		if (zns_ssd->zone_descs[i].state != ZONE_STATE_FULL && ppa.g.chunk > 0) {
 			swr.type = USER_IO;
 			swr.cmd = NAND_WRITE;
 			swr.stime = latest;
@@ -221,7 +222,9 @@ void zns_init_descriptor(struct zns_ssd *zns_ssd)
 	zns_ssd->report_buffer = (struct zone_report *) kmalloc(sizeof(struct zone_report) + sizeof(struct zone_descriptor) * (nr_zones - 1), GFP_ATOMIC);
 	zns_ssd->zwra_buffer = (struct buffer *) kmalloc(sizeof(struct buffer) * nr_zones, GFP_ATOMIC);
 	zns_ssd->write_buffer = (struct buffer *) kmalloc(sizeof(struct buffer) * nr_zones, GFP_ATOMIC);
-
+#if MEASURE_QD	
+	zns_ssd->lock = (spinlock_t *) kmalloc(sizeof(spinlock_t) * nr_zones, GFP_ATOMIC);
+#endif
 	zone_descs = zns_ssd->zone_descs;
 	memset(zone_descs, 0, sizeof(struct zone_descriptor) * zns_ssd->nr_zones);
 
@@ -240,7 +243,9 @@ void zns_init_descriptor(struct zns_ssd *zns_ssd)
 		buffer_init(&(zns_ssd->write_buffer[i]), WRITE_BUFFER_SIZE); 
 
 		zns_ssd->wl_state[i] = (__u16 *) kmalloc(sizeof(__u16) * zns_ssd->wl_per_zone, GFP_ATOMIC);
-	
+#if MEASURE_QD	
+		spin_lock_init(&zns_ssd->lock[i]);
+#endif
 		memset(zns_ssd->wl_state[i], 0, sizeof(__u16) * zns_ssd->wl_per_zone);
 		NVMEV_ZNS_DEBUG("[i] zslba 0x%llx zone capacity 0x%llx\n", zone_descs[i].zslba, zone_descs[i].zone_capacity);
 	}
